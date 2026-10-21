@@ -27,7 +27,11 @@ plan's entry, or the price in trader/prices.json if that is fresh (under 15
 minutes old) and higher, because a price that ran up since the plan means a
 bigger loss at the same stop. Zero shares (the stop is too far away for your
 max loss) is a plain refusal: no order is written. So is a reward:risk under
-min_reward_risk (the price ran toward the target since the plan).
+min_reward_risk (the price ran toward the target since the plan), a plan with
+no date, and a budget, max_loss_per_trade_usd, max_position_pct or
+max_order_usd that is 0, negative or not a number (never "no limit"). With
+--write, a refusal also removes an earlier trader/orders.json, so trader-risk
+cannot pass yesterday's order.
 
 Weights mode (kept from v1, no longer the headline): split a budget across a
 list of stocks by weight.
@@ -181,6 +185,15 @@ def _f(x):
         return None
 
 
+def positive_number(key, value):
+    """A limit that must be a positive number. 0, negative, missing or not a number
+    is a refusal, never "no limit"."""
+    f = None if isinstance(value, bool) else _f(value)
+    if f is None or f <= 0:
+        raise SizeError("%s must be a positive number, got %r" % (key, value))
+    return f
+
+
 def parse_weights(data):
     """Accept a weights file, a {ticker: weight} dict or a list of rows.
 
@@ -319,7 +332,9 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     side = str(plan.get("side") or "buy").strip().lower()
     if side != "buy":
         raise SizeError("this pack sizes long (buy) day trades only; the plan says %r" % side)
-    if today and plan.get("date") and str(plan["date"]) != today:
+    if not plan.get("date"):
+        raise SizeError("the plan has no date: make it with trader-exit")
+    if today and str(plan["date"]) != today:
         raise SizeError("the plan is for %s and today is %s in New York: make a new plan with trader-exit"
                         % (plan["date"], today))
     entry_plan, stop, target = _f(plan.get("entry")), _f(plan.get("stop")), _f(plan.get("target"))
@@ -331,9 +346,10 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     if sym in blocked:
         raise SizeError("%s is on your blocked list" % sym)
 
-    budget = float(budget if budget is not None else (c.get("budget") or 0))
-    if budget <= 0:
+    budget = budget if budget is not None else c.get("budget")
+    if budget is None:
         raise SizeError("no budget: pass --budget or set \"budget\" in trader/config.json")
+    budget = positive_number("budget", budget)
     buf_pct = float(c.get("cash_buffer_pct") or 0)
     if not 0 <= buf_pct < 100:
         raise SizeError("cash_buffer_pct must be between 0 and 100")
@@ -364,19 +380,16 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     available = max(round(available, 2), 0.0)
 
     limits = []
-    max_loss = _f(c.get("max_loss_per_trade_usd"))
-    if max_loss:
-        limits.append({"name": "max loss", "usd": max_loss, "per": risk, "shares": shares_for(max_loss, risk),
-                       "how": "%s max loss / %s risk a share" % (money(max_loss), _price(risk))})
-    cap_pct = _f(c.get("max_position_pct"))
-    if cap_pct:
-        cap = round(budget * cap_pct / 100.0, 2)
-        limits.append({"name": "position cap", "usd": cap, "per": ref, "shares": shares_for(cap, ref),
-                       "how": "%s%% of %s = %s / %s" % (_num(cap_pct), money(budget), money(cap), _price(ref))})
-    max_order = _f(c.get("max_order_usd"))
-    if max_order:
-        limits.append({"name": "max order", "usd": max_order, "per": ref, "shares": shares_for(max_order, ref),
-                       "how": "%s / %s" % (money(max_order), _price(ref))})
+    max_loss = positive_number("max_loss_per_trade_usd", c.get("max_loss_per_trade_usd"))
+    limits.append({"name": "max loss", "usd": max_loss, "per": risk, "shares": shares_for(max_loss, risk),
+                   "how": "%s max loss / %s risk a share" % (money(max_loss), _price(risk))})
+    cap_pct = positive_number("max_position_pct", c.get("max_position_pct"))
+    cap = round(budget * cap_pct / 100.0, 2)
+    limits.append({"name": "position cap", "usd": cap, "per": ref, "shares": shares_for(cap, ref),
+                   "how": "%s%% of %s = %s / %s" % (_num(cap_pct), money(budget), money(cap), _price(ref))})
+    max_order = positive_number("max_order_usd", c.get("max_order_usd"))
+    limits.append({"name": "max order", "usd": max_order, "per": ref, "shares": shares_for(max_order, ref),
+                   "how": "%s / %s" % (money(max_order), _price(ref))})
     limits.append({"name": "cash", "usd": available, "per": ref, "shares": shares_for(available, ref),
                    "how": "%s = %s / %s" % (cash_note, money(available), _price(ref))})
 
@@ -770,6 +783,15 @@ def write_orders(path, orders, cfg, source="", now_utc=None):
     os.replace(tmp, path)
 
 
+def drop_stale(path):
+    """A refused sizing with --write: remove the earlier proposal at the --write path, so
+    trader-risk cannot pass yesterday's order. Returns the line to say, or None."""
+    if not path or not os.path.exists(path):
+        return None
+    os.remove(path)
+    return "Removed the stale proposal at %s: a refused sizing leaves no order for trader-risk to pass." % path
+
+
 # ---------------------------------------------------------------- main
 
 def run_plan(a, cfg):
@@ -804,11 +826,21 @@ def run_plan(a, cfg):
     if a.portfolio and os.path.exists(a.portfolio):
         pf = read_json(a.portfolio, "portfolio")
         cash = _f(pf.get("cash")) if isinstance(pf, dict) else None
-    s = size_trade(plan, cfg, a.budget, limit, price, cash, today)
+    try:
+        s = size_trade(plan, cfg, a.budget, limit, price, cash, today)
+    except SizeError:
+        line = drop_stale(a.write)
+        if line:
+            print(line, file=sys.stderr)
+        raise
     order = bracket_order(s)
     if order and a.write:
         src = "trader/plan.json (%s %s %s)" % (s["symbol"], s["setup"] or "plan", s["date"] or today)
         write_orders(a.write, [order], cfg, src, now)
+    elif a.write:
+        line = drop_stale(a.write)
+        if line:
+            notes.append(line)
     if a.json:
         print(json.dumps({"sizing": s, "orders": [order] if order else [], "notes": notes}, indent=2))
     else:
@@ -874,6 +906,10 @@ def main(argv=None):
         return run_plan(a, cfg)
     except SizeError as e:
         print("size.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, OSError, ZeroDivisionError) as e:
+        print("size.py: unexpected %s: %s; the input files may be malformed" % (type(e).__name__, e),
+              file=sys.stderr)
         return 1
 
 

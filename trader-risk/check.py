@@ -54,9 +54,15 @@ What blocks an entry (on top):
   pdt           only with "pdt_guard": true: 3 day trades already in the last
                 5 business days (a 4th would trip the old pattern-day-trader rule)
 
+An approval in trader/state/broker.json from today with no placed, denied or
+failed record after it (ticket.py result was never run) counts as placed for
+the duplicate, trades, daily limit and daily loss checks, and is warned about:
+the order may be sitting at the broker.
+
 Exit code 0 when every order passes, 1 when any order is blocked.
-The verdicts go to trader/state/risk.json with a fingerprint of each order,
-so trader-broker only shows an order as ready if THIS exact order passed today.
+The verdicts go to trader/state/risk.json with a fingerprint of each order
+(its Alpaca fields plus the plan's entry, stop and target), so trader-broker
+only shows an order as ready if THIS exact order passed today.
 """
 
 import argparse
@@ -269,8 +275,17 @@ def read_json(path, what, required=True):
 
 
 def fingerprint(order):
-    """Same function in trader-broker/ticket.py: the exact order that was checked."""
+    """The exact order: its Alpaca fields plus the plan's entry, stop and target, so an
+    edited plan invalidates a verdict. Byte-identical in trader-risk/check.py and
+    trader-broker/ticket.py. Numbers go through float(), so "358.32" and 358.32 agree."""
     core = {k: order[k] for k in ALPACA_FIELDS if k in order and order[k] is not None}
+    plan = order.get("plan") if isinstance(order.get("plan"), dict) else {}
+    for k in ("entry", "stop", "target"):
+        if plan.get(k) is not None:
+            try:
+                core["plan." + k] = float(plan[k])
+            except (TypeError, ValueError):
+                core["plan." + k] = str(plan[k])
     blob = json.dumps(core, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -347,6 +362,23 @@ def placed_today(state, today):
     return out
 
 
+def unresolved_approvals(state, today):
+    """Approvals recorded today with no later placed, denied or failed record for the
+    same fingerprint: the order may be at the broker with ticket.py result never run.
+    They count as placed until a result is recorded."""
+    recs = (state or {}).get("orders", [])
+    out = []
+    for i, rec in enumerate(recs):
+        if rec.get("status") != "approved" or rec_day(rec) != today:
+            continue
+        fp = rec.get("fingerprint")
+        if any(r.get("fingerprint") == fp and rec_day(r) == today
+               and r.get("status") in ("placed", "denied", "failed") for r in recs[i + 1:]):
+            continue
+        out.append(rec)
+    return out
+
+
 def day_trades(state, today):
     """Day trades in the last 5 business days: a (day, symbol) with both a buy
     and a sell placed or filled that day. An entry placed today counts too: it
@@ -383,7 +415,12 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     today = today or now_et.date().isoformat()
     acct, top_warn = account(c, portfolio, prices)
     blocked = {str(b).upper() for b in c.get("blocked") or []}
-    done_today = placed_today(state, today)
+    pending = unresolved_approvals(state, today)
+    for r in pending:
+        top_warn.append("an approval for %s at %s has no result recorded: run ticket.py result, or check "
+                        "get_orders at the broker" % (r.get("plain") or "%s %s" % (r.get("side"), r.get("symbol")),
+                                                      r.get("at")))
+    done_today = placed_today(state, today) + pending
     count_today = len(done_today)
     entries_today = [r for r in done_today if rec_is_entry(r)]
     loss_today = 0.0
@@ -701,6 +738,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         "warnings": top_warn,
         "cash_after": round(acct["cash"], 2),
         "today": {"orders_placed": count_today, "entries_placed": len(entries_today),
+                  "unresolved_approvals": len(pending),
                   "loss_at_risk": round(loss_today, 2), "day_trades_5d": pdt_n if c.get("pdt_guard") else None},
     }
 
@@ -787,6 +825,8 @@ def main(argv=None):
         orders = doc.get("orders", doc) if isinstance(doc, dict) else doc
         if not isinstance(orders, list) or not orders:
             raise RiskError("no orders in %s" % a.orders)
+        if not all(isinstance(o, dict) for o in orders):
+            raise RiskError("every order in %s must be a JSON object" % a.orders)
         cfg = read_json(a.config, "config", required=False) or {}
         portfolio = read_json(a.portfolio, "portfolio", required=False)
         pdoc = read_json(a.prices, "prices", required=False) or {}
@@ -810,6 +850,10 @@ def main(argv=None):
             os.replace(tmp, a.out)
     except RiskError as e:
         print("check.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, OSError, ZeroDivisionError) as e:
+        print("check.py: unexpected %s: %s; the input files may be malformed" % (type(e).__name__, e),
+              file=sys.stderr)
         return 1
     print(json.dumps(res, indent=2) if a.json else report(res))
     return 1 if res["block"] else 0

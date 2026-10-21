@@ -160,6 +160,91 @@ class PlanRules(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("No order:", text)
             self.assertFalse(os.path.exists(out))
+            self.assertNotIn("stale", text)
+
+    def test_a_refusal_with_write_removes_the_stale_proposal(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "orders.json")
+            none = os.path.join(d, "none")
+            bad = os.path.join(d, "plan.json")
+            with open(bad, "w") as fh:
+                json.dump(plan(stop=300.0), fh)
+            removed = "Removed the stale proposal at %s" % out
+
+            def good():
+                self.assertEqual(run(["--plan", PLAN, "--config", CFG, "--portfolio", none, "--now", NOW,
+                                      "--write", out])[0], 0)
+                self.assertTrue(os.path.exists(out))
+
+            # without --write, yesterday's file is left alone
+            good()
+            code, text, _ = run(["--plan", bad, "--config", CFG, "--portfolio", none, "--now", NOW])
+            self.assertEqual(code, 1)
+            self.assertNotIn("stale", text)
+            self.assertTrue(os.path.exists(out))
+            # zero shares with --write: the file goes, and one line says so
+            code, text, _ = run(["--plan", bad, "--config", CFG, "--portfolio", none, "--now", NOW, "--write", out])
+            self.assertEqual(code, 1)
+            self.assertIn(removed, text)
+            self.assertEqual(text.count("Removed the stale"), 1)
+            self.assertFalse(os.path.exists(out))
+            # the same in --json, as a note
+            good()
+            code, text, _ = run(["--plan", bad, "--config", CFG, "--portfolio", none, "--now", NOW, "--write", out,
+                                 "--json"])
+            self.assertEqual(code, 1)
+            self.assertTrue(any(removed in n for n in json.loads(text)["notes"]))
+            self.assertFalse(os.path.exists(out))
+            # a refusal raised as an error (the plan is for another day) removes it too
+            good()
+            code, _, err = run(["--plan", PLAN, "--config", CFG, "--portfolio", none, "--now", "2026-10-20 10:15",
+                                "--write", out])
+            self.assertEqual(code, 1)
+            self.assertIn(removed, err)
+            self.assertIn("size.py: the plan is for 2026-10-19", err)
+            self.assertFalse(os.path.exists(out))
+
+    def test_a_limit_that_is_not_a_positive_number_is_refused(self):
+        for key in ("max_loss_per_trade_usd", "max_position_pct", "max_order_usd", "budget"):
+            for bad in (0, -5, "fifty", True):
+                with self.assertRaises(size.SizeError) as e:
+                    size.size_trade(plan(), cfg(**{key: bad}), today=TODAY)
+                self.assertEqual(str(e.exception), "%s must be a positive number, got %r" % (key, bad))
+        for key in ("max_loss_per_trade_usd", "max_position_pct", "max_order_usd"):
+            with self.assertRaises(size.SizeError) as e:
+                size.size_trade(plan(), cfg(**{key: None}), today=TODAY)
+            self.assertEqual(str(e.exception), "%s must be a positive number, got None" % key)
+        with self.assertRaises(size.SizeError) as e:
+            size.size_trade(plan(), cfg(budget=None), today=TODAY)
+        self.assertIn("no budget", str(e.exception))
+        with self.assertRaises(size.SizeError) as e:
+            size.size_trade(plan(), cfg(), budget=0, today=TODAY)
+        self.assertIn("budget must be a positive number, got 0", str(e.exception))
+        code, _, err = run(["--plan", PLAN, "--config", CFG, "--portfolio", "/nonexistent", "--now", NOW,
+                            "--budget", "0"])
+        self.assertEqual(code, 1)
+        self.assertIn("budget must be a positive number", err)
+
+    def test_a_plan_without_a_date_is_refused(self):
+        undated = plan()
+        undated.pop("date")
+        for p in (undated, plan(date=None), plan(date="")):
+            with self.assertRaises(size.SizeError) as e:
+                size.size_trade(p, cfg(), today=TODAY)
+            self.assertEqual(str(e.exception), "the plan has no date: make it with trader-exit")
+        with self.assertRaises(size.SizeError):
+            size.size_trade(undated, cfg())
+
+    def test_a_malformed_config_is_one_line_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "config.json")
+            with open(c, "w") as fh:
+                json.dump(cfg(cash_buffer_pct="ten"), fh)
+            code, _, err = run(["--plan", PLAN, "--config", c, "--portfolio", os.path.join(d, "none"), "--now", NOW])
+            self.assertEqual(code, 1)
+            self.assertIn("size.py: unexpected ValueError: ", err)
+            self.assertIn("; the input files may be malformed", err)
+            self.assertNotIn("Traceback", err)
 
     def test_each_limit_can_bind(self):
         self.assertEqual(size.size_trade(plan(), cfg(max_order_usd=1000), today=TODAY)["bound_by"], "max order")

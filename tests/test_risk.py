@@ -1,4 +1,5 @@
 import datetime
+import inspect
 import io
 import json
 import os
@@ -109,10 +110,24 @@ class TheReel(unittest.TestCase):
     def test_fingerprint_is_shared_with_the_broker(self):
         o = tsla()
         self.assertEqual(check.fingerprint(o), ticket.fingerprint(o))
-        self.assertEqual(check.fingerprint(dict(o, why="anything", plan={})), check.fingerprint(o))
+        self.assertEqual(inspect.getsource(check.fingerprint), inspect.getsource(ticket.fingerprint))
+        self.assertEqual(check.fingerprint(dict(o, why="anything")), check.fingerprint(o))
         self.assertNotEqual(check.fingerprint(dict(o, qty="9")), check.fingerprint(o))
         self.assertNotEqual(check.fingerprint(dict(o, stop_loss_stop_price="358.00")), check.fingerprint(o))
         self.assertEqual(check.ALPACA_FIELDS, ticket.ALPACA_FIELDS)
+
+    def test_fingerprint_covers_the_plans_levels(self):
+        o = tsla()
+        # the other plan keys are notes; "358.32" and 358.32 are the same level
+        same = dict(o["plan"], setup="flag", max_loss=1, entry="364.18", stop="358.32", target="370.04")
+        self.assertEqual(check.fingerprint(dict(o, plan=same)), check.fingerprint(o))
+        for k in ("entry", "stop", "target"):
+            edited = dict(o, plan=dict(o["plan"], **{k: 300.0}))
+            self.assertNotEqual(check.fingerprint(edited), check.fingerprint(o), k)
+        self.assertNotEqual(check.fingerprint(dict(o, plan={})), check.fingerprint(o))
+        no_plan = dict(o)
+        no_plan.pop("plan")
+        self.assertEqual(check.fingerprint(dict(o, plan={})), check.fingerprint(no_plan))
 
     def test_cli(self):
         with tempfile.TemporaryDirectory() as d:
@@ -208,6 +223,40 @@ class DayTradeChecks(unittest.TestCase):
                       why)
         yesterday = {"orders": [placed(s, day="2026-10-16") for s in ("AAPL", "AMD", "NVDA")]}
         self.assertEqual(verdicts(check.check([tsla()], cfg(), state=yesterday, now=at(NOW))), ["PASS"])
+
+    def test_an_approval_with_no_result_counts_as_placed(self):
+        appr = dict(placed("TSLA", kind="entry", status="approved"), fingerprint=check.fingerprint(tsla()),
+                    at=TODAY + "T10:10:00-04:00", plain="BUY 8 TSLA, market, good for today")
+        want = ("an approval for BUY 8 TSLA, market, good for today at 2026-10-19T10:10:00-04:00 has no result "
+                "recorded: run ticket.py result, or check get_orders at the broker")
+        res = check.check([tsla()], cfg(), state={"orders": [appr]}, now=at(NOW))
+        self.assertEqual(verdicts(res), ["BLOCK"])
+        self.assertIn("duplicate: a buy TSLA was already placed today", reasons(res))
+        self.assertEqual(res["warnings"], [want])
+        self.assertEqual((res["today"]["orders_placed"], res["today"]["entries_placed"],
+                          res["today"]["unresolved_approvals"], res["today"]["loss_at_risk"]), (1, 1, 1, 46.88))
+        # three of them use up the trades and the daily loss
+        three = [dict(appr, symbol=s, fingerprint="fp-" + s, plain="BUY " + s) for s in ("AAPL", "AMD", "NVDA")]
+        res = check.check([tsla()], cfg(), state={"orders": three}, now=at(NOW))
+        self.assertIn("trades: 3 entries placed today", reasons(res))
+        self.assertIn("daily loss: $140.64 already at risk today", reasons(res))
+        self.assertEqual(sum(1 for w in res["warnings"] if "no result recorded" in w), 3)
+        ten = [dict(appr, symbol="T%d" % i, fingerprint="fp-%d" % i, kind="exit", max_loss=None) for i in range(10)]
+        res = check.check([tsla()], cfg(), state={"orders": ten}, now=at(NOW))
+        self.assertIn("daily limit: 10 placed today", reasons(res))
+        # a result recorded after the approval resolves it
+        for st in ("placed", "denied", "failed"):
+            done = dict(appr, status=st, at=TODAY + "T10:11:00-04:00")
+            res = check.check([tsla()], cfg(), state={"orders": [appr, done]}, now=at(NOW))
+            self.assertEqual(res["warnings"], [], st)
+            self.assertEqual(verdicts(res), ["BLOCK" if st == "placed" else "PASS"], st)
+        # a result for another order, or from another day, does not
+        other = dict(appr, status="placed", fingerprint="fp-other", at=TODAY + "T10:11:00-04:00")
+        res = check.check([tsla()], cfg(), state={"orders": [appr, other]}, now=at(NOW))
+        self.assertEqual(res["warnings"], [want])
+        old = dict(appr, date="2026-10-16", at="2026-10-16T10:10:00-04:00")
+        res = check.check([tsla()], cfg(), state={"orders": [old]}, now=at(NOW))
+        self.assertEqual((verdicts(res), res["warnings"]), (["PASS"], []))
 
     def test_exits_and_declines_do_not_count_as_trades(self):
         st = {"orders": [placed("AAPL"), placed("AAPL", side="sell", kind="exit", max_loss=None),
@@ -502,6 +551,49 @@ class Cli(unittest.TestCase):
                 code = check.main(["--orders", bad, "--config", c, "--portfolio", none, "--prices", none,
                                    "--state", none, "--today", V1_TODAY, "--no-write"])
             self.assertEqual(code, 1)
+
+    def test_state_with_an_unresolved_approval(self):
+        with tempfile.TemporaryDirectory() as d:
+            st = os.path.join(d, "broker.json")
+            with open(st, "w") as fh:
+                json.dump({"orders": [{"at": TODAY + "T10:10:00-04:00", "date": TODAY, "index": 1,
+                                       "fingerprint": check.fingerprint(tsla()), "symbol": "TSLA", "side": "buy",
+                                       "qty": "8", "kind": "entry", "max_loss": 46.88, "stop": 358.32,
+                                       "plain": "BUY 8 TSLA, market, good for today", "status": "approved",
+                                       "reply": "yes", "paper": True, "broker": "alpaca"}]}, fh)
+            none = os.path.join(d, "none")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = check.main(["--orders", TSLA_PATH, "--config", CFG_PATH, "--portfolio", none, "--prices", none,
+                                   "--state", st, "--now", NOW, "--no-write"])
+            text = buf.getvalue()
+            self.assertEqual(code, 1)
+            self.assertIn("WARNING: an approval for BUY 8 TSLA, market, good for today at 2026-10-19T10:10:00-04:00 "
+                          "has no result recorded: run ticket.py result, or check get_orders at the broker", text)
+            self.assertIn("- duplicate: a buy TSLA was already placed today", text)
+            self.assertIn("today before this: 1 of 3 trades, $46.88 of $150 daily loss", text)
+
+    def test_a_malformed_file_is_one_line_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "config.json")
+            with open(c, "w") as fh:
+                json.dump(cfg(max_trades_per_day="three"), fh)
+            none = os.path.join(d, "none")
+            err = io.StringIO()
+            with redirect_stderr(err):
+                code = check.main(["--orders", TSLA_PATH, "--config", c, "--portfolio", none, "--prices", none,
+                                   "--state", none, "--now", NOW, "--no-write"])
+            self.assertEqual(code, 1)
+            self.assertIn("check.py: unexpected ValueError: ", err.getvalue())
+            self.assertIn("; the input files may be malformed", err.getvalue())
+            self.assertNotIn("Traceback", err.getvalue())
+            bad = os.path.join(d, "orders.json")
+            with open(bad, "w") as fh:
+                json.dump({"orders": ["TSLA"]}, fh)
+            err = io.StringIO()
+            with redirect_stderr(err):
+                self.assertEqual(check.main(["--orders", bad, "--config", CFG_PATH, "--no-write"]), 1)
+            self.assertIn("must be a JSON object", err.getvalue())
 
     def test_errors_are_one_line(self):
         err = io.StringIO()

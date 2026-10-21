@@ -51,7 +51,7 @@ is a real yes for that order, builds the flatten ticket, and keeps the log in
 | --- | --- |
 | `trader/orders.json` | the proposed orders (trader-budget writes it; `flatten` replaces it) |
 | `trader/state/risk.json` | trader-risk's verdicts; only a PASS from today is READY |
-| `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss |
+| `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss. A yes with no result after it counts as placed in trader-risk |
 | `trader/portfolio.json` | cash and shares, updated by `fill` and by `result --filled-qty` |
 | `trader/plan.json` | the flat-by time for `flatten` |
 
@@ -137,21 +137,33 @@ that draft orders to Needs approval too.
 
 ## Steps: the entry
 
-1. `ticket.py show`. Only READY tickets go to the user. A ticket that is NOT
+1. Reconcile first. The log in `trader/state/broker.json` is written by
+   hand, so before `/trader-risk` runs `check.py`, ask the broker what it
+   has (read-only tools): `get_orders` for today, all statuses, and
+   `get_all_positions`. Compare with `trader/state/broker.json` and
+   `trader/portfolio.json`. Anything missing gets recorded before the check:
+   an order at the broker with no placed record, `ticket.py result --index N
+   --status placed --broker-id ID`; a position with no fill, `ticket.py fill`;
+   a yes the broker never got, `--status denied` or `failed`. Until a result
+   is recorded, trader-risk counts a yes as a placed order.
+2. `ticket.py show`. Only READY tickets go to the user. A ticket that is NOT
    READY or BLOCKED goes back to `/trader-risk`.
-2. Show ONE ticket and ask: "Place this order? Reply yes or no." One order
+3. Show ONE ticket and ask: "Place this order? Reply yes or no." One order
    per question. Never offer "yes to all".
-3. Run `ticket.py approve --index N --reply "<the user's reply, word for word>"`.
+4. Run `ticket.py approve --index N --reply "<the user's reply, word for word>"`.
    If it prints "Not recorded", the reply was not an explicit yes for this
-   order (for example "sure", "yes to all", or a yes that names a different
-   stock or amount). Ask again. Never turn a reply into a yes yourself.
-4. Only after "Recorded your yes", call `place_stock_order` with exactly the
+   order (for example "sure", "yes to all", a yes that names another order
+   in the batch, or a different amount). Ask again. Never turn a reply into
+   a yes yourself.
+5. Only after "Recorded your yes", call `place_stock_order` with exactly the
    JSON the ticket printed. Claude's card appears: Allow once or Deny.
-5. Record what happened: `ticket.py result --index N --status placed
-   --broker-id <id> --filled-qty Q --filled-price P` (the fill from the
-   response or `get_open_position`), or `--status denied`, or `--status failed`
-   with `--note`. A failed order is not retried without a new check and a new yes.
-   The log keeps the entry's max loss for trader-risk's daily limit.
+6. Record what happened, every time, before anything else: `ticket.py result
+   --index N --status placed --broker-id <id> --filled-qty Q --filled-price P`
+   (the fill from the response or `get_open_position`), or `--status denied`,
+   or `--status failed` with `--note`. A failed order is not retried without
+   a new check and a new yes. The log keeps the entry's max loss for
+   trader-risk's daily limit, and a yes with no result counts as placed there
+   until one is recorded.
 
 ## Steps: while it is open, and out by the close
 

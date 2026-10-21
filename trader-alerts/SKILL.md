@@ -69,6 +69,11 @@ rules carry the plan's date, so yesterday's stop never rings today. A `time`
 rule with `"before_close": true` moves 3 hours earlier on a 1:00 p.m. early
 close, so "flat by close" at 15:55 rings at 12:55 on those days.
 
+Adding a rule re-arms it: `add` clears the "rang" mark for that id, whether
+it comes from `--from-plan` or from `--symbol ... --stop`, so a rule removed
+and added back rings again. An id that is still in the file is refused
+(`reset ID` re-arms it instead).
+
 ## Quotes
 
 - `yahoo` (default): `query2.finance.yahoo.com/v8/finance/chart/<TICKER>`, an
@@ -98,8 +103,9 @@ on these holidays, from nyse.com/markets/hours-calendars (read 2026-10-13):
   Dec 24 (Christmas observed). Early close 1:00 p.m. on Nov 26.
 
 Daylight saving time is worked out in the tool, so it needs no time zone
-files and ignores the computer's own zone. For any other year it says the
-holiday list is unknown.
+files and ignores the computer's own zone. For a date in any other year
+`clock` and `check` both print "Holiday list covers 2026 and 2027 only: check
+nyse.com for this date" and carry on as if it were a normal weekday.
 
 ## Steps
 

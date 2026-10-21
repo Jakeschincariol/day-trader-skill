@@ -202,6 +202,35 @@ class Cli(unittest.TestCase):
         code, _, err = self.plan("--stop", "atr:1.5", "--offline", TSLA, "--entry-bar", "1")
         self.assertEqual(code, 1)
         self.assertIn("at least 3 closed", err)
+        self.assertIn("average true range (simple mean) $3.2182 over the 9 bars to the entry (fewer than 14 so far)",
+                      p["stop_detail"])
+
+    def test_atr_without_an_entry_bar_stops_at_the_entry_time(self):
+        # no entry_bar: only the bars that closed at or before the entry time count, however late --now is.
+        # the file holds 15 closed bars (to 10:40) plus the 10:45 bar in progress; the 10:15 AM entry sees 9
+        late = ["plan", "--now", "2026-10-19 11:00", "--stop", "atr:1.5", "--offline", TSLA, "--json"]
+        code, text, err = run(exitp, late + ["--symbol", "TSLA", "--entry", "364.18", "--date", "2026-10-19",
+                                             "--time", "10:15 AM"])
+        self.assertEqual(code, 0, err)
+        p = json.loads(text)
+        self.assertEqual((p["atr_bars"], p["stop"], p["entry_bar"], p["entry_time"]), (9, 359.35, None, "10:15 AM"))
+        self.assertAlmostEqual(p["atr"], 3.2182, places=4)
+        self.write(os.path.join("trader", "entry.json"), dict(REEL_ENTRY, bar_index=None))
+        code, text, err = run(exitp, late)
+        self.assertEqual(code, 0, err)
+        self.assertEqual((json.loads(text)["atr_bars"], json.loads(text)["stop"]), (9, 359.35))
+        # neither a time nor a bar: --now is the cutoff (and the data's own time caps it either way)
+        flags = ["--symbol", "TSLA", "--entry", "364.18", "--date", "2026-10-19"]
+        code, text, err = run(exitp, late + flags)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(text)["atr_bars"], 14)
+        code, text, err = run(exitp, ["plan", "--now", "2026-10-19 10:16", "--stop", "atr:1.5", "--offline", TSLA,
+                                      "--json"] + flags)
+        self.assertEqual(code, 0, err)
+        self.assertEqual((json.loads(text)["atr_bars"], json.loads(text)["stop"]), (9, 359.35))
+        code, _, err = run(exitp, late + flags + ["--time", "9:30 AM"])
+        self.assertEqual(code, 1)
+        self.assertIn("before the first 5m bar closes", err)
 
     def test_refusals_from_the_cli(self):
         self.write(os.path.join("trader", "entry.json"), dict(REEL_ENTRY, status="waiting", time=None, price=None,
@@ -268,6 +297,15 @@ class Cli(unittest.TestCase):
         code, text, _ = run(exitp, ["show"])
         self.assertEqual(code, 1)
         self.assertIn("No plan", text)
+
+    def test_an_unexpected_error_is_one_plain_line(self):
+        # a plan.json whose date is not a string: a TypeError inside describe, not a traceback
+        self.write(os.path.join("trader", "plan.json"), dict(REEL_PLAN, date=20261019))
+        code, text, err = run(exitp, ["show"])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(err.strip().splitlines()), 1, err)
+        self.assertTrue(err.startswith("exit.py: could not finish (TypeError"), err)
+        self.assertNotIn("Traceback", err)
 
 
 class SkillDoc(unittest.TestCase):

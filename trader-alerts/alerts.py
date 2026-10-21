@@ -50,6 +50,7 @@ import datetime
 import gzip
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -201,6 +202,20 @@ def yahoo_url(sym, host=YAHOO_HOSTS[0]):
     return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, sym.upper().replace(".", "-"))
 
 
+def number(v):
+    """A finite number from a JSON value or a CSV field, else None (bools and NaN are not prices)."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, str):
+        try:
+            v = float(v.strip().replace(",", ""))
+        except ValueError:
+            return None
+    if not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return v
+
+
 def parse_stooq(text, sym):
     """Symbol,Date,Time,Open,High,Low,Close,Volume -> quote. N/D means no data."""
     rows = list(csv.DictReader(io.StringIO(text.strip())))
@@ -210,14 +225,13 @@ def parse_stooq(text, sym):
     close = r.get("close", "")
     if not close or close.upper() == "N/D":
         raise AlertError("Stooq has no data for %s (check the ticker)" % sym)
+    price = number(close)
+    if price is None:
+        raise AlertError("Stooq's close for %s is not a number: %r" % (sym, close))
 
     def f(k):
-        v = r.get(k, "")
-        try:
-            return float(v)
-        except ValueError:
-            return None
-    return {"symbol": sym.upper(), "price": float(close), "open": f("open"), "high": f("high"),
+        return number(r.get(k, ""))
+    return {"symbol": sym.upper(), "price": float(price), "open": f("open"), "high": f("high"),
             "low": f("low"), "prev_close": None, "time": ("%s %s" % (r.get("date", ""), r.get("time", ""))).strip(),
             "source": "stooq"}
 
@@ -231,18 +245,28 @@ def parse_yahoo(text, sym):
     if not res:
         err = (data.get("chart") or {}).get("error") or {}
         raise AlertError("Yahoo has no data for %s: %s" % (sym, err.get("description", "unknown ticker")))
-    m = res[0].get("meta", {})
-    price = m.get("regularMarketPrice")
-    if price is None:
+    m = res[0].get("meta") or {}
+    if not isinstance(m, dict):
+        raise AlertError("Yahoo returned something unexpected for %s" % sym)
+    if m.get("regularMarketPrice") is None:
         raise AlertError("Yahoo has no price for %s" % sym)
-    t = m.get("regularMarketTime")
-    when = (datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            if t else "")
-    q = (res[0].get("indicators", {}).get("quote") or [{}])[0]
-    opens = [x for x in (q.get("open") or []) if x is not None]
+    price = number(m.get("regularMarketPrice"))
+    if price is None:
+        raise AlertError("Yahoo's price for %s is not a number: %r" % (sym, m.get("regularMarketPrice")))
+    t = number(m.get("regularMarketTime"))
+    when = ""
+    if t and t > 0:
+        try:
+            when = datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except (OverflowError, OSError, ValueError):
+            when = ""
+    q = (res[0].get("indicators") or {}).get("quote") or [{}]
+    q = q[0] if isinstance(q, list) and q and isinstance(q[0], dict) else {}
+    opens = [number(x) for x in (q.get("open") if isinstance(q.get("open"), list) else [])]
+    opens = [x for x in opens if x is not None]
     return {"symbol": sym.upper(), "price": float(price), "open": opens[0] if opens else None,
-            "high": m.get("regularMarketDayHigh"), "low": m.get("regularMarketDayLow"),
-            "prev_close": m.get("previousClose") or m.get("chartPreviousClose"), "time": when,
+            "high": number(m.get("regularMarketDayHigh")), "low": number(m.get("regularMarketDayLow")),
+            "prev_close": number(m.get("previousClose")) or number(m.get("chartPreviousClose")), "time": when,
             "currency": m.get("currency"), "source": "yahoo"}
 
 
@@ -352,14 +376,19 @@ def write_prices(path, quotes, now_utc, source):
 
 
 def _write(path, doc):
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, path)
+    """Write JSON through a .tmp and rename. A file that cannot be written (two runs
+    overlapping on Windows, a read-only folder) is one plain AlertError."""
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2)
+            fh.write("\n")
+        os.replace(tmp, path)
+    except OSError as e:
+        raise AlertError("could not write %s: %s (is another check running?)" % (path, e.strerror or e))
 
 
 def _read(path, default):
@@ -370,6 +399,8 @@ def _read(path, default):
             return json.load(fh)
     except ValueError as e:
         raise AlertError("%s is not valid JSON: %s" % (path, e))
+    except OSError as e:
+        raise AlertError("could not read %s: %s" % (path, e.strerror or e))
 
 
 # ---------------------------------------------------------------- rules
@@ -615,6 +646,8 @@ def cmd_check(a):
                 if quotes else ""))
         for e in errors:
             print("error: " + e)
+        if not status["calendar_known"]:
+            print("Holiday list covers %s only: check nyse.com for this date." % " and ".join(map(str, CALENDAR_YEARS)))
         if rings:
             print("An alert is information, not an order. A bracket's stop-loss and take-profit already sit at "
                   "the broker: check get_open_position and record any fill (ticket.py fill). To close a "
@@ -685,6 +718,10 @@ def cmd_add(a):
     if any(r.get("id") == rule["id"] for r in doc["rules"]):
         raise AlertError("a rule with id %s already exists" % rule["id"])
     doc["rules"].append(rule)
+    state = _read(a.state, {})
+    if rule["id"] in (state.get("rung") or {}):
+        del state["rung"][rule["id"]]  # a re-added id starts armed, as it does with --from-plan
+        _write(a.state, state)
     _write(a.rules, doc)
     print("Added %s: %s" % (rule["id"], json.dumps(rule)))
     return 0
@@ -780,6 +817,9 @@ def main(argv=None):
                 "list": cmd_list, "reset": cmd_reset}[a.cmd](a)
     except AlertError as e:
         print("alerts.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError) as e:
+        print("alerts.py: unexpected %s: %s" % (type(e).__name__, e), file=sys.stderr)
         return 1
 
 

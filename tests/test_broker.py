@@ -54,6 +54,12 @@ class ExplicitYes(unittest.TestCase):
                   "yes, wait", "yes if it is under 340"):
             self.assertFalse(self.yes(r), r)
 
+    def test_only_another_order_in_the_batch_is_refused_by_name(self):
+        self.assertFalse(self.yes("yes AXP"))            # another order in the batch
+        self.assertTrue(self.yes("yes MSFT"))            # not in the batch: not checked
+        self.assertTrue(self.yes("yes AXP", batch=["AAPL"]))
+        self.assertIn("names AXP, but this order is for AAPL", ticket.parse_yes("yes AXP", AAPL, BATCH)[1])
+
     def test_amount_must_match_this_order(self):
         sell = {"symbol": "KO", "side": "sell", "qty": "3", "type": "market", "time_in_force": "day"}
         self.assertTrue(self.yes("yes sell 3 KO", sell))
@@ -78,7 +84,9 @@ class TicketShape(unittest.TestCase):
 
     def test_the_bracket_call_leaves_out_why_and_plan(self):
         self.assertEqual(ticket.tool_input(tsla()), TSLA_CALL)
-        self.assertEqual(ticket.fingerprint(tsla()), ticket.fingerprint(TSLA_CALL))
+        # the fingerprint keeps the plan's levels, so the bare call is not the same order
+        self.assertEqual(ticket.fingerprint(tsla()), ticket.fingerprint(dict(TSLA_CALL, plan=tsla()["plan"])))
+        self.assertNotEqual(ticket.fingerprint(tsla()), ticket.fingerprint(TSLA_CALL))
 
     def test_plain_english(self):
         self.assertEqual(ticket.plain(AAPL), "BUY $1,250 of AAPL, market order, good for today")
@@ -245,6 +253,34 @@ class Flow(unittest.TestCase):
         code, text, _ = run(self.args("show", "--index", "1"))
         self.assertEqual(code, 1)
         self.assertIn("was not in the last risk check", text)
+
+    def test_an_edited_plan_is_not_ready(self):
+        self.run_risk()
+        with open(self.orders) as fh:
+            doc = json.load(fh)
+        doc["orders"][0]["plan"]["stop"] = 300.0
+        with open(self.orders, "w") as fh:
+            json.dump(doc, fh)
+        code, text, _ = run(self.args("show", "--index", "1"))
+        self.assertEqual(code, 1)
+        self.assertIn("was not in the last risk check", text)
+        self.assertEqual(run(self.args("approve", "--index", "1", "--reply", "yes"))[0], 1)
+
+    def test_a_malformed_state_file_is_one_line_not_a_traceback(self):
+        os.makedirs(os.path.dirname(self.state))
+        with open(self.state, "w") as fh:
+            json.dump({"orders": [{"at": TODAY + "T10:20:00-04:00", "date": TODAY, "status": "placed",
+                                   "plain": "BUY 8 TSLA", "max_loss": "lots"}]}, fh)
+        code, _, err = run(["log", "--state", self.state, "--now", NOW])
+        self.assertEqual(code, 1)
+        self.assertIn("ticket.py: unexpected ValueError: ", err)
+        self.assertIn("; the input files may be malformed", err)
+        self.assertNotIn("Traceback", err)
+        with open(self.orders, "w") as fh:
+            json.dump({"orders": ["TSLA"]}, fh)
+        code, _, err = run(self.args("show"))
+        self.assertEqual(code, 1)
+        self.assertIn("must be a JSON object", err)
 
     def test_yesterdays_check_does_not_count(self):
         self.run_risk(now="2026-10-16 10:15")
