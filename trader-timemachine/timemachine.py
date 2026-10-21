@@ -7,7 +7,8 @@ session in the data.
 
     python3 timemachine.py run                          # trader/plan.json, 10,000 replays, seed 19
     python3 timemachine.py run --write                  # also save trader/timemachine.json
-    python3 timemachine.py run --until 15:55            # stop each replay at your flat-by time
+    python3 timemachine.py run --until 16:00            # end each replay at the close, not the plan's flat_by
+    python3 timemachine.py run --fill next-open         # fill at the next bar's open instead of the signal close
     python3 timemachine.py run --seed 7 --replays 20000 --json
     python3 timemachine.py run --symbol TSLA --date 2026-10-19 --entry 364.18 \\
         --stop 358.32 --target 370.04 --entry-time "10:15 AM"
@@ -25,20 +26,36 @@ How the replays work (the reel's sim.py, same algorithm, same random draws):
      1..77, then one past bar from pool[j] (random.choice), and scales it to
      the current price. The stop is checked before the target in every bar,
      so a bar that touches both counts as the stop (the conservative call).
+     The run counts how many replays were decided by such a bar and prints it.
+     Bars are drawn independently: no volatility clustering, no news, no
+     halts, and nothing that the last 60 days did not do.
   4. Outcomes: "target" or "stop" (whichever was touched first), or "neither"
-     when the trade is still open at --until (default 16:00, the close, or
-     13:00 on an NYSE early-close day).
-     "green" = target first, or above the entry at --until (below for a sell).
-     R = the target's R at the target, -1 at the stop, otherwise
-     (price at --until - entry) / risk. A gap through the stop still counts
-     -1R here; a real fill can be worse.
+     when the trade is still open at --until. The default --until is the
+     plan's flat_by when it has one (trader-exit writes 15:55), else 16:00,
+     the close, or 13:00 on an NYSE early-close day. A flat_by after an early
+     close, or off the 5-minute grid, is moved to the last bar before it and
+     the run says so.
+     "green" = target first, or above the fill at --until (below for a sell).
+     R = (exit - fill) / the plan's risk: the target's R at the target, -1 at
+     the stop, otherwise (price at --until - fill) / risk. A gap through the
+     stop still counts -1R here; a real fill can be worse.
+     --fill close (default): the fill is the signal bar's close, the plan's
+     entry. --fill next-open: the fill is the open of the next drawn bar
+     (entry x that bar's open ratio) and that bar is still checked. Neither
+     model adds a spread, slippage or a commission.
   5. The price at --until: median and the 5th to 95th percentile of all
      replays (pct(a, q) = sorted a at index int(q * n)). The fan chart uses a
      second run of 2,000 paths with the same seed. The histogram has 24 bins
      between the 1st and 99th percentile.
   6. History: the plan's own rule (an opening-range breakout with the same
      opening range, stop rule and target R) re-run on every one of those past
-     full sessions, first close beyond the range = entry, same stop-first rule.
+     full sessions, first close beyond the range = the signal, same stop-first
+     rule. The fill is that close (--fill close) or the next bar's open
+     (--fill next-open). The history runs on the same sessions the pool is
+     built from, so it is not independent evidence.
+  7. Intervals: target first, stop first and the history's decided win rate
+     carry a Wilson 95 % interval (wilson(k, n)). They cover the sampling
+     noise of the draws only, not whether the model is right.
 
 The verdict line looks at the replays that hit one side (target or stop) and
 compares the target's share of them, target / (target + stop), with the share
@@ -346,35 +363,64 @@ def pct(a, q):
     return a[min(len(a) - 1, int(q * len(a)))]
 
 
-def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy"):
-    """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py."""
+def wilson(k, n, z=1.96):
+    """Wilson score interval for k successes in n trials: (low, high) as fractions.
+    None when n is 0. z = 1.96 gives 95 %."""
+    if n <= 0:
+        return None
+    p = k / n
+    zz = z * z / n
+    centre = (p + zz / 2) / (1 + zz)
+    half = z * math.sqrt(p * (1 - p) / n + zz / (4 * n)) / (1 + zz)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+FILLS = ("close", "next-open")
+
+
+def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy", fill="close"):
+    """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py.
+    fill="close": each replay is filled at the entry (the signal bar's close).
+    fill="next-open": filled at the next drawn bar's open (entry x its open ratio);
+    that bar is still checked for the stop and the target. R is (exit - fill) / the
+    plan's risk either way. "both" counts the replays decided by a bar that touched
+    the stop and the target; they count as the stop."""
     long = side == "buy"
     risk = (entry - stop) if long else (stop - entry)
     r_target = round(((target - entry) if long else (entry - target)) / risk, 4)
+    next_open = fill == "next-open"
 
     def slot(rng, i):
         return i if window == 0 else min(SESSION_BARS - 1, max(1, i + rng.randint(-window, window)))
 
     rng = random.Random(seed)
     choice = rng.choice
-    outcomes, closes, paths = [], [], []
+    outcomes, closes, fills, paths = [], [], [], []
+    both = 0
     for n in range(replays):
         p = entry
+        px = entry
         outcome = None
         keep = n < SAMPLE_PATHS
         path = [entry]
         for i in range(k + 1, last + 1):
             o, h, l, c = choice(pool[slot(rng, i)])
             hi, lo, cl = p * h, p * l, p * c
+            if next_open and i == k + 1:
+                px = p * o
             if outcome is None:
                 if long:
                     if lo <= stop:
                         outcome = "stop"        # both inside one bar: count the loss (conservative)
+                        if hi >= target:
+                            both += 1
                     elif hi >= target:
                         outcome = "target"
                 else:
                     if hi >= stop:
                         outcome = "stop"
+                        if lo <= target:
+                            both += 1
                     elif lo <= target:
                         outcome = "target"
             p = cl
@@ -382,13 +428,19 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
                 path.append(round(p, 2))
         outcomes.append(outcome or "close")
         closes.append(p)
+        fills.append(px)
         if keep:
             paths.append(path)
     cnt = {x: outcomes.count(x) for x in ("target", "stop", "close")}
-    green = sum(1 for o, p in zip(outcomes, closes)
-                if o == "target" or (o == "close" and (p > entry if long else p < entry)))
-    Rs = [r_target if o == "target" else -1.0 if o == "stop" else ((p - entry) if long else (entry - p)) / risk
-          for o, p in zip(outcomes, closes)]
+    green = sum(1 for o, p, f in zip(outcomes, closes, fills)
+                if o == "target" or (o == "close" and (p > f if long else p < f)))
+    if next_open:
+        Rs = [((target - f) if long else (f - target)) / risk if o == "target" else
+              ((stop - f) if long else (f - stop)) / risk if o == "stop" else
+              ((p - f) if long else (f - p)) / risk for o, p, f in zip(outcomes, closes, fills)]
+    else:
+        Rs = [r_target if o == "target" else -1.0 if o == "stop" else ((p - entry) if long else (entry - p)) / risk
+              for o, p in zip(outcomes, closes)]
     srt = sorted(closes)
     # percentile bands per bar for the fan chart: a second run of 2,000 paths, same seed
     rng = random.Random(seed)
@@ -413,15 +465,21 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
         b = int((c - lo_) / W) if W > 0 else 0
         if 0 <= b < HIST_BINS:
             bins[b] += 1
-    return {
-        "replays": replays, "seed": seed, "window": window, "bars_left": last - k,
+    ci = lambda n: [round(x, 4) for x in wilson(n, replays)]
+    out = {
+        "replays": replays, "seed": seed, "window": window, "bars_left": last - k, "fill": fill,
         "p_target": round(cnt["target"] / replays, 4), "p_stop": round(cnt["stop"] / replays, 4),
         "p_neither": round(cnt["close"] / replays, 4), "p_green": round(green / replays, 4),
+        "ci_target": ci(cnt["target"]), "ci_stop": ci(cnt["stop"]),
+        "both_touched": both, "p_both": round(both / replays, 4),
         "median_close": round(pct(srt, 0.5), 2), "p5_close": round(pct(srt, 0.05), 2),
         "p95_close": round(pct(srt, 0.95), 2), "avg_R": round(statistics.mean(Rs), 3),
         "r_at_target": r_target, "band_paths": BAND_PATHS, "bands": bands, "sample_paths": paths,
         "hist": {"lo": round(lo_, 2), "hi": round(hi_, 2), "bins": bins},
     }
+    if next_open:
+        out["median_fill"] = round(pct(sorted(fills), 0.5), 2)
+    return out
 
 
 # ---------------------------------------------------------------- stop rules and the history replay
@@ -448,17 +506,21 @@ def rule_stop(rule, oh, ol, entry, long):
     return cents_away(entry * (1 - frac) if long else entry * (1 + frac), long)
 
 
-def history_replay(sessions, rule, last, side="buy"):
-    """The plan's rule on every past full session: entry = the first bar after the
-    opening range to close beyond it (up to the --until bar), then stop first, then
-    target, bar by bar, else the close at --until."""
+def history_replay(sessions, rule, last, side="buy", fill="close"):
+    """The plan's rule on every past full session: the signal = the first bar after
+    the opening range to close beyond it (up to the --until bar). The stop and the
+    target are set from that close. The fill is that close (fill="close") or the
+    next bar's open (fill="next-open"). Then stop first, then target, bar by bar,
+    else the close at --until. R = (exit - fill) / risk. "decided" = target + stop;
+    "win_rate" = target / decided with its Wilson 95 % interval."""
     long = side == "buy"
     n = rule["or_minutes"] // 5
+    next_open = fill == "next-open"
     trades = []
     for d, D in sessions:
         oh, ol = opening_range(D, n)
         kk = next((i for i in range(n, last + 1) if (D[i]["c"] > oh if long else D[i]["c"] < ol)), None)
-        if kk is None:
+        if kk is None or (next_open and kk + 1 > last):
             continue
         e = round(D[kk]["c"], 2)
         s = rule_stop(rule, oh, ol, e, long)
@@ -466,6 +528,7 @@ def history_replay(sessions, rule, last, side="buy"):
         if risk <= 0:
             continue
         t = round(e + rule["target_r"] * risk, 2) if long else round(e - rule["target_r"] * risk, 2)
+        f = round(D[kk + 1]["o"], 2) if next_open else e
         oc = None
         for b in D[kk + 1:last + 1]:
             if (b["l"] <= s) if long else (b["h"] >= s):
@@ -474,17 +537,21 @@ def history_replay(sessions, rule, last, side="buy"):
             if (b["h"] >= t) if long else (b["l"] <= t):
                 oc = "target"
                 break
-        cl = D[last]["c"]
-        R = ((t - e) if long else (e - t)) / risk if oc == "target" else -1.0 if oc == "stop" else \
-            ((cl - e) if long else (e - cl)) / risk
-        trades.append({"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "stop": s, "target": t,
-                       "outcome": oc or "close", "R": round(R, 2)})
+        x = t if oc == "target" else s if oc == "stop" else D[last]["c"]
+        R = ((x - f) if long else (f - x)) / risk
+        trades.append({"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "fill": f, "stop": s,
+                       "target": t, "outcome": oc or "close", "R": round(R, 2)})
+    won = sum(1 for x in trades if x["outcome"] == "target")
+    lost = sum(1 for x in trades if x["outcome"] == "stop")
+    ci = wilson(won, won + lost)
     return {
-        "sessions": len(sessions), "triggered": len(trades),
-        "target": sum(1 for x in trades if x["outcome"] == "target"),
-        "stop": sum(1 for x in trades if x["outcome"] == "stop"),
+        "sessions": len(sessions), "triggered": len(trades), "fill": fill,
+        "target": won, "stop": lost,
         "close": sum(1 for x in trades if x["outcome"] == "close"),
         "green": sum(1 for x in trades if x["R"] > 0),
+        "decided": won + lost,
+        "win_rate": round(won / (won + lost), 4) if won + lost else None,
+        "win_ci": [round(v, 4) for v in ci] if ci else None,
         "avg_R": round(statistics.mean(x["R"] for x in trades), 3) if trades else None,
         "rule": rule, "trades": trades,
     }
@@ -676,12 +743,42 @@ def verdict_notes(mc):
     return notes
 
 
-def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo"):
+def fill_lines(fill):
+    """(the header line, the verdict-block line) for a fill model."""
+    if fill == "next-open":
+        return ("Fills at the next bar's open. No spread, slippage or commission is included.",
+                "Fills at the next bar's open; a real fill can be worse. No costs included.")
+    return ("Fills at the signal bar's close. No spread, slippage or commission is included.",
+            "Fills at the signal bar's close; a real fill is the next bar's open or worse. No costs included.")
+
+
+def default_until(plan, end_min, warn):
+    """The default --until in minutes: the plan's flat_by when it has one, else the
+    close. A flat_by off the 5-minute grid or after an early close is moved to the
+    last bar before it, with a warning."""
+    fb = plan.get("flat_by")
+    if not fb:
+        return end_min
+    m = parse_clock(fb, "the plan's flat_by")
+    moved = m
+    if moved > end_min:
+        moved = end_min
+    moved -= (moved - OPEN_MIN) % 5
+    if moved != m:
+        warn.append("the plan's flat_by %s is %s; the replays end at %s instead (pass --until to choose)"
+                    % (fb, "after the %s early close" % clock12(end_min) if m > end_min else "off the 5-minute grid",
+                       clock12(moved)))
+    return moved
+
+
+def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo", fill="close"):
     """Chart JSON text + a normalized plan -> the timemachine.json document."""
     if not 1 <= replays <= 1000000:
         raise TMError("--replays must be between 1 and 1,000,000")
     if not 0 <= window <= 10:
         raise TMError("--window must be between 0 and 10 bars")
+    if fill not in FILLS:
+        raise TMError("--fill is close or next-open, not %r" % fill)
     sym = plan["symbol"]
     result = chart_result(text, sym)
     meta, bars, dropped = parse_bars(result, now_utc)
@@ -696,14 +793,16 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     k = plan["entry_bar"]
     early = plan["date"] in NYSE_EARLY_CLOSE
     end_min = EARLY_MIN if early else CLOSE_MIN
-    until_min = end_min if until is None else parse_clock(until, "--until")
+    warn = []
+    until_min = default_until(plan, end_min, warn) if until is None else parse_clock(until, "--until")
     if (until_min - OPEN_MIN) % 5 or until_min > end_min:
         raise TMError("--until must be on the 5-minute grid and no later than %s%s"
                       % (clock12(end_min), " (an early close)" if early else ""))
     last = (until_min - OPEN_MIN) // 5 - 1
     if last <= k:
-        raise TMError("--until %s leaves nothing to replay after the %s entry" % (clock12(until_min),
-                                                                             plan["entry_time"]))
+        raise TMError("%s %s leaves nothing to replay after the %s entry"
+                      % ("--until" if until is not None else "the plan's flat_by", clock12(until_min),
+                         plan["entry_time"]))
     days = split_sessions(bars)
     entry_day = days.get(plan["date"], {})
     if k not in entry_day:
@@ -712,7 +811,6 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("the entry is not in the data: no complete %s bar (closing %s) on %s for %s (%s)"
                       % (clock24(OPEN_MIN + 5 * k), plan["entry_time"], plan["date"], sym, reason))
     eb = entry_day[k]
-    warn = []
     if not eb["l"] - 0.01 <= plan["entry"] <= eb["h"] + 0.01:
         warn.append("the plan's entry %.2f is outside that bar's range %.2f to %.2f"
                     % (plan["entry"], eb["l"], eb["h"]))
@@ -721,20 +819,24 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("only %d full session(s) of %s before %s in the data; the time machine needs at least %d"
                       % (len(sessions), sym, plan["date"], MIN_SESSIONS))
     pool = build_pool(sessions)
-    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"])
-    mc = dict(mc, until=clock24(until_min), pool_sessions=len(sessions), pool_from=sessions[0][0],
-              pool_to=sessions[-1][0],
+    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"],
+                  fill)
+    mc = dict(mc, until=clock24(until_min), until_from="flag" if until is not None else
+              ("flat_by" if plan.get("flat_by") else "close"),
+              pool_sessions=len(sessions), pool_from=sessions[0][0], pool_to=sessions[-1][0],
               band_times=[clock24(OPEN_MIN + 5 * (j + 1)) for j in range(k, last + 1)])
     rule = resolve_rule(plan, entry_day)
     plan_out = {kk: v for kk, v in plan.items() if v is not None}
     if rule:
         plan_out["stop_rule"] = rule["stop_rule"]
-        history = history_replay(sessions, rule, last, plan["side"])
+        history = history_replay(sessions, rule, last, plan["side"], fill)
     else:
-        history = {"sessions": len(sessions), "triggered": 0, "rule": None, "trades": [],
+        history = {"sessions": len(sessions), "triggered": 0, "rule": None, "trades": [], "fill": fill,
                    "note": "skipped: the history replay knows the opening-range breakout (orb) only, "
                            "this plan's setup is %r" % plan["setup"]}
     last_bar = bars[-1]
+    caveats = ["Built from the same %d sessions as the history: the two are not independent evidence."
+               % len(sessions), fill_lines(fill)[1]]
     return {
         "created_by": "trader-timemachine",
         "created_at": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -747,6 +849,7 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         "history": history,
         "verdict": verdict(mc),
         "verdict_notes": verdict_notes(mc),
+        "caveats": caveats,
         "warnings": warn,
         "note": ("A simulation built from %s's own last %d full sessions. It is not a prediction: earnings, "
                  "news and halts can do things those sessions never did. Same seed, same numbers." % (sym, len(sessions))),
@@ -759,48 +862,66 @@ def pc(x):
     return "%.1f %%" % (100.0 * x)
 
 
+def ci_text(ci, digits=1):
+    """'(95 % interval 28.5 to 30.3)' from a (low, high) pair of fractions."""
+    if not ci:
+        return ""
+    return "(95 %% interval %.*f to %.*f)" % (digits, 100.0 * ci[0], digits, 100.0 * ci[1])
+
+
 def report(doc):
     p, m, h = doc["plan"], doc["mc"], doc["history"]
     long = p["side"] == "buy"
     until = clock12(int(m["until"][:2]) * 60 + int(m["until"][3:]))
     wd = WEEKDAYS[datetime.date.fromisoformat(p["date"]).weekday()]
     r = p["target_r"]
+    fill = m.get("fill", "close")
+    why = {"flat_by": ", the plan's flat_by", "close": ", the close"}.get(m.get("until_from"), "")
     lines = [
         "%s %s, %s %s: entry %.2f at %s (bar %d), stop %.2f, target %.2f (%sR, risk %.2f a share)."
         % (p["symbol"], p["side"], wd, p["date"], p["entry"], p["entry_time"], p["entry_bar"], p["stop"],
            p["target"], ("%g" % r), p["risk_per_share"]),
-        "%s replays of the rest of the session, %s to %s (%d five-minute bars), seed %d."
-        % ("{:,}".format(m["replays"]), p["entry_time"], until, m["bars_left"], m["seed"]),
+        "%s replays of the rest of the session, %s to %s%s (%d five-minute bars), seed %d."
+        % ("{:,}".format(m["replays"]), p["entry_time"], until, why, m["bars_left"], m["seed"]),
         "Each bar is drawn whole from %s's own 5-min bars at the same time of day (+-%d bars) over its last "
         "%d full sessions (%s to %s)." % (p["symbol"], m["window"], m["pool_sessions"], m["pool_from"], m["pool_to"]),
+        fill_lines(fill)[0],
         "",
-        "  target first   %s" % pc(m["p_target"]),
-        "  stop first     %s" % pc(m["p_stop"]),
+        "  target first   %s  %s" % (pc(m["p_target"]), ci_text(m.get("ci_target"))),
+        "  stop first     %s  %s" % (pc(m["p_stop"]), ci_text(m.get("ci_stop"))),
         "  neither        %-8s still open at %s" % (pc(m["p_neither"]), until),
-        "  green          %-8s target first, or %s the entry at %s" % (pc(m["p_green"]),
-                                                                       "above" if long else "below", until),
+        "  green          %-8s target first, or %s the %s at %s" % (pc(m["p_green"]), "above" if long else "below",
+                                                                    "fill" if fill == "next-open" else "entry", until),
+        "  both touched in one bar: %d (%s), counted as the stop" % (m.get("both_touched", 0), pc(m.get("p_both", 0))),
         "",
         "  Price at %s: median %.2f, 90 %% of replays between %.2f and %.2f."
         % (until, m["median_close"], m["p5_close"], m["p95_close"]),
-        "  Average R: %+.3f (R = the %.2f risk: %sR at the target, -1R at the stop)."
-        % (m["avg_R"], p["risk_per_share"], ("+%g" % m["r_at_target"]), ),
+        ("  Average R: %+.3f (R = (exit - fill) / the %.2f risk)." % (m["avg_R"], p["risk_per_share"])
+         if fill == "next-open" else
+         "  Average R: %+.3f (R = the %.2f risk: %sR at the target, -1R at the stop)."
+         % (m["avg_R"], p["risk_per_share"], ("+%g" % m["r_at_target"]))),
         "",
     ]
+    if fill == "next-open" and m.get("median_fill") is not None:
+        lines.insert(-1, "  Median fill %.2f against the plan's entry %.2f." % (m["median_fill"], p["entry"]))
     if h.get("rule"):
         ru = h["rule"]
         stop_words = {"or_mid": "opening-range midpoint", "or_low": "opening-range low",
                       "or_high": "opening-range high"}.get(ru["stop_rule"],
                                                            "%.2f %% from the entry" % ru.get("stop_pct", 0))
         if h["triggered"]:
+            decided = h.get("decided", h["target"] + h["stop"])
+            rate = ("%d of %d decided, %.0f %% %s." % (h["target"], decided, 100.0 * h["target"] / decided,
+                                                     ci_text(h.get("win_ci"), 0))) if decided else "None decided."
             lines.append("History: the same rule (%d-min opening range, stop at the %s, %gR target) on each of "
-                         "those %d real sessions fired %d times: %d target, %d stop, %d neither. Average R %+.3f."
+                         "those %d real sessions fired %d times: %d target, %d stop, %d neither. %s Average R %+.3f."
                          % (ru["or_minutes"], stop_words, ru["target_r"], h["sessions"], h["triggered"],
-                            h["target"], h["stop"], h["close"], h["avg_R"]))
+                            h["target"], h["stop"], h["close"], rate, h["avg_R"]))
         else:
             lines.append("History: the same rule never fired in those %d sessions." % h["sessions"])
     else:
         lines.append("History: " + h.get("note", "skipped."))
-    lines += ["", doc["verdict"]] + list(doc.get("verdict_notes") or []) + [""]
+    lines += ["", doc["verdict"]] + list(doc.get("verdict_notes") or []) + list(doc.get("caveats") or []) + [""]
     for w in doc.get("warnings") or []:
         lines.append("Note: " + w + ".")
     if doc["data"]["short_sessions_left_out"]:
@@ -874,7 +995,7 @@ def compute(a):
         text, source = read_offline(a.offline, plan["symbol"]), "offline"
     else:
         text, source = fetch_chart(plan["symbol"]), "yahoo"
-    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source)
+    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source, a.fill)
 
 
 def cmd_run(a):
@@ -899,13 +1020,16 @@ def cmd_chart(a):
         try:
             with open(a.from_file, encoding="utf-8") as fh:
                 doc = json.load(fh)
-            doc["mc"]["bands"]
+            doc["mc"]["bands"], doc["mc"]["band_times"], doc["mc"]["seed"]
+            for key in ("symbol", "date", "entry", "entry_time", "stop", "target"):
+                doc["plan"][key]
         except (ValueError, KeyError, TypeError):
-            raise TMError("%s is not a time machine result" % a.from_file)
+            raise TMError("%s is not a time machine result (run timemachine.py run --write first)" % a.from_file)
     else:
         doc = compute(a)
     print("\n".join(render_chart(doc)))
-    print("\n".join([doc.get("verdict", "")] + list(doc.get("verdict_notes") or [])))
+    print("\n".join([doc.get("verdict", "")] + list(doc.get("verdict_notes") or [])
+                    + list(doc.get("caveats") or [])))
     return 0
 
 
@@ -928,7 +1052,9 @@ def main(argv=None):
         p.add_argument("--replays", type=int, default=10000)
         p.add_argument("--seed", type=int, default=19)
         p.add_argument("--window", type=int, default=2, help="draw from the same time of day +- this many bars")
-        p.add_argument("--until", help="end each replay at this time (default 16:00, the close)")
+        p.add_argument("--until", help="end each replay at this time (default: the plan's flat_by, else the close)")
+        p.add_argument("--fill", default="close", choices=list(FILLS),
+                       help="fill at the signal bar's close (default) or at the next bar's open")
         p.add_argument("--offline", metavar="FILE", help="a saved Yahoo chart JSON (.json or .json.gz), no network")
         p.add_argument("--now", help='pretend it is this time ("2026-10-19 10:15" New York, or ISO with Z)')
 
@@ -949,6 +1075,10 @@ def main(argv=None):
         return {"run": cmd_run, "chart": cmd_chart}[a.cmd](a)
     except TMError as e:
         print("timemachine.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, ZeroDivisionError, OverflowError) as e:
+        print("timemachine.py: could not finish (%s: %s); check the plan and the data, and report it if "
+              "they look right" % (type(e).__name__, e), file=sys.stderr)
         return 1
 
 

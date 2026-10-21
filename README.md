@@ -1,6 +1,6 @@
 # The Day Trader skill
 
-11 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay every outcome before you risk a dollar.
+11 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay a trade 10,000 times from the stock's own recent bars before you risk a dollar.
 
 Free, MIT, no signup, no API key. The tools are plain Python that read free
 public data: Yahoo Finance charts, Nasdaq Trader's symbol lists, SEC EDGAR
@@ -11,10 +11,13 @@ every stock you watch. One watches a setup bar by bar and tells you the moment
 to get in, and another sets your stop and your target before you do. And the
 craziest one is the Time Machine: before you risk a dollar, it replays the
 rest of the session 10,000 times from the stock's own recent bars, plus every
-past day the same setup fired, and tells you the honest odds.
+past day the same setup fired, and tells you what those bars say, with error
+bars and with its own limits spelled out.
 
 And no trade goes through until you say yes. Nothing in this pack can place
-an order on its own. Paper trading is the default.
+an order on its own: the tools never talk to a broker. The gates are rules
+Claude follows plus Claude's own permission card, so keep the order tool on
+"Needs approval". Paper trading is the default.
 
 > **Looking for the original Trader skill?** Copy an investor's 13F, the
 > stock screener, tax lots and rebalancing live in
@@ -65,13 +68,13 @@ or in the `SEC_USER_AGENT` environment variable.
 | `/trader-news` | News Monitor | Tracks breaking news on every stock you watch and flags what moves it. |
 | `/trader-entry` | Entry Timer | Watches a setup bar by bar and tells you the moment to get in. |
 | `/trader-exit` | Exit Planner | Sets your stop and your target before you enter, so you know when to get out. |
-| `/trader-timemachine` | Time Machine | Replays every possible outcome of a trade before you risk a dollar: 10,000 simulated sessions plus every past time the setup fired. |
+| `/trader-timemachine` | Time Machine | Replays a trade 10,000 times from the stock's last 60 days of 5-minute bars, plus the same rule on each of those sessions, with error bars. |
 | `/trader-risk` | Risk Manager | Checks every trade against your limits and stops anything over them. |
 | `/trader-budget` | Budget Manager | Sizes every position to your budget and your max loss per trade. |
 | `/trader-broker` | Order Executor | Sends approved orders to your broker, paper trading by default, never without your yes. |
 | `/trader-alerts` | Price Alerts | Rings when a price, a stop or the opening bell hits. |
 | `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
-| `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
+| `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures within a day of the Clerk posting them. |
 
 ## How to use it
 
@@ -99,20 +102,27 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
 4. **`/trader-exit`** set the plan before the entry: stop at the range's
    midpoint, 358.32, so 5.86 a share at risk; target one times that risk,
    370.04; flat by 3:55 PM either way.
-5. **`/trader-timemachine`** replayed the rest of the day 10,000 times, each
-   5-minute candle drawn from TSLA's own candles at that time of day over the
-   previous 59 sessions (seed 19, so anyone can repeat it): target first
-   29.4 %, stop first 25.5 %, still open at the close 45.1 %. It also re-ran
-   the same rule on those 59 real sessions: it fired 33 times, 13 hit the
-   target, 15 the stop, 5 neither. Its verdict: close to a coin flip. That is
-   the point of looking before you risk a dollar.
+5. **`/trader-timemachine`** replayed the day up to the plan's 3:55 PM
+   flat-by time 10,000 times, each 5-minute candle drawn from TSLA's own
+   candles at that time of day over the previous 59 sessions (seed 19, so
+   anyone can repeat it): target first 29.2 % (95 % interval 28.3 to 30.1),
+   stop first 24.2 % (23.4 to 25.1), still open at 3:55 PM 46.6 %. It also
+   re-ran the same rule on those same 59 sessions: it fired 33 times, 13 hit
+   the target, 15 the stop, 5 neither; 13 of 28 decided is 46 % with a 95 %
+   interval of 30 to 64. Its verdict: close to a coin flip. It says so, and
+   it says that it fills at the signal bar's close, counts no costs, and
+   that the history is the same 59 sessions as the replays. That is the
+   point of looking before you risk a dollar.
 6. **`/trader-budget`** with a $5,000 account and a $50 max loss per trade:
    50 / 5.86 = 8 shares ($2,913.44). If the stop fills at 358.32, the loss is
    $46.88. It writes one bracket order: buy 8 TSLA, stop-loss 358.32,
    take-profit 370.04.
-7. **`/trader-risk`** checks it against your limits: the max loss, the daily
-   loss limit, trades per day, reward to risk, the entry window, position
-   size and cash. PASS or BLOCK, with the reason.
+7. **`/trader-risk`** first reconciles its log with the broker (the read-only
+   `get_orders` and `get_all_positions`), then checks the order against your
+   limits: the max loss, the daily loss limit, trades per day, reward to
+   risk, the entry window, position size and cash. PASS or BLOCK, with the
+   reason. A yes that was never followed by a recorded result counts as
+   placed until it is resolved.
 8. **`/trader-broker`** shows you the ticket in plain words. You type yes for
    that exact order. Claude calls your brokerage connector (Alpaca's MCP
    server, paper account by default), and Claude's own "Allow once / Deny"
@@ -166,23 +176,43 @@ yes for it in the chat. Set your brokerage tool to "Needs approval" in Claude
 own "Allow once / Deny" card is a second check. No options, margin, short
 selling or leverage unless you turn them on.
 
+**The gates are rules, not locks.** `ticket.py` records your yes; it cannot
+stop a tool call. What stops one is Claude following these skills and your
+own click on the permission card. Three skills (news, analyst, pelosi) pull
+third-party text into the conversation: headlines, filings, PDFs. Each now
+tells Claude to treat that text as data, never as instructions, and to run
+in a session with no broker connector attached when it can. Do that.
+
+**The daily limits count what was logged.** trader-risk counts orders that
+trader-broker recorded, plus any yes with no result recorded yet. It never
+sees the broker on its own, so reconcile the log with `get_orders` and
+`get_all_positions` before each check, as the skills now say.
+
 **Paper first.** `"paper": true` is the default in `config.example.json`, and
 Alpaca's MCP server defaults to its paper account. Keys live in environment
 variables, never in the chat.
 
 **The Time Machine is a simulation, not a prediction.** It is built from the
 stock's own last 60 days of 5-minute bars. The future can do things those 60
-days never did: an earnings report, a halt, a headline. Treat its odds as a
-reality check, never as a promise.
+days never did: an earnings report, a halt, a headline. Its bars are drawn
+one at a time and independently, so it has no volatility clustering and no
+news. It fills at the close of the signal bar (a real fill is the next open
+or worse) and counts no spread, slippage or commission. Its "history" runs
+on the same sessions the replays are drawn from, so the two are not
+independent evidence. It prints 95 % intervals; read them. Treat its odds as
+a reality check on the stop and the target, never as a promise.
 
 **A stop is a plan, not a guarantee.** In a fast market or across a gap, a
 stop order can fill well past its price. The max loss shown is the loss at
 the stop price.
 
 **The data is free and unofficial.** Yahoo Finance's chart endpoint is not an
-official API: it can lag, change or rate-limit you. The scanner and the entry
-timer read 1-minute or 5-minute bars, not every tick. Check anything that
-matters against your broker before you act on it.
+official API: it can lag, change or rate-limit you. The scanner stops after
+three rate-limited batches and says what it skipped. The scanner and the
+entry timer read 1-minute or 5-minute bars, not every tick, and count a bar
+only once Yahoo has posted its close. Check anything that matters against
+your broker before you act on it. The NYSE holiday calendar inside the tools
+covers 2026 and 2027; past that every tool warns and you should update it.
 
 **Day-trading rules.** FINRA removed the $25,000 pattern-day-trader minimum
 on June 4, 2026 (Regulatory Notice 26-10), and brokers may phase the change
@@ -191,7 +221,7 @@ set `"pdt_guard": true` and `/trader-risk` counts your day trades.
 
 **Congress's trades are public, not inside information.** Members must disclose
 trades over $1,000 within 45 days (the STOCK Act). The Pelosi skill reads those
-public filings the minute they post.
+public filings within a day of the Clerk posting them.
 
 **Taxes.** Day-trading gains are short-term gains, and frequent trading makes
 wash sales likely. Nothing here is tax advice.

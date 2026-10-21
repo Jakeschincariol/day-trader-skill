@@ -15,9 +15,10 @@ Stops (a long's stop rounds DOWN to the cent, away from the entry):
   or-low     the opening-range low
   price:X    your price
   pct:X      X percent under the entry
-  atr:K      K times the 14-bar ATR under the entry, on the session's bars up
-             to the entry bar (--offline FILE or Yahoo). With fewer than 14
-             bars by then it averages all of them and says so.
+  atr:K      K times the 14-bar average true range (simple mean) under the
+             entry, on the session's bars that closed at or before the entry
+             (--offline FILE or Yahoo). With fewer than 14 bars by then it
+             averages all of them and says so. Not Wilder's smoothed ATR.
   A level setup has no opening-range default: give a stop.
 
 Targets (round half up to the cent):
@@ -298,7 +299,7 @@ def compute(entry, stop_rule, stop_param, target_rule, target_param, or_high=Non
         a = D(round(atr, 6))
         raw = e - stop_param * a
         label = "%s x ATR(%d) under the entry" % (num(stop_param), atr_bars)
-        detail = "ATR $%s over the %d bars to the entry%s" % (
+        detail = "average true range (simple mean) $%s over the %d bars to the entry%s" % (
             num(a.quantize(Decimal("0.0001"))), atr_bars, " (fewer than 14 so far)" if atr_bars < ATR_BARS else "")
     else:
         raise PlanError("unknown stop rule %r" % stop_rule)
@@ -440,14 +441,16 @@ def load_chart(sym, interval, day, offline=None):
 
 
 def session_bars(chart, day, interval, upto_slot=None, now_utc=None):
-    """Closed, on-grid bars of one New York session, oldest first (the live tick is dropped)."""
+    """Closed, on-grid bars of one New York session, oldest first (the live tick is
+    dropped). A bar counts as closed when it ended by the earlier of now_utc and the
+    data's own time; upto_slot keeps only bars up to that slot (the entry bar)."""
     step = INTERVALS[interval]
     s = session(day)
     if not s:
         return []
     open_dt = datetime.datetime.combine(day, s[0])
     close_dt = datetime.datetime.combine(day, s[1])
-    if now_utc is None and chart.get("data_time"):
+    if chart.get("data_time") and (now_utc is None or utc_of(chart["data_time"]) < now_utc):
         now_utc = utc_of(chart["data_time"])
     local = to_eastern(now_utc) if now_utc else None
     out = {}
@@ -467,8 +470,9 @@ def session_bars(chart, day, interval, upto_slot=None, now_utc=None):
 
 
 def atr_of(bars, n=ATR_BARS):
-    """Average true range of the last n bars (all of them if fewer). The first
-    bar of the session uses its own high - low (no overnight gap)."""
+    """Average true range of the last n bars (all of them if fewer): a simple mean
+    of the true ranges, not Wilder's smoothed ATR. The first bar of the session
+    uses its own high - low (no overnight gap). Returns (atr, bars used)."""
     trs, prev = [], None
     for b in bars:
         tr = b["h"] - b["l"]
@@ -585,7 +589,15 @@ def build_plan(a, now_utc):
     atr = atr_n = None
     if stop_rule == "atr":
         chart = load_chart(info["symbol"], info["interval"], day, a.offline)
-        bars = session_bars(chart, day, info["interval"], info["entry_bar"], parse_now(a.now) if a.now else None)
+        upto = info["entry_bar"]
+        if upto is None and entry_time is not None and session(day):
+            # no entry bar given: the bars that closed at or before the entry time, nothing after it
+            since_open = (datetime.datetime.combine(day, entry_time)
+                          - datetime.datetime.combine(day, session(day)[0])).total_seconds()
+            upto = int(since_open) // INTERVALS[info["interval"]] - 1
+            if upto < 0:
+                raise PlanError("the entry at %s is before the first %s bar closes" % (ampm(entry_time), info["interval"]))
+        bars = session_bars(chart, day, info["interval"], upto, parse_now(a.now) if a.now else None)
         if len(bars) < 3:
             raise PlanError("an atr stop needs at least 3 closed %s bars of %s on %s by the entry; found %d"
                             % (info["interval"], info["symbol"], day, len(bars)))
@@ -728,6 +740,10 @@ def main(argv=None):
         return {"plan": cmd_plan, "show": cmd_show}[a.cmd](a)
     except PlanError as e:
         print("exit.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, ZeroDivisionError, OverflowError) as e:
+        print("exit.py: could not finish (%s: %s); check the entry file and the flags, and report it if they "
+              "look right" % (type(e).__name__, e), file=sys.stderr)
         return 1
 
 

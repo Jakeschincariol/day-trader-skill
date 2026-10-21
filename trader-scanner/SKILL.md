@@ -126,19 +126,33 @@ the daily watchlist or a list of names you trade (`--watchlist`, `--symbols`).
 A chart is usable only when every 5-minute bar from 9:30 to the cutoff is
 there; a missing bar means a halt or a thin stock. Null closes are dropped,
 a bar off the 5-minute grid (the live tick, like 10:58:07) is dropped, and a
-bar counts only once it is complete (start + 5 minutes). Before 9:50 AM, on a
-weekend or holiday, after the close, or after `no_entries_after` (an expired
-setup) it prints one plain line and writes nothing. The 1:00 PM early closes
-are in the calendar.
+bar counts only once it is complete (start + 5 minutes) and Yahoo has caught
+up with it: the chart's last trade (`meta.regularMarketTime`) or a later bar
+is at or after the bar's end, or a minute has passed since. A bar Yahoo has
+not caught up with yet is dropped, not held against the chart: the chart is
+scanned up to the bar before it, and the next run picks the bar up. Before
+9:50 AM, on a weekend or holiday, after the close, or after
+`no_entries_after` (an expired setup) it prints one plain line and writes
+nothing. The 1:00 PM early closes are in the calendar.
 
 ## Data and limits
 
 - Yahoo's chart and spark endpoints are free, unofficial and can lag. Bars are
   5-minute bars, bar by bar, never tick by tick. query2 first, query1 on a 429
-  or 5xx, one retry after a 5-second wait on a 429.
+  or 5xx, one retry after a 5-second wait on a 429 (or the 429's
+  `Retry-After`, up to 30 seconds).
+- Rate-limit breaker: after 3 batches in a row that still end in a 429, the
+  scan stops asking (stage 2 does the same after 3 charts in a row), keeps
+  what it fetched, writes it, and prints `PARTIAL: Yahoo rate-limited this
+  address: stopped after N batches, M symbols not fetched` (also `partial` in
+  the watchlist file). Wait a few minutes before running again; hammering on
+  makes the block longer.
 - Partial results are said as partial: "Fetched 4,980 of 5,259 charts (279
   failed or had no data)". Never round a partial scan up to "the whole market".
 - NYSE holidays and early closes for 2026 and 2027 (nyse.com, read 2026-10-13).
+  For a date in any other year the scan prints "Holiday list covers 2026 and
+  2027 only: check nyse.com for this date" and goes on; check the day is a
+  session yourself.
 
 ## Steps
 

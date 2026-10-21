@@ -57,6 +57,8 @@ FILING_TYPES = {
 TXN_TYPES = {"P": "purchase", "S": "sale", "S (partial)": "partial sale", "E": "exchange"}
 OWNERS = {"SP": "spouse", "JT": "joint", "DC": "dependent child", "": "self"}
 LATE_DAYS = 45
+DOC_ID = re.compile(r"\d{6,12}")   # a Clerk DocID: digits only, so it can never be a path or a URL
+MAX_DOWNLOAD = 50 * 1024 * 1024  # bytes; the yearly index ZIP is a few MB, a PTR a few hundred KB
 
 
 class PtrError(Exception):
@@ -80,14 +82,25 @@ def iso(mdy):
 
 
 def download(url, timeout=60):
+    """The body of a GET, at most MAX_DOWNLOAD bytes."""
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read()
+            data = resp.read(MAX_DOWNLOAD + 1)
     except urllib.error.HTTPError as exc:
         raise PtrError("HTTP %s for %s" % (exc.code, url))
     except urllib.error.URLError as exc:
         raise PtrError("could not reach %s: %s" % (url, exc.reason))
+    if len(data) > MAX_DOWNLOAD:
+        raise PtrError("%s is over %d MB: not read" % (url, MAX_DOWNLOAD // (1024 * 1024)))
+    return data
+
+
+def check_doc_id(doc):
+    """A DocID is 6 to 12 digits. Anything else never reaches a URL or a file name."""
+    if not DOC_ID.fullmatch(str(doc or "")):
+        raise PtrError("DocID %r is not a Clerk DocID (6 to 12 digits)" % (doc,))
+    return str(doc)
 
 
 def read_index_bytes(data):
@@ -101,8 +114,9 @@ def read_index_bytes(data):
     return data
 
 
-def parse_index(xml_bytes, year):
-    """Every filing in a <YEAR>FD.xml as a dict, newest first."""
+def parse_index(xml_bytes, year, skipped=None):
+    """Every filing in a <YEAR>FD.xml as a dict, newest first. A row whose DocID
+    is not 6 to 12 digits is skipped (and appended to `skipped` if given)."""
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError as exc:
@@ -111,8 +125,15 @@ def parse_index(xml_bytes, year):
     for m in root.iter("Member"):
         f = {c.tag: (c.text or "").strip() for c in m}
         doc = f.get("DocID", "")
+        if not DOC_ID.fullmatch(doc):
+            if skipped is not None:
+                skipped.append(doc)
+            continue
         kind = f.get("FilingType", "")
-        y = int(f.get("Year") or year)
+        try:
+            y = int(f.get("Year") or year)
+        except (TypeError, ValueError):
+            raise PtrError("index row for doc %s has a Year that is not a number: %r" % (doc, f.get("Year")))
         url = (PTR_URL if kind == "P" else FD_URL) % (y, doc)
         name = " ".join(x for x in (f.get("Prefix"), f.get("First"), f.get("Last"),
                                     f.get("Suffix")) if x)
@@ -124,13 +145,13 @@ def parse_index(xml_bytes, year):
     return out
 
 
-def load_index(year, offline=None):
+def load_index(year, offline=None, skipped=None):
     if offline:
         with open(offline, "rb") as fh:
             data = fh.read()
     else:
         data = download(INDEX_URL % (year, "FD"))
-    return parse_index(read_index_bytes(data), year)
+    return parse_index(read_index_bytes(data), year, skipped)
 
 
 def member_match(row, member):
@@ -456,6 +477,7 @@ def _parser():
 
 
 def _fetch_and_read(doc_id, year, pdf_dir, filed=None):
+    doc_id = check_doc_id(doc_id)
     os.makedirs(pdf_dir, exist_ok=True)
     path = os.path.join(pdf_dir, "%s.pdf" % doc_id)
     if not os.path.isfile(path):
@@ -483,6 +505,9 @@ def main(argv=None):
     except (PtrError, OSError) as exc:
         print("ptr: %s" % exc, file=sys.stderr)
         return 2
+    except (ValueError, TypeError, KeyError, zipfile.BadZipFile) as exc:
+        print("ptr: unexpected %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
+        return 1
 
 
 def _run(args):
@@ -507,14 +532,17 @@ def _run(args):
             sys.stdout.write(render_report(report, watchlist(args)))
         return 0 if report["rows"] else 1
 
-    rows = load_index(args.year, args.offline)
+    skipped = []
+    rows = load_index(args.year, args.offline, skipped)
     if args.cmd == "new" and not args.offline:
         today = _dt.date.fromisoformat(args.today) if args.today else _dt.date.today()
         if today.month == 1 and args.year == today.year:
             try:
-                rows += load_index(args.year - 1)
+                rows += load_index(args.year - 1, skipped=skipped)
             except PtrError:
                 pass
+    if skipped:
+        print("ptr: skipped %d index row(s) whose DocID is not 6 to 12 digits" % len(skipped), file=sys.stderr)
     picked = select(rows, args.member, args.type or None, args.since)
 
     if args.cmd == "index":

@@ -52,12 +52,19 @@ orb       Opening-range breakouts, 5-minute bars. The range is the first
 
 Bars: null closes are dropped, a bar off the 5-minute grid (the live tick,
 like 10:49:45) is dropped, and a bar counts only once it is complete
-(start + 5 minutes <= the clock). Times are New York (ET). --now pins the
-clock ("2026-10-19 10:15", New York time; ...Z for UTC).
+(start + 5 minutes <= the clock) AND Yahoo has caught up with it: the chart's
+last trade (meta.regularMarketTime) or a later bar is at or after the bar's
+end, or a minute has passed. A bar Yahoo has not caught up with yet is
+dropped; the chart is still scanned up to the bar before it. Times are New
+York (ET). --now pins the clock ("2026-10-19 10:15", New York time; ...Z
+for UTC).
 
 Yahoo's endpoints are free, unofficial and can lag. query2 first, query1 on
-a 429 or 5xx, one retry after a pause on a 429. A polite pause between
-requests (--pause). Partial results are reported as partial.
+a 429 or 5xx, one retry after a pause on a 429 (Retry-After is honoured, up
+to 30 s). After 3 batches in a row that end in a 429 the scan stops and says
+so: Yahoo is rate-limiting this address, and hammering on makes it worse. A
+polite pause between requests (--pause). Partial results are reported as
+partial.
 
 --offline PATH reads files instead of the network: universe wants a folder
 with nasdaqlisted.txt and otherlisted.txt; daily and orb take a folder of
@@ -86,8 +93,11 @@ NASDAQ_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/"
 SPARK_MAX = 20      # Yahoo's spark answers 400 above 20 symbols
 PAUSE = 0.3         # seconds between requests: be polite to free endpoints
 BACKOFF = 5.0       # seconds to wait before the one retry after a 429
+MAX_RETRY_AFTER = 30.0  # seconds: the most a Retry-After header can make us wait
+RATE_LIMIT_STRIKES = 3  # batches in a row ending in a 429 before the scan stops
 SLEEP = time.sleep  # tests swap this out
 BAR_MIN = 5
+SETTLE = 60         # seconds a closed bar may wait for Yahoo's data to catch up
 MAX_CONFIRM = 200   # stage-2 v8 charts per orb scan, most traded first
 MIN_DAILY_BARS = 30
 DEFAULT_UNIVERSE = "trader/universe.txt"
@@ -137,6 +147,10 @@ LABEL = dict(SETUPS)
 
 class ScanError(Exception):
     pass
+
+
+class RateLimited(ScanError):
+    """Yahoo answered 429 on every host, even after the retry."""
 
 
 # ---------------------------------------------------------------- time
@@ -232,12 +246,25 @@ def http_get(url, timeout=20):
         return r.read().decode("utf-8", "replace")
 
 
+def retry_after(headers):
+    """Seconds from a Retry-After header (digits only; an HTTP date is ignored), capped."""
+    try:
+        v = headers.get("Retry-After") if headers is not None else None
+    except Exception:
+        v = None
+    if v is None or not str(v).strip().isdigit():
+        return None
+    return min(float(str(v).strip()), MAX_RETRY_AFTER)
+
+
 def yahoo_get(path):
     """GET a Yahoo Finance path. query2 first, query1 on a 429 or 5xx, and one
-    more round after BACKOFF seconds if a 429 was seen. 4xx other than 429 is final."""
+    more round after BACKOFF seconds (or the 429's Retry-After, at most 30 s) if
+    a 429 was seen. 4xx other than 429 is final. A 429 that survives the ladder
+    raises RateLimited, so the caller can stop instead of hammering on."""
     last = "no answer"
     for attempt in (0, 1):
-        saw_429 = False
+        saw_429, wait = False, None
         for host in YAHOO_HOSTS:
             try:
                 return http_get(host + path)
@@ -251,6 +278,9 @@ def yahoo_get(path):
                     e.close()
                 if e.code == 429:
                     saw_429 = True
+                    ra = retry_after(getattr(e, "headers", None))
+                    if ra is not None:
+                        wait = max(wait or 0, ra)
                     continue
                 if e.code >= 500:
                     continue
@@ -261,9 +291,11 @@ def yahoo_get(path):
                 last = str(getattr(e, "reason", e))
                 continue
         if attempt == 0 and saw_429:
-            SLEEP(BACKOFF)
+            SLEEP(BACKOFF if wait is None else wait)
             continue
         break
+    if last == "HTTP 429":
+        raise RateLimited("Yahoo answered HTTP 429 for %s" % path.split("?")[0])
     raise ScanError("Yahoo answered %s for %s" % (last, path.split("?")[0]))
 
 
@@ -581,11 +613,38 @@ def slot(day, k):
     return datetime.datetime.combine(day, OPEN) + datetime.timedelta(minutes=BAR_MIN * k)
 
 
+def data_time(series):
+    """The chart's last trade (meta.regularMarketTime) as naive New York time, or None."""
+    t = (series.get("meta") or {}).get("regularMarketTime")
+    if isinstance(t, bool) or not isinstance(t, (int, float)):
+        return None
+    return ts_to_eastern(t)
+
+
+def settled_cutoff(series, day, cutoff):
+    """The cutoff pulled back to the last bar Yahoo has caught up with. A bar that
+    ends by the cutoff counts when the chart's last trade or a later timestamp is
+    at or after its end, or SETTLE seconds have passed since; otherwise the clock
+    stops at that bar's start, so the bar is dropped and the chart is still scanned."""
+    seen = data_time(series)
+    if seen is None:
+        return cutoff  # no last-trade time (an offline bundle, a spark answer without it): the clock alone
+    for ts in series.get("t") or []:
+        seen = max(seen, ts_to_eastern(ts))
+    over = (cutoff - slot(day, 0)).total_seconds() % (BAR_MIN * 60)
+    end = cutoff - datetime.timedelta(seconds=over)  # the end of the last bar complete by the clock
+    if end > seen and cutoff < end + datetime.timedelta(seconds=SETTLE):
+        return end - datetime.timedelta(minutes=BAR_MIN)
+    return cutoff
+
+
 def session_bars(series, day, cutoff):
     """5-minute bars of `day` that are complete at `cutoff` (naive New York time),
-    on the grid, with a close. Sorted, one per slot."""
+    on the grid, with a close, and that Yahoo has caught up with (see
+    settled_cutoff). Sorted, one per slot."""
     s = session(day)
     close_t = s[1] if s else CLOSE
+    cutoff = settled_cutoff(series, day, cutoff)
     out = {}
     hs, ls = series.get("h"), series.get("l")
     for i, ts in enumerate(series["t"]):
@@ -698,8 +757,9 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
         if not s:
             continue
         counts["fetched"] += 1
-        bars = session_bars(s, day, cutoff)
-        if not usable(bars, day, cutoff, n_range):
+        cut = settled_cutoff(s, day, cutoff)
+        bars = session_bars(s, day, cut)
+        if not usable(bars, day, cut, n_range):
             counts["unusable"] += 1
             continue
         vol = sum(b["v"] for b in bars) if s.get("v") else (s.get("meta") or {}).get("regularMarketVolume") or 0
@@ -722,8 +782,9 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
             except ScanError as e:
                 failed[sym] = str(e)
                 continue
-            full = session_bars(s2, day, cutoff)
-            if not usable(full, day, cutoff, n_range):
+            cut = settled_cutoff(s2, day, cutoff)
+            full = session_bars(s2, day, cut)
+            if not usable(full, day, cut, n_range):
                 failed[sym] = "the v8 chart has a missing bar"
                 continue
         counts["confirmed"] += 1
@@ -744,11 +805,23 @@ def progress(a, msg):
         print(msg, file=sys.stderr)
 
 
+def rate_limit_note(batches, left):
+    return ("Yahoo rate-limited this address: stopped after %d batches, %s symbols not fetched"
+            % (batches, "{:,}".format(left)))
+
+
 def fetch_spark(symbols, rng, interval, pause, a=None):
-    """Batches of 20. -> ({SYM: series}, {SYM: error})."""
+    """Batches of 20. -> ({SYM: series}, {SYM: error}, stopped). After RATE_LIMIT_STRIKES
+    batches in a row that end in a 429 the rest are not asked for: they go in the errors
+    and `stopped` is the one-line reason (else None)."""
     data, failed = {}, {}
     batches = [symbols[i:i + SPARK_MAX] for i in range(0, len(symbols), SPARK_MAX)]
+    strikes, stopped = 0, None
     for k, batch in enumerate(batches):
+        if stopped:
+            for s in batch:
+                failed[s] = "not fetched: " + stopped
+            continue
         if k and pause:
             SLEEP(pause)
         wanted = {to_yahoo(s): s for s in batch}
@@ -757,7 +830,13 @@ def fetch_spark(symbols, rng, interval, pause, a=None):
         except (ScanError, ValueError) as e:
             for s in batch:
                 failed[s] = str(e)
+            strikes = strikes + 1 if isinstance(e, RateLimited) else 0
+            if strikes >= RATE_LIMIT_STRIKES:
+                stopped = rate_limit_note(k + 1, sum(len(b) for b in batches[k + 1:]))
+                if a is not None:
+                    progress(a, "  " + stopped)
             continue
+        strikes = 0
         for s in batch:
             if s in got:
                 data[s] = got[s]
@@ -765,7 +844,7 @@ def fetch_spark(symbols, rng, interval, pause, a=None):
                 failed[s] = "no data from Yahoo"
         if a is not None and len(batches) > 25 and (k + 1) % 50 == 0:
             progress(a, "  spark %d of %d requests" % (k + 1, len(batches)))
-    return data, failed
+    return data, failed, stopped
 
 
 def read_symbols(a, offline_syms=None):
@@ -835,6 +914,13 @@ def money(x):
     return "${:,.2f}".format(x)
 
 
+def calendar_warning(day):
+    """One line when the day's year is outside the holiday list, else None."""
+    if day.year in CALENDAR_YEARS:
+        return None
+    return "Holiday list covers %s only: check nyse.com for this date." % " and ".join(map(str, CALENDAR_YEARS))
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_universe(a):
@@ -888,10 +974,11 @@ def cmd_daily(a):
         data, failed = load_offline(a.offline)
         offline_syms = sorted(set(data) | set(failed))
     symbols = read_symbols(a, offline_syms)
+    stopped = None
     if not a.offline:
         progress(a, "Fetching daily closes for %s symbols (%d spark requests)..."
                  % ("{:,}".format(len(symbols)), (len(symbols) + SPARK_MAX - 1) // SPARK_MAX))
-        data, failed = fetch_spark(symbols, "3mo", "1d", a.pause, a)
+        data, failed, stopped = fetch_spark(symbols, "3mo", "1d", a.pause, a)
     hits, counts, last_date = scan_daily(data, symbols, now, a.min_price, a.min_volume)
     nfailed = len(symbols) - counts["fetched"]
     as_of = ("%s close" % last_date.isoformat()) if last_date else None
@@ -899,6 +986,8 @@ def cmd_daily(a):
            "as_of": as_of, "universe": len(symbols), "scanned": counts["scanned"], "failed": nfailed,
            "source": "yahoo", "filters": {"min_price": a.min_price, "min_volume": a.min_volume},
            "note": NOTE, "hits": hits}
+    if stopped:
+        doc["partial"] = stopped
     if a.offline:
         doc["offline"] = os.path.basename(a.offline.rstrip("/"))
     if not a.no_write:
@@ -909,6 +998,10 @@ def cmd_daily(a):
     local = to_eastern(now)
     print("Daily scan, %s ET, closes through %s (Yahoo spark, daily closes only)." % (
         local.strftime("%a %Y-%m-%d %H:%M"), last_date.isoformat() if last_date else "nothing"))
+    if calendar_warning(local.date()):
+        print(calendar_warning(local.date()))
+    if stopped:
+        print("PARTIAL: %s." % stopped)
     print("Fetched %s of %s charts%s. %s passed the liquidity filter ($%s+ and %s+ shares)%s; "
           "%s scanned." % ("{:,}".format(counts["fetched"]), "{:,}".format(len(symbols)),
                            (" (%s failed or had no data)" % "{:,}".format(nfailed)) if nfailed else "",
@@ -960,6 +1053,8 @@ def cmd_orb(a):
     day, cutoff = orb_window(now, at, a.or_minutes, until, explicit_day)
     symbols = read_symbols(a, offline_syms)
     confirm = None
+    stopped = None
+    done, strikes = [], [0]
     if not a.offline:
         today = to_eastern(parse_now(None)).date()
         if (today - day).days > 6:
@@ -967,18 +1062,29 @@ def cmd_orb(a):
         rng = "1d" if day == today else "5d"
         progress(a, "Stage 1: 5-minute closes for %s symbols (%d spark requests)..."
                  % ("{:,}".format(len(symbols)), (len(symbols) + SPARK_MAX - 1) // SPARK_MAX))
-        data, failed = fetch_spark(symbols, rng, "%dm" % BAR_MIN, a.pause, a)
-        done = []
+        data, failed, stopped = fetch_spark(symbols, rng, "%dm" % BAR_MIN, a.pause, a)
 
         def confirm(sym):
+            # the same breaker as stage 1: after 3 charts in a row answered 429, stop asking
+            if strikes[0] >= RATE_LIMIT_STRIKES:
+                raise RateLimited("not fetched: Yahoo rate-limited this address")
             if a.pause:
                 SLEEP(a.pause)
             done.append(sym)
             if len(done) % 50 == 0:
                 progress(a, "  stage 2: %d v8 charts so far" % len(done))
-            return parse_chart(yahoo_get(chart_path(sym, rng, "%dm" % BAR_MIN)), sym)
+            try:
+                series = parse_chart(yahoo_get(chart_path(sym, rng, "%dm" % BAR_MIN)), sym)
+            except RateLimited:
+                strikes[0] += 1
+                raise
+            strikes[0] = 0
+            return series
     hits, counts, failed2 = scan_orb(data, symbols, day, cutoff, a.or_minutes, a.min_price, a.min_volume, confirm,
                                      a.max_confirm)
+    if strikes[0] >= RATE_LIMIT_STRIKES and not stopped:
+        left = sum(1 for v in failed2.values() if v.startswith("not fetched"))
+        stopped = rate_limit_note(len(done), left)
     failed = dict(failed or {})
     failed.update(failed2)
     nfailed = len([s for s in symbols if s in failed])
@@ -988,6 +1094,8 @@ def cmd_orb(a):
            "unconfirmed": counts["unconfirmed"], "source": "yahoo", "or_minutes": a.or_minutes,
            "interval": "%dm" % BAR_MIN,
            "filters": {"min_price": a.min_price, "min_volume": a.min_volume}, "note": NOTE, "hits": hits}
+    if stopped:
+        doc["partial"] = stopped
     if a.offline:
         doc["offline"] = os.path.basename(a.offline.rstrip("/"))
     if not a.no_write:
@@ -997,6 +1105,10 @@ def cmd_orb(a):
         return 0 if hits else 1
     print("Opening-range breakout scan, %s %s ET: %d-minute range (9:30 to %s), 5-minute bars, Yahoo."
           % (day_label(day), clock_label(cutoff), a.or_minutes, clock_label(slot(day, a.or_minutes // BAR_MIN))))
+    if calendar_warning(day):
+        print(calendar_warning(day))
+    if stopped:
+        print("PARTIAL: %s." % stopped)
     print("Fetched %s of %s charts%s; %s usable%s; %s candidates, %s confirmed with real highs and lows."
           % ("{:,}".format(counts["fetched"]), "{:,}".format(len(symbols)),
              (" (%s failed or had no data)" % "{:,}".format(nfailed)) if nfailed else "",
@@ -1076,6 +1188,9 @@ def main(argv=None):
         return 1
     except KeyboardInterrupt:
         print("scan.py: stopped", file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, ZeroDivisionError) as e:
+        print("scan.py: unexpected %s: %s" % (type(e).__name__, e), file=sys.stderr)
         return 1
 
 

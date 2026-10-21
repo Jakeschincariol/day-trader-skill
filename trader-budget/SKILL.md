@@ -87,8 +87,14 @@ loss at the same stop, so fewer shares. A lower price never shrinks the risk.
 It refuses, and writes no order, when: the size is zero shares, the order is
 under the minimum, reward:risk is under `min_reward_risk`, the stop is not
 below the entry, the target is not above it (the move already happened), the
-plan is for another day, the ticker is blocked, or the plan is a short. Say
-the reason to the user in one line.
+plan has no date or is for another day, the ticker is blocked, the plan is a
+short, or `budget`, `max_loss_per_trade_usd`, `max_position_pct` or
+`max_order_usd` is 0, negative or not a number (a bad limit is a refusal,
+never "no limit"). Say the reason to the user in one line.
+
+With `--write`, a refusal also removes an earlier `trader/orders.json` and
+says so, so trader-risk cannot pass yesterday's order. Without `--write`
+nothing is touched.
 
 ## Step 3: show the user
 

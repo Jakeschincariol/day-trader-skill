@@ -10,7 +10,8 @@ SKILLS = ["trader-scanner", "trader-news", "trader-entry", "trader-exit", "trade
           "trader-risk", "trader-budget", "trader-broker", "trader-alerts", "trader-analyst",
           "trader-pelosi"]
 ABOUT = ("11 Claude skills for day trading: scan thousands of charts, track breaking news, time every "
-         "entry and exit, and replay every outcome before you risk a dollar.")
+         "entry and exit, and replay a trade 10,000 times from the stock's own recent bars before you "
+         "risk a dollar.")
 # skills on the way to an order carry the safety block
 ORDER_PATH = ["trader-scanner", "trader-entry", "trader-exit", "trader-timemachine", "trader-budget",
               "trader-pelosi", "trader-risk", "trader-broker", "trader-alerts"]

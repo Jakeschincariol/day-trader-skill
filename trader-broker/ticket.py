@@ -11,8 +11,9 @@ work around the one moment that matters, your yes:
             exact order today (matched by fingerprint) and nobody has decided
             on it yet.
   approve   records your explicit yes for ONE order, with your reply word for
-            word. It refuses "yes to all", "sure", "ok", a yes that names a
-            different stock or amount, and any order that is not READY.
+            word. It refuses "yes to all", "sure", "ok", a yes that names
+            another order in the batch or a different amount, and any order
+            that is not READY.
   decline   records a no.
   result    records what happened after the Allow once / Deny card:
             placed (with the broker's order id), denied, or failed.
@@ -143,8 +144,17 @@ def rec_day(rec):
 # ---------------------------------------------------------------- the order
 
 def fingerprint(order):
-    """Same function as trader-risk/check.py: identifies the exact order."""
+    """The exact order: its Alpaca fields plus the plan's entry, stop and target, so an
+    edited plan invalidates a verdict. Byte-identical in trader-risk/check.py and
+    trader-broker/ticket.py. Numbers go through float(), so "358.32" and 358.32 agree."""
     core = {k: order[k] for k in ALPACA_FIELDS if k in order and order[k] is not None}
+    plan = order.get("plan") if isinstance(order.get("plan"), dict) else {}
+    for k in ("entry", "stop", "target"):
+        if plan.get(k) is not None:
+            try:
+                core["plan." + k] = float(plan[k])
+            except (TypeError, ValueError):
+                core["plan." + k] = str(plan[k])
     blob = json.dumps(core, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
@@ -269,7 +279,12 @@ def amount_numbers(order):
 
 
 def parse_yes(reply, order, batch_symbols=()):
-    """Is this reply an explicit yes for THIS one order? Returns (ok, why)."""
+    """Is this reply an explicit yes for THIS one order? Returns (ok, why).
+
+    Refused: an empty reply or a question, anything that does not start with yes,
+    a batch word (all, both, the rest), a doubt (but, wait, if), a yes that names
+    ANOTHER ORDER IN THE BATCH by its symbol (a ticker that is not in the batch
+    is not checked), and a number that is not one of this order's amounts."""
     raw = (reply or "").strip()
     if not raw:
         return False, "the reply is empty"
@@ -464,6 +479,8 @@ def _load(a):
     orders = doc.get("orders", doc) if isinstance(doc, dict) else doc
     if not isinstance(orders, list) or not orders:
         raise TicketError("no orders in %s" % a.orders)
+    if not all(isinstance(o, dict) for o in orders):
+        raise TicketError("every order in %s must be a JSON object" % a.orders)
     cfg = read_json(a.config, "config", required=False) or {}
     risk = read_json(a.risk, "risk check", required=False)
     state = load_state(a.state)
@@ -713,6 +730,10 @@ def main(argv=None):
                 "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
+        return 1
+    except (ValueError, TypeError, KeyError, OSError, ZeroDivisionError) as e:
+        print("ticket.py: unexpected %s: %s; the input files may be malformed" % (type(e).__name__, e),
+              file=sys.stderr)
         return 1
 
 

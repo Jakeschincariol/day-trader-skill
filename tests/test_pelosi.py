@@ -71,6 +71,108 @@ class Index(unittest.TestCase):
             ptr.parse_index(b"not xml", 2026)
 
 
+BAD_INDEX = """<?xml version="1.0" encoding="utf-8"?>
+<FinancialDisclosure>
+  <Member><Prefix>Hon.</Prefix><Last>Pelosi</Last><First>Nancy</First><Suffix /><FilingType>P</FilingType>
+    <StateDst>CA11</StateDst><Year>2026</Year><FilingDate>10/2/2026</FilingDate><DocID>20035553</DocID></Member>
+  <Member><Prefix>Hon.</Prefix><Last>Evil</Last><First>Path</First><Suffix /><FilingType>P</FilingType>
+    <StateDst>XX00</StateDst><Year>2026</Year><FilingDate>10/3/2026</FilingDate><DocID>../evil</DocID></Member>
+  <Member><Prefix>Hon.</Prefix><Last>Evil</Last><First>Drive</First><Suffix /><FilingType>P</FilingType>
+    <StateDst>XX00</StateDst><Year>2026</Year><FilingDate>10/4/2026</FilingDate>
+    <DocID>C:\\Windows\\System32\\evil</DocID></Member>
+  <Member><Prefix>Hon.</Prefix><Last>Evil</Last><First>Url</First><Suffix /><FilingType>P</FilingType>
+    <StateDst>XX00</StateDst><Year>2026</Year><FilingDate>10/5/2026</FilingDate>
+    <DocID>https://example.com/x.pdf</DocID></Member>
+  <Member><Prefix>Hon.</Prefix><Last>Evil</Last><First>Short</First><Suffix /><FilingType>P</FilingType>
+    <StateDst>XX00</StateDst><Year>2026</Year><FilingDate>10/6/2026</FilingDate><DocID>123</DocID></Member>
+</FinancialDisclosure>
+"""
+
+
+class BadDocIds(unittest.TestCase):
+    def setUp(self):
+        self._download = ptr.download
+
+        def never(url, timeout=60):
+            raise AssertionError("the network was touched for %s" % url)
+        ptr.download = never
+
+    def tearDown(self):
+        ptr.download = self._download
+
+    def test_the_index_skips_them_and_says_so(self):
+        skipped = []
+        rows = ptr.parse_index(BAD_INDEX.encode("utf-8"), 2026, skipped)
+        self.assertEqual([r["doc_id"] for r in rows], ["20035553"])
+        self.assertEqual(len(skipped), 4)
+        self.assertEqual(ptr.parse_index(BAD_INDEX.encode("utf-8"), 2026), rows)   # the list is optional
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "2026FD.xml")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(BAD_INDEX)
+            code, out, err = run(["index", "--offline", path, "--year", "2026"])
+            self.assertEqual(code, 0)
+            self.assertIn("doc 20035553", out)
+            self.assertNotIn("evil", out)
+            self.assertEqual(err.count("skipped 4 index row(s)"), 1)
+
+    def test_fetch_refuses_them_before_any_url_or_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_dir = os.path.join(tmp, "pdfs")
+            for bad in ("../evil", "C:\\Windows\\System32\\evil", "123", "2003555x", "", "20035553.pdf"):
+                with self.assertRaises(ptr.PtrError, msg=bad):
+                    ptr._fetch_and_read(bad, 2026, pdf_dir)
+                code, _, err = run(["fetch", bad, "--pdf-dir", pdf_dir])
+                self.assertEqual(code, 2, bad)
+                self.assertIn("not a Clerk DocID", err)
+            self.assertFalse(os.path.exists(pdf_dir))                   # nothing was created
+        self.assertEqual(ptr.check_doc_id("20035553"), "20035553")
+
+    def test_a_junk_year_is_a_plain_error(self):
+        xml = BAD_INDEX.replace("<Year>2026</Year><FilingDate>10/2/2026", "<Year>twenty</Year><FilingDate>10/2/2026")
+        with self.assertRaises(ptr.PtrError) as cm:
+            ptr.parse_index(xml.encode("utf-8"), 2026)
+        self.assertIn("Year", str(cm.exception))
+
+
+class Download(unittest.TestCase):
+    def test_a_response_over_the_cap_is_refused(self):
+        import urllib.request
+
+        class Resp(object):
+            def __init__(self, n):
+                self.n = n
+
+            def read(self, limit=-1):
+                return b"x" * (self.n if limit < 0 else min(self.n, limit))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        saved = urllib.request.urlopen
+        try:
+            urllib.request.urlopen = lambda req, timeout=60: Resp(ptr.MAX_DOWNLOAD + 1)
+            with self.assertRaises(ptr.PtrError) as cm:
+                ptr.download("https://example.com/big.zip")
+            self.assertIn("over 50 MB", str(cm.exception))
+            urllib.request.urlopen = lambda req, timeout=60: Resp(ptr.MAX_DOWNLOAD)
+            self.assertEqual(len(ptr.download("https://example.com/ok.zip")), ptr.MAX_DOWNLOAD)
+        finally:
+            urllib.request.urlopen = saved
+
+    def test_an_unexpected_error_is_one_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "2026FD.zip")
+            with open(path, "wb") as fh:
+                fh.write(b"PK\x03\x04 this is not a zip")
+            code, _, err = run(["index", "--offline", path])
+            self.assertEqual(code, 1)
+            self.assertIn("ptr: unexpected BadZipFile", err)
+            self.assertNotIn("Traceback", err)
+
+
 class NewSinceLastCheck(unittest.TestCase):
     def test_alerts_once(self):
         with tempfile.TemporaryDirectory() as tmp:

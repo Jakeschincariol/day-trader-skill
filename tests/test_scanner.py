@@ -181,14 +181,14 @@ class Network(unittest.TestCase):
     def tearDown(self):
         scan.http_get, scan.SLEEP = self._get, self._sleep
 
-    def answers(self, codes):
+    def answers(self, codes, headers=None):
         codes = list(codes)
 
         def fake(url, timeout=20):
             self.calls.append(url.split("/v")[0])
             code = codes.pop(0) if codes else 200
             if code != 200:
-                raise urllib.error.HTTPError(url, code, "x", {}, io.BytesIO(b""))
+                raise urllib.error.HTTPError(url, code, "x", headers or {}, io.BytesIO(b""))
             return self.body
         scan.http_get = fake
 
@@ -206,19 +206,57 @@ class Network(unittest.TestCase):
         self.assertEqual(len(self.calls), 2)
         self.assertEqual(self.sleeps, [])
 
+    SYMS = ["AAPL", "TSLA", "NVDA", "BRK.B", "AMC", "ZZZZQX", "MSFT", "AMZN", "META", "GOOGL", "PLTR", "AMD",
+            "INTC", "F", "BAC", "KO", "PLUG", "SOFI", "RIVN", "LCID"]
+
     def test_429_for_good_is_reported_as_partial(self):
         self.answers([200] + [429] * 10)
-        syms = ["AAPL", "TSLA", "NVDA", "BRK.B", "AMC", "ZZZZQX", "MSFT", "AMZN", "META", "GOOGL", "PLTR", "AMD",
-                "INTC", "F", "BAC", "KO", "PLUG", "SOFI", "RIVN", "LCID"] + ["X%02d" % i for i in range(20)]
-        data, failed = scan.fetch_spark(syms, "3mo", "1d", 0.3)
+        syms = self.SYMS + ["X%02d" % i for i in range(20)]
+        data, failed, stopped = scan.fetch_spark(syms, "3mo", "1d", 0.3)
         self.assertEqual(len(data), 19)
         self.assertEqual(failed["ZZZZQX"], "no data from Yahoo")
         self.assertEqual(len(failed), 21)
         self.assertIn("HTTP 429", failed["X00"])
+        self.assertIsNone(stopped)                         # one rate-limited batch is not yet the breaker
         self.assertEqual(self.sleeps, [0.3, scan.BACKOFF])  # a pause between batches, one backoff
         hits, counts, _ = scan.scan_daily(data, syms, scan.parse_now("2026-10-20 09:14"), 5, 1000000)
         self.assertEqual(counts["requested"], 40)
         self.assertEqual(counts["fetched"], 19)
+
+    def test_three_rate_limited_batches_stop_the_scan(self):
+        # batch 1 answers; batches 2, 3 and 4 end in a 429 after the ladder (4 calls each); batch 5 is never asked
+        self.answers([200] + [429] * 12)
+        syms = self.SYMS + ["X%02d" % i for i in range(80)]
+        data, failed, stopped = scan.fetch_spark(syms, "3mo", "1d", 0.3)
+        self.assertEqual(stopped, "Yahoo rate-limited this address: stopped after 4 batches, 20 symbols not fetched")
+        self.assertEqual(len(data), 19)                    # what was fetched is kept
+        self.assertEqual(len(self.calls), 13)
+        self.assertEqual(self.sleeps, [0.3, scan.BACKOFF] * 3)
+        self.assertIn("HTTP 429", failed["X00"])
+        self.assertEqual(failed["X79"], "not fetched: " + stopped)
+        self.assertEqual(len(failed), 81)
+        # three in a row, not three in total: an answer in between resets the count
+        self.calls, self.sleeps = [], []
+        self.answers([200, 429, 429, 429, 429, 200, 429, 429, 429, 429, 200])
+        data, failed, stopped = scan.fetch_spark(self.SYMS + ["X%02d" % i for i in range(80)], "3mo", "1d", 0)
+        self.assertIsNone(stopped)
+        self.assertEqual(len(self.calls), 11)
+
+    def test_retry_after_is_honoured_and_capped(self):
+        self.answers([429, 429, 200], headers={"Retry-After": "7"})
+        scan.yahoo_get("/v7/finance/spark?symbols=TSLA&range=3mo&interval=1d")
+        self.assertEqual(self.sleeps, [7.0])
+        self.sleeps[:] = []
+        self.answers([429, 429, 200], headers={"Retry-After": "600"})
+        scan.yahoo_get("/v7/finance/spark?symbols=TSLA&range=3mo&interval=1d")
+        self.assertEqual(self.sleeps, [scan.MAX_RETRY_AFTER])
+        self.sleeps[:] = []
+        self.answers([429, 429, 200], headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})
+        scan.yahoo_get("/v7/finance/spark?symbols=TSLA&range=3mo&interval=1d")
+        self.assertEqual(self.sleeps, [scan.BACKOFF])        # an HTTP date: the plain backoff
+        self.answers([429, 429, 429, 429])
+        with self.assertRaises(scan.RateLimited):
+            scan.yahoo_get("/v7/finance/spark?symbols=TSLA&range=3mo&interval=1d")
 
     def test_a_404_is_final(self):
         self.answers([404])
@@ -380,6 +418,29 @@ class Orb(unittest.TestCase):
                                              DT(2026, 10, 19, 10, 15), 15, 0, 0, broken)
         self.assertEqual(hits, [])
         self.assertIn("429", failed["TSLA"])
+
+    def test_a_bar_yahoo_has_not_caught_up_with_is_dropped(self):
+        # 9 bars, 9:30 to 10:10; the 10:10 bar closes at 10:15 and breaks the range
+        closes = [10, 10.2, 10.1, 10.0, 10.1, 10.2, 10.1, 10.2, 10.5]
+        day, cut = D(2026, 10, 20), DT(2026, 10, 20, 10, 15)
+        s = bars_series("2026-10-20", closes)
+        s["meta"]["regularMarketTime"] = ts("2026-10-20 10:14:30")     # Yahoo's last trade is before 10:15
+        self.assertEqual(scan.settled_cutoff(s, day, cut), DT(2026, 10, 20, 10, 10))
+        self.assertEqual(len(scan.session_bars(s, day, cut)), 8)
+        hits, counts, _ = scan.scan_orb({"X": s}, ["X"], day, cut, 15, 0, 0)
+        self.assertEqual((counts["scanned"], counts["unusable"], hits), (1, 0, []))   # scanned, not unusable
+        s["meta"]["regularMarketTime"] = ts("2026-10-20 10:15:00")     # caught up: the bar counts
+        self.assertEqual(len(scan.session_bars(s, day, cut)), 9)
+        hits, _, _ = scan.scan_orb({"X": s}, ["X"], day, cut, 15, 0, 0)
+        self.assertEqual(hits[0]["at"], "10:15 AM")
+        s["meta"]["regularMarketTime"] = ts("2026-10-20 10:14:30")
+        self.assertEqual(len(scan.session_bars(s, day, DT(2026, 10, 20, 10, 16))), 9)   # a minute passed
+        self.assertEqual(len(scan.session_bars(s, day, DT(2026, 10, 20, 10, 20))), 9)
+        s2 = bars_series("2026-10-20", closes, extra=[("2026-10-20 10:15:20", 10.6)])  # a later tick proves it
+        s2["meta"]["regularMarketTime"] = ts("2026-10-20 10:14:30")
+        self.assertEqual(len(scan.session_bars(s2, day, cut)), 9)
+        s3 = bars_series("2026-10-20", closes)                          # no meta time: the clock alone
+        self.assertEqual(len(scan.session_bars(s3, day, cut)), 9)
 
     def test_a_missing_bar_makes_a_chart_unusable(self):
         s = bars_series("2026-10-20", [10, 10.2, 10.1, None, 10.5, 10.6, 10.7, 10.8, 10.9])
@@ -632,6 +693,28 @@ class Cli(unittest.TestCase):
         code, text, _ = run(["daily", "--offline", DAILY, "--limit", "3", "--now", "2026-10-19 09:00", "--json",
                              "--no-write", "--min-volume", "0"])
         self.assertEqual(json.loads(text)["universe"], 3)
+
+    def test_unknown_calendar_year_is_said(self):
+        code, text, _ = run(["daily", "--offline", DAILY, "--now", "2028-03-01 09:00", "--no-write",
+                             "--min-volume", "0", "--min-price", "0"])
+        self.assertIn("Holiday list covers 2026 and 2027 only: check nyse.com for this date.", text)
+        code, text, _ = run(["daily", "--offline", DAILY, "--now", "2026-10-19 09:00", "--no-write",
+                             "--min-volume", "0"])
+        self.assertNotIn("Holiday list", text)
+
+    def test_an_unexpected_error_is_one_line(self):
+        old = scan.cmd_daily
+
+        def boom(a):
+            raise KeyError("regularMarketPrice")
+        scan.cmd_daily = boom
+        try:
+            code, _, err = run(["daily", "--offline", DAILY, "--no-write"])
+        finally:
+            scan.cmd_daily = old
+        self.assertEqual(code, 1)
+        self.assertIn("scan.py: unexpected KeyError", err)
+        self.assertNotIn("Traceback", err)
 
     def test_daily_json(self):
         code, text, _ = run(["daily", "--offline", DAILY, "--now", "2026-10-19 09:00", "--json", "--no-write",

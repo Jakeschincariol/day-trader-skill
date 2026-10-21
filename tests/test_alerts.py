@@ -107,6 +107,50 @@ class Quotes(unittest.TestCase):
             with self.assertRaises(alerts.AlertError):
                 alerts.parse_stooq(fh.read(), "ZZZZ")
 
+    def test_junk_in_a_quote_is_one_error_not_a_traceback(self):
+        with open(os.path.join(QDIR, "yahoo-TSLA.json")) as fh:
+            doc = json.load(fh)
+
+        def with_meta(**kw):
+            d = json.loads(json.dumps(doc))
+            d["chart"]["result"][0]["meta"].update(kw)
+            return json.dumps(d)
+        for bad in ("abc", "NaN", float("nan"), float("inf"), True, [366.0], {"raw": 366.0}):
+            with self.assertRaises(alerts.AlertError) as cm:
+                alerts.parse_yahoo(with_meta(regularMarketPrice=bad), "TSLA")
+            self.assertIn("not a number", str(cm.exception))
+            self.assertNotIn("\n", str(cm.exception))
+        # the other fields degrade to None / "" instead of blowing up
+        q = alerts.parse_yahoo(with_meta(previousClose="n/a", regularMarketTime="soon", chartPreviousClose=None),
+                               "TSLA")
+        self.assertEqual((q["price"], q["prev_close"], q["time"]), (366.475, None, ""))
+        q = alerts.parse_yahoo(with_meta(previousClose=float("nan"), regularMarketTime=-1e30), "TSLA")
+        self.assertEqual((q["prev_close"], q["time"]), (354.72, ""))   # chartPreviousClose steps in
+        q = alerts.parse_yahoo(with_meta(previousClose=float("nan"), chartPreviousClose="?"), "TSLA")
+        self.assertIsNone(q["prev_close"])
+        d = json.loads(json.dumps(doc))
+        d["chart"]["result"][0]["indicators"]["quote"][0]["open"] = ["x", None, 357.5]
+        self.assertEqual(alerts.parse_yahoo(json.dumps(d), "TSLA")["open"], 357.5)
+        # a quote with a junk price is dropped from the batch with its one line
+        bad_dir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(bad_dir, "yahoo-TSLA.json"), "w") as fh:
+                fh.write(with_meta(regularMarketPrice="NaN"))
+            shutil.copy(os.path.join(QDIR, "yahoo-KO.json"), bad_dir)
+            quotes, errors = alerts.get_quotes(["TSLA", "KO"], "yahoo", bad_dir)
+            self.assertEqual(sorted(quotes), ["KO"])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("TSLA is not a number", errors[0])
+        finally:
+            shutil.rmtree(bad_dir)
+        # stooq: a close that is not a number
+        with self.assertRaises(alerts.AlertError):
+            alerts.parse_stooq("Symbol,Date,Time,Open,High,Low,Close,Volume\nAAPL,2026-10-13,22:00,1,2,3,nan,4",
+                               "AAPL")
+        q = alerts.parse_stooq("Symbol,Date,Time,Open,High,Low,Close,Volume\nAAPL,2026-10-13,22:00,x,2,3,341.27,4",
+                               "AAPL")
+        self.assertEqual((q["price"], q["open"]), (341.27, None))
+
     def test_urls_and_user_agent(self):
         self.assertEqual(alerts.UA, UA)
         self.assertEqual(alerts.stooq_url("BRK.B"), "https://stooq.com/q/l/?s=brk-b.us&f=sd2t2ohlcv&h&e=csv")
@@ -443,6 +487,56 @@ class Cli(unittest.TestCase):
         code, text, _ = run(["clock", "--now", "2026-12-25T10:00"])
         self.assertEqual(code, 1)
         self.assertIn("Christmas Day", text)
+
+    def test_check_says_when_the_year_is_off_the_calendar(self):
+        run(["add", "--rules", self.rules, "--opening-bell"])
+        code, text, _ = self.check("2028-03-01 10:00")
+        self.assertIn("Holiday list covers 2026 and 2027 only: check nyse.com for this date.", text)
+        code, text, _ = self.check("2026-10-19 10:00")
+        self.assertNotIn("Holiday list", text)
+
+    def test_a_re_added_rule_starts_armed(self):
+        args = ["add", "--rules", self.rules, "--state", self.state, "--symbol", "AAPL", "--above", "340"]
+        self.assertEqual(run(args)[0], 0)
+        code, text, _ = self.check("2026-10-13T20:00")
+        self.assertEqual(code, 0)                                      # AAPL 341.27 is above 340
+        with open(self.state) as fh:
+            self.assertIn("aapl-above-340", json.load(fh)["rung"])
+        self.assertEqual(self.check("2026-10-13T20:01")[0], 1)         # rang once
+        with open(self.rules, "w") as fh:                              # the user deletes the rule by hand...
+            json.dump({"rules": []}, fh)
+        self.assertEqual(run(args)[0], 0)                              # ...and adds it back
+        with open(self.state) as fh:
+            self.assertNotIn("aapl-above-340", json.load(fh)["rung"])
+        self.assertEqual(self.check("2026-10-13T20:02")[0], 0)         # it rings again
+
+    def test_a_write_that_fails_is_one_line(self):
+        run(["add", "--rules", self.rules, "--symbol", "AAPL", "--above", "340"])
+        os.makedirs(self.prices)                                       # a folder where prices.json should be
+        code, _, err = self.check("2026-10-13T20:00")
+        self.assertEqual(code, 1)
+        self.assertIn("alerts.py: could not write", err)
+        self.assertNotIn("Traceback", err)
+        self.assertTrue(os.path.exists(self.state))                    # the state was written before it
+        os.makedirs(self.state + ".d")
+        code, _, err = run(["check", "--rules", self.rules, "--state", self.state + ".d", "--offline", QDIR,
+                            "--now", "2026-10-13T20:00"])
+        self.assertEqual(code, 1)
+        self.assertIn("alerts.py: could not", err)                     # a folder as the state file
+        self.assertNotIn("Traceback", err)
+
+    def test_an_unexpected_error_is_one_line(self):
+        old = alerts.cmd_clock
+
+        def boom(a):
+            raise KeyError("opens")
+        alerts.cmd_clock = boom
+        try:
+            code, _, err = run(["clock"])
+        finally:
+            alerts.cmd_clock = old
+        self.assertEqual(code, 1)
+        self.assertIn("alerts.py: unexpected KeyError", err)
 
     def test_check_without_rules(self):
         code, _, err = run(["check", "--rules", self.rules, "--offline", QDIR])
