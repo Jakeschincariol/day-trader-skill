@@ -134,6 +134,7 @@ python3 trader-entry/entry.py check TSLA --setup orb                   # waiting
 python3 trader-entry/entry.py watch TSLA --every 30                    # bar by bar until it triggers
 python3 trader-exit/exit.py plan --stop or-mid --target 1R --write     # -> trader/plan.json
 python3 trader-timemachine/timemachine.py run --write                  # 10,000 replays + the history
+python3 trader-timemachine/timemachine.py run --csv                    # export every replay and historical trade
 python3 trader-budget/size.py --write                                  # -> trader/orders.json
 python3 trader-risk/check.py                                           # PASS / BLOCK per order
 python3 trader-broker/ticket.py show                                   # the tickets, READY or not

@@ -1,4 +1,5 @@
 import copy
+import csv
 import gzip
 import hashlib
 import io
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stdout, redirect_stderr
+from unittest.mock import patch
 
 from _load import load, FIX
 
@@ -120,6 +122,45 @@ class Reel(unittest.TestCase):
         first = h["trades"][0]
         self.assertEqual((first["date"], first["entry"], first["stop"], first["target"], first["outcome"]),
                          ("2026-07-28", 307.97, 304.89, 311.05, "target"))
+
+    def test_history_exit_prices_preserve_candle_closes_and_match_R(self):
+        rule = {"or_minutes": 15, "stop_rule": "or_mid", "target_r": 1.0}
+        cases = (
+            ("target", 13.5, 11.1, 12.5, 12.3, 13.0, 1.0),
+            ("stop", 11.8, 8.5, 10.0, 10.1, 9.0, -1.0),
+            ("close", 11.8, 10.5, 11.2, 11.8, 11.8, 0.4),
+        )
+        trades = []
+        for outcome, trigger_high, trigger_low, trigger_close, final_close, exit_price, R in cases:
+            bars = [
+                {"h": 10.0, "l": 8.0, "c": 9.0},
+                {"h": 10.0, "l": 8.0, "c": 9.0},
+                {"h": 10.0, "l": 8.0, "c": 9.0},
+                {"h": 11.5, "l": 10.5, "c": 11.0},
+                {"h": trigger_high, "l": trigger_low, "c": trigger_close},
+                {"h": final_close + 0.1, "l": final_close - 0.1, "c": final_close},
+            ]
+            with self.subTest(outcome=outcome):
+                trade = tm.history_replay([("2026-01-02", bars)], rule, 5)["trades"][0]
+                self.assertEqual(trade["outcome"], outcome)
+                self.assertEqual(trade["close"], final_close)
+                self.assertEqual(trade["exit_price"], exit_price)
+                self.assertEqual(trade["R"], R)
+                trades.append(trade)
+        doc = {
+            "plan": {"symbol": "TSLA", "side": "buy", "date": "2026-10-19", "entry": 11.0, "stop": 9.0,
+                     "target": 13.0},
+            "history": {"trades": trades},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "history.csv")
+            tm._write_csv(path, doc, [])
+            with open(path, newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        self.assertEqual([row["outcome"] for row in rows], ["target", "stop", "close"])
+        self.assertEqual([float(row["exit_price"]) for row in rows], [13.0, 9.0, 11.8])
+        self.assertEqual([float(row["close"]) for row in rows], [12.3, 10.1, 11.8])
+        self.assertEqual([float(row["R"]) for row in rows], [1.0, -1.0, 0.4])
 
     def test_the_verdict_says_coin_flip(self):
         self.assertEqual(self.doc["verdict"], "Close to a coin flip: target first 29.4 % vs stop first 25.5 %.")
@@ -551,6 +592,37 @@ class Cli(unittest.TestCase):
         self.assertNotIn("sample_paths", doc["mc"])
         self.assertEqual(doc["verdict"][:20], "Close to a coin flip")
         self.assertFalse(os.path.exists(self.out))
+
+    def test_csv_export_contains_replays_and_historical_trades(self):
+        path = os.path.join(self.d, "reports", "timemachine.csv")
+        code, text, err = run(["run", "--plan", self.plan, "--offline", TSLA, "--now", NOW,
+                               "--replays", "500", "--csv", path])
+        self.assertEqual(code, 0, err)
+        self.assertIn("Wrote %s." % path, text)
+        with open(path, newline="", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        replay_rows = [row for row in rows if row["record_type"] == "monte_carlo"]
+        history_rows = [row for row in rows if row["record_type"] == "history"]
+        self.assertEqual(len(replay_rows), 500)
+        self.assertEqual(len(history_rows), 33)
+        self.assertEqual(replay_rows[0]["replay"], "1")
+        self.assertEqual(replay_rows[0]["symbol"], "TSLA")
+        self.assertEqual(replay_rows[0]["plan_date"], "2026-10-19")
+        self.assertEqual(replay_rows[0]["entry"], "364.18")
+        self.assertIn(replay_rows[0]["outcome"], ("target", "stop", "close"))
+        self.assertNotEqual(replay_rows[0]["close"], "")
+        self.assertNotEqual(replay_rows[0]["R"], "")
+        self.assertNotEqual(history_rows[0]["date"], "")
+        self.assertNotEqual(history_rows[0]["time"], "")
+        self.assertNotEqual(history_rows[0]["close"], "")
+        self.assertNotEqual(history_rows[0]["exit_price"], "")
+
+    def test_csv_and_json_exports_cannot_overwrite_each_other(self):
+        with patch.object(tm, "compute", side_effect=AssertionError("compute should not run")):
+            code, _, err = run(["run", "--plan", self.plan, "--offline", TSLA, "--now", NOW,
+                                "--csv", self.out, "--write", self.out])
+        self.assertEqual(code, 1)
+        self.assertIn("--csv and --write must use different paths", err)
 
     def test_the_plan_as_flags_matches_the_file(self):
         code, text, err = run(["run", "--symbol", "tsla", "--date", "2026-10-19", "--entry", "364.18",

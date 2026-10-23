@@ -64,6 +64,7 @@ Times are New York (ET) wall-clock; --now "2026-10-19 10:15" pins the clock.
 """
 
 import argparse
+import csv
 import datetime
 import gzip
 import json
@@ -346,7 +347,8 @@ def pct(a, q):
     return a[min(len(a) - 1, int(q * len(a)))]
 
 
-def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy"):
+def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy",
+             include_results=False):
     """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py."""
     long = side == "buy"
     risk = (entry - stop) if long else (stop - entry)
@@ -389,6 +391,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
                 if o == "target" or (o == "close" and (p > entry if long else p < entry)))
     Rs = [r_target if o == "target" else -1.0 if o == "stop" else ((p - entry) if long else (entry - p)) / risk
           for o, p in zip(outcomes, closes)]
+    replay_results = enumerate(zip(outcomes, closes, Rs), 1) if include_results else None
     srt = sorted(closes)
     # percentile bands per bar for the fan chart: a second run of 2,000 paths, same seed
     rng = random.Random(seed)
@@ -413,7 +416,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
         b = int((c - lo_) / W) if W > 0 else 0
         if 0 <= b < HIST_BINS:
             bins[b] += 1
-    return {
+    result = {
         "replays": replays, "seed": seed, "window": window, "bars_left": last - k,
         "p_target": round(cnt["target"] / replays, 4), "p_stop": round(cnt["stop"] / replays, 4),
         "p_neither": round(cnt["close"] / replays, 4), "p_green": round(green / replays, 4),
@@ -422,6 +425,9 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
         "r_at_target": r_target, "band_paths": BAND_PATHS, "bands": bands, "sample_paths": paths,
         "hist": {"lo": round(lo_, 2), "hi": round(hi_, 2), "bins": bins},
     }
+    if replay_results is not None:
+        result["replay_results"] = replay_results
+    return result
 
 
 # ---------------------------------------------------------------- stop rules and the history replay
@@ -475,10 +481,11 @@ def history_replay(sessions, rule, last, side="buy"):
                 oc = "target"
                 break
         cl = D[last]["c"]
+        exit_price = t if oc == "target" else s if oc == "stop" else cl
         R = ((t - e) if long else (e - t)) / risk if oc == "target" else -1.0 if oc == "stop" else \
             ((cl - e) if long else (e - cl)) / risk
         trades.append({"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "stop": s, "target": t,
-                       "outcome": oc or "close", "R": round(R, 2)})
+                       "outcome": oc or "close", "close": cl, "exit_price": exit_price, "R": round(R, 2)})
     return {
         "sessions": len(sessions), "triggered": len(trades),
         "target": sum(1 for x in trades if x["outcome"] == "target"),
@@ -676,7 +683,8 @@ def verdict_notes(mc):
     return notes
 
 
-def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo"):
+def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo",
+                 include_replay_results=False):
     """Chart JSON text + a normalized plan -> the timemachine.json document."""
     if not 1 <= replays <= 1000000:
         raise TMError("--replays must be between 1 and 1,000,000")
@@ -721,7 +729,8 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("only %d full session(s) of %s before %s in the data; the time machine needs at least %d"
                       % (len(sessions), sym, plan["date"], MIN_SESSIONS))
     pool = build_pool(sessions)
-    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"])
+    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"],
+                  include_replay_results)
     mc = dict(mc, until=clock24(until_min), pool_sessions=len(sessions), pool_from=sessions[0][0],
               pool_to=sessions[-1][0],
               band_times=[clock24(OPEN_MIN + 5 * (j + 1)) for j in range(k, last + 1)])
@@ -867,6 +876,41 @@ def _write(path, doc):
         fh.write("\n")
 
 
+def _write_csv(path, doc, replay_results):
+    fields = ("record_type", "replay", "symbol", "side", "plan_date", "date", "time", "entry", "stop", "target",
+              "outcome", "close", "exit_price", "R")
+    directory = os.path.dirname(path)
+    try:
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fields)
+            writer.writeheader()
+            plan = doc["plan"]
+            for replay, (outcome, close, result) in replay_results:
+                exit_price = plan["target"] if outcome == "target" else \
+                    plan["stop"] if outcome == "stop" else close
+                writer.writerow({
+                    "record_type": "monte_carlo",
+                    "replay": replay,
+                    "symbol": plan["symbol"],
+                    "side": plan["side"],
+                    "plan_date": plan["date"],
+                    "entry": plan["entry"],
+                    "stop": plan["stop"],
+                    "target": plan["target"],
+                    "outcome": outcome,
+                    "close": close,
+                    "exit_price": exit_price,
+                    "R": result,
+                })
+            for item in doc["history"]["trades"]:
+                writer.writerow(dict(item, record_type="history", symbol=plan["symbol"], side=plan["side"],
+                                      plan_date=plan["date"]))
+    except OSError as e:
+        raise TMError("cannot write %s: %s" % (path, e))
+
+
 def compute(a):
     now = parse_now(a.now)
     plan = load_plan(a, now)
@@ -874,13 +918,18 @@ def compute(a):
         text, source = read_offline(a.offline, plan["symbol"]), "offline"
     else:
         text, source = fetch_chart(plan["symbol"]), "yahoo"
-    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source)
+    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source, bool(getattr(a, "csv", None)))
 
 
 def cmd_run(a):
+    if a.csv and a.write and os.path.normcase(os.path.abspath(a.csv)) == os.path.normcase(os.path.abspath(a.write)):
+        raise TMError("--csv and --write must use different paths")
     doc = compute(a)
+    replay_results = doc["mc"].pop("replay_results", None)
     if a.write:
         _write(a.write, doc)
+    if a.csv:
+        _write_csv(a.csv, doc, replay_results)
     if a.json:
         slim = dict(doc, mc={k: v for k, v in doc["mc"].items() if k != "sample_paths"})
         print(json.dumps(slim, indent=2))
@@ -888,6 +937,8 @@ def cmd_run(a):
         print("\n".join(report(doc)))
         if a.write:
             print("Wrote %s." % a.write)
+        if a.csv:
+            print("Wrote %s." % a.csv)
         print("Next: /trader-budget sizes it to your budget and your max loss per trade.")
     return 0
 
@@ -937,6 +988,8 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
     p.add_argument("--write", nargs="?", const="trader/timemachine.json", metavar="PATH",
                    help="save the result (default trader/timemachine.json)")
+    p.add_argument("--csv", nargs="?", const="trader/timemachine.csv", metavar="PATH",
+                   help="export every replay outcome and historical trade (default trader/timemachine.csv)")
     p = sub.add_parser("chart", help="ASCII fan chart of the replays")
     common(p)
     p.add_argument("--from", dest="from_file", nargs="?", const="trader/timemachine.json", metavar="PATH",
