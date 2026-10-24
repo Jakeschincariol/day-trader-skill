@@ -35,8 +35,15 @@ Quotes (free, delayed, unofficial; for alerts only, never for timing an order):
   yahoo   https://query2.finance.yahoo.com/v8/finance/chart/TSLA (falls back to
           query1 on a 429 or a 5xx; one retry with a pause on a 429; one
           request per ticker, half a second apart; the default)
+  stockanalysis  https://stockanalysis.com/api/quotes/s/TSLA (the working
+          fallback: price, open, high, low AND the previous close, so pct_move
+          rules do not have to fall back to the open. Dotted tickers keep the
+          dot: BRK.B, not BRK-B)
   stooq   https://stooq.com/q/l/?s=tsla.us&f=sd2t2ohlcv&h&e=csv (Stooq's free
-          CSV; it answered 404 on 2026-10-13, kept for when it is back)
+          CSV; it answered 404 on 2026-10-13 and still did on 2026-10-21, when
+          the whole site also went behind a JavaScript browser check that a
+          stdlib client cannot pass. Kept for when it is back; use
+          stockanalysis instead)
   --offline DIR reads DIR/<source>-<TICKER>.json|csv (or .json.gz) instead.
 
 NYSE calendar: the 2026 and 2027 holidays and 1:00 p.m. early closes as
@@ -197,6 +204,11 @@ def stooq_url(sym):
     return "https://stooq.com/q/l/?s=%s.us&f=sd2t2ohlcv&h&e=csv" % sym.lower().replace(".", "-")
 
 
+def stockanalysis_url(sym):
+    """The dot is kept: this API has BRK.B and answers 404 for BRK-B."""
+    return "https://stockanalysis.com/api/quotes/s/%s" % sym.upper()
+
+
 def yahoo_url(sym, host=YAHOO_HOSTS[0]):
     return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, sym.upper().replace(".", "-"))
 
@@ -220,6 +232,29 @@ def parse_stooq(text, sym):
     return {"symbol": sym.upper(), "price": float(close), "open": f("open"), "high": f("high"),
             "low": f("low"), "prev_close": None, "time": ("%s %s" % (r.get("date", ""), r.get("time", ""))).strip(),
             "source": "stooq"}
+
+
+def parse_stockanalysis(text, sym):
+    """stockanalysis.com quote JSON -> quote. p price, cl previous close, o/h/l the
+    session, u the stamp. A missing or dataless body means no such ticker."""
+    try:
+        doc = json.loads(text)
+    except ValueError as e:
+        raise AlertError("stockanalysis sent something that is not JSON for %s: %s" % (sym, e))
+    data = doc.get("data") if isinstance(doc, dict) else None
+    if not isinstance(data, dict) or data.get("p") is None:
+        raise AlertError("stockanalysis has no data for %s (check the ticker)" % sym)
+
+    def f(k):
+        v = data.get(k)
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    price = f("p")
+    if price is None:
+        raise AlertError("stockanalysis gave a non-numeric price for %s" % sym)
+    return {"symbol": sym.upper(), "price": price, "open": f("o"), "high": f("h"),
+            "low": f("l"), "prev_close": f("cl"), "time": str(data.get("u") or "").strip(),
+            "source": "stockanalysis"}
 
 
 def parse_yahoo(text, sym):
@@ -298,6 +333,19 @@ def fetch_yahoo(sym, timeout=20):
     raise AlertError("%s answered HTTP %d" % (last[0].split("?")[0], last[1]))
 
 
+def fetch_stockanalysis(sym, timeout=20):
+    """A 429 waits BACKOFF seconds and tries once more. A 404 comes back as the
+    API's own error JSON so the parser can name the ticker."""
+    url = stockanalysis_url(sym)
+    code, text = _get(url, timeout)
+    if code == 429:
+        _sleep(BACKOFF)
+        code, text = _get(url, timeout)
+    if code == 200 or (code == 404 and text.strip().startswith("{")):
+        return text
+    raise AlertError("%s answered HTTP %d" % (url, code))
+
+
 def _offline_text(folder, source, sym):
     ext = "csv" if source == "stooq" else "json"
     base = os.path.join(folder, "%s-%s.%s" % (source, sym, ext))
@@ -321,8 +369,18 @@ def get_quotes(symbols, source="yahoo", offline=None, pause=PAUSE):
             else:
                 if i and pause:
                     _sleep(pause)
-                text = fetch(stooq_url(sym)) if source == "stooq" else fetch_yahoo(sym)
-            quotes[sym] = parse_stooq(text, sym) if source == "stooq" else parse_yahoo(text, sym)
+                if source == "stooq":
+                    text = fetch(stooq_url(sym))
+                elif source == "stockanalysis":
+                    text = fetch_stockanalysis(sym)
+                else:
+                    text = fetch_yahoo(sym)
+            if source == "stooq":
+                quotes[sym] = parse_stooq(text, sym)
+            elif source == "stockanalysis":
+                quotes[sym] = parse_stockanalysis(text, sym)
+            else:
+                quotes[sym] = parse_yahoo(text, sym)
         except AlertError as e:
             errors.append(str(e))
     return quotes, errors
@@ -720,7 +778,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd")
 
     def net(p):
-        p.add_argument("--source", default="yahoo", choices=["yahoo", "stooq"])
+        p.add_argument("--source", default="yahoo", choices=["yahoo", "stockanalysis", "stooq"])
         p.add_argument("--offline", metavar="DIR", help="read <source>-<TICKER>.json|csv files, no network")
         p.add_argument("--now", help="pretend it is this time (no offset = New York time)")
         p.add_argument("--json", action="store_true")
