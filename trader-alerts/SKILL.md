@@ -7,8 +7,9 @@ description: >-
   percent moves from the previous close, any time of day, and the NYSE
   opening bell, each ringing once so you are not spammed. Knows NYSE hours
   with the 2026 and 2027 holidays and 1:00 p.m. early closes, works out New
-  York time itself, fetches free delayed quotes (Yahoo chart JSON, Stooq
-  CSV) one ticker at a time, and writes trader/prices.json for sizing and the
+  York time itself, fetches free delayed quotes (Yahoo chart JSON, with
+  stockanalysis.com JSON as the fallback when Yahoo rate-limits) one ticker
+  at a time, and writes trader/prices.json for sizing and the
   risk check. Use when the user says "alert me when", "tell me if TSLA hits",
   "watch my stop", "watch my trade", "remind me to close by 3:55", "is the
   market open", "when does the market open", "get me a price", or right
@@ -75,8 +76,17 @@ close, so "flat by close" at 15:55 rings at 12:55 on those days.
   unofficial free JSON endpoint, one request per ticker, half a second apart.
   On a 429 it waits and tries once more; on a 429 or a 5xx after that it
   tries `query1`. It identifies itself as `day-trader-skill/2.0`.
+- `stockanalysis` (the working fallback): `stockanalysis.com/api/quotes/s/<TICKER>`,
+  an unofficial free JSON endpoint. Use it when Yahoo rate-limits you
+  (`--source stockanalysis`). It carries the previous close as well as the
+  open, high and low, so `pct_move` rules measure from the real previous
+  close instead of falling back to the open. Dotted tickers keep the dot
+  (`BRK.B`, not `BRK-B`).
 - `stooq`: `stooq.com/q/l/?s=tsla.us&f=sd2t2ohlcv&h&e=csv`, Stooq's free CSV.
-  It answered 404 on 2026-10-13; the parser stays for when it is back.
+  It answered 404 on 2026-10-13 and still did on 2026-10-21, when the whole
+  site also moved behind a JavaScript browser check that a standard-library
+  client cannot pass. The parser stays for when it is back; until then it
+  cannot return a quote, so use `stockanalysis`.
 - Free quotes are unofficial, delayed and can lag. They are fine for alerts
   and for checking a size, not for timing an order. The broker's price is the
   one that fills. Each price in `trader/prices.json` keeps its quote time, and

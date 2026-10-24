@@ -107,6 +107,48 @@ class Quotes(unittest.TestCase):
             with self.assertRaises(alerts.AlertError):
                 alerts.parse_stooq(fh.read(), "ZZZZ")
 
+    def test_stockanalysis_fixture(self):
+        with open(os.path.join(QDIR, "stockanalysis-TSLA.json")) as fh:
+            q = alerts.parse_stockanalysis(fh.read(), "TSLA")
+        self.assertEqual(q["price"], 386.07)
+        self.assertEqual(q["prev_close"], 373.71)
+        self.assertEqual(q["open"], 381.43)
+        self.assertEqual((q["high"], q["low"]), (388.84, 380.51))
+        self.assertEqual(q["source"], "stockanalysis")
+
+    def test_stockanalysis_supplies_a_real_previous_close(self):
+        """pct_move falls back to the open when prev_close is missing, so the
+        fallback source must carry a real previous close (stooq never did)."""
+        with open(os.path.join(QDIR, "stockanalysis-KO.json")) as fh:
+            q = alerts.parse_stockanalysis(fh.read(), "KO")
+        self.assertEqual(q["prev_close"], 93.49)
+        self.assertLess(q["price"], q["prev_close"])
+
+    def test_stockanalysis_coerces_integer_prices_to_float(self):
+        with open(os.path.join(QDIR, "stockanalysis-BRK.B.json")) as fh:
+            q = alerts.parse_stockanalysis(fh.read(), "BRK.B")
+        self.assertEqual(q["price"], 541.0)
+        self.assertIsInstance(q["price"], float)
+        self.assertIsInstance(q["high"], float)
+
+    def test_stockanalysis_no_data_raises(self):
+        with open(os.path.join(QDIR, "stockanalysis-ZZZZ.json")) as fh:
+            with self.assertRaises(alerts.AlertError):
+                alerts.parse_stockanalysis(fh.read(), "ZZZZ")
+
+    def test_stockanalysis_url_keeps_dotted_tickers(self):
+        """stooq wants brk-b; stockanalysis 404s on BRK-B and needs the dot."""
+        self.assertEqual(alerts.stockanalysis_url("BRK.B"),
+                         "https://stockanalysis.com/api/quotes/s/BRK.B")
+        self.assertEqual(alerts.stockanalysis_url("tsla"),
+                         "https://stockanalysis.com/api/quotes/s/TSLA")
+
+    def test_offline_quotes_from_stockanalysis(self):
+        q, errors = alerts.get_quotes(["TSLA", "KO", "ZZZZ"], "stockanalysis", QDIR)
+        self.assertEqual(sorted(q), ["KO", "TSLA"])
+        self.assertEqual(q["TSLA"]["price"], 386.07)
+        self.assertEqual(len(errors), 1)
+
     def test_urls_and_user_agent(self):
         self.assertEqual(alerts.UA, UA)
         self.assertEqual(alerts.stooq_url("BRK.B"), "https://stooq.com/q/l/?s=brk-b.us&f=sd2t2ohlcv&h&e=csv")
