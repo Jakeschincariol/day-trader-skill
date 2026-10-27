@@ -5,10 +5,10 @@ import unittest
 
 from _load import ROOT
 
-# v2, the day-trading pack: the eleven folders the reel's repo card shows
+# v2, the day-trading pack: the eleven folders the reel's repo card shows, plus this fork's trader-zones
 SKILLS = ["trader-scanner", "trader-news", "trader-entry", "trader-exit", "trader-timemachine",
           "trader-risk", "trader-budget", "trader-broker", "trader-alerts", "trader-analyst",
-          "trader-pelosi"]
+          "trader-pelosi", "trader-zones"]
 ABOUT = ("11 Claude skills for day trading: scan thousands of charts, track breaking news, time every "
          "entry and exit, and replay every outcome before you risk a dollar.")
 # skills on the way to an order carry the safety block

@@ -73,6 +73,12 @@ or in the `SEC_USER_AGENT` environment variable.
 | `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
 | `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
 
+**Added in this fork: a twelfth skill for forex, gold and futures.**
+
+| command | job | what it does |
+| --- | --- | --- |
+| `/trader-zones` | Zone Finder | ICT supply and demand zones on the 1-hour, 30-minute and 15-minute charts of XAUUSD, GBPUSD, EURUSD, NQ and MGC, and the 5-minute / 3-minute entry after a sweep: an FVG or IFVG in the 62% to 79% retracement, then a 3-minute CHoCH. Signals only, it never places an order. Gold is read from futures. |
+
 ## How to use it
 
 Everything lands in a `trader/` folder in your project, and each skill reads
@@ -210,6 +216,7 @@ trader-broker/      SKILL.md, ticket.py, claude_desktop_config.example.json
 trader-alerts/      SKILL.md, alerts.py, alerts.example.json
 trader-analyst/     SKILL.md, facts.py, metrics.example.json
 trader-pelosi/      SKILL.md, ptr.py
+trader-zones/       SKILL.md, zones.py   (added in this fork)
 tests/              unittest suite + offline fixtures
 ```
 
