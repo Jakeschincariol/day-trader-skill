@@ -50,7 +50,7 @@ is a real yes for that order, builds the flatten ticket, and keeps the log in
 | file | what |
 | --- | --- |
 | `trader/orders.json` | the proposed orders (trader-budget writes it; `flatten` replaces it) |
-| `trader/state/risk.json` | trader-risk's verdicts; only a PASS from today is READY |
+| `trader/state/risk.json` | trader-risk's verdicts; only an unexpired PASS from today is READY |
 | `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss |
 | `trader/portfolio.json` | cash and shares, updated by `fill` and by `result --filled-qty` |
 | `trader/plan.json` | the flat-by time for `flatten` |

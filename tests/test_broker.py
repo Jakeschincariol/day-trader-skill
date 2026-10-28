@@ -251,6 +251,18 @@ class Flow(unittest.TestCase):
         code, text, _ = run(self.args("show", "--index", "1"))
         self.assertIn("not today", text)
 
+    def test_the_risk_check_expires(self):
+        self.assertEqual(self.run_risk(now="2026-10-19 10:15"), 0)      # valid_until 10:30 ET (15 minutes)
+        code, text, _ = run(self.args("show", "--index", "1", now="2026-10-19 10:29"))
+        self.assertEqual(code, 0)
+        self.assertIn("READY: trader-risk PASS", text)
+        code, text, _ = run(self.args("show", "--index", "1", now="2026-10-19 10:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("NOT READY: the risk check expired at 10:30 New York; run check.py again", text)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes", now="2026-10-19 10:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("expired", err)
+
     def test_blocked_orders_are_never_ready(self):
         self.assertEqual(self.run_risk(now="2026-10-19 09:40"), 1)
         code, text, _ = run(self.args("show", "--index", "1", now="2026-10-19 09:40"))

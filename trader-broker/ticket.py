@@ -8,8 +8,10 @@ work around the one moment that matters, your yes:
             exact JSON Claude will send to Alpaca's place_stock_order tool.
             A bracket order shows its stop-loss, take-profit and the max loss
             at the stop. An order is READY only if trader-risk passed THIS
-            exact order today (matched by fingerprint) and nobody has decided
-            on it yet.
+            exact order today (matched by fingerprint), that verdict has not
+            expired (check.py's valid_until: 15 minutes, and for an entry no
+            later than its no_entries_after cutoff or the close), and nobody
+            has decided on it yet.
   approve   records your explicit yes for ONE order, with your reply word for
             word. It refuses "yes to all", "sure", "ok", a yes that names a
             different stock or amount, and any order that is not READY.
@@ -312,21 +314,35 @@ def latest(state, fp, today):
     return found
 
 
-def risk_verdict(risk, fp, today):
+def _parse_utc(text):
+    """"2026-10-19T14:30:00Z" -> naive UTC, same stamp format check.py writes."""
+    if not text:
+        return None
+    try:
+        return datetime.datetime.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+
+
+def risk_verdict(risk, fp, today, now):
     if not risk:
         return None, "trader-risk has not checked these orders (run check.py)"
     if risk.get("date") != today:
         return None, "the risk check is from %s, not today; run check.py again" % risk.get("date")
     for r in risk.get("results", []):
         if r.get("fingerprint") == fp:
+            until = _parse_utc(r.get("valid_until"))
+            if until is not None and now > until:
+                return None, ("the risk check expired at %s New York; run check.py again"
+                              % to_eastern(until).strftime("%H:%M"))
             return r, None
     return None, "this exact order was not in the last risk check (it changed or is new); run check.py again"
 
 
-def status_of(order, risk, state, today):
+def status_of(order, risk, state, today, now):
     """(ready, label, risk_result)"""
     fp = fingerprint(order)
-    rv, why = risk_verdict(risk, fp, today)
+    rv, why = risk_verdict(risk, fp, today, now)
     if rv is None:
         return False, "NOT READY: " + why, None
     if rv.get("verdict") != "PASS":
@@ -349,8 +365,8 @@ def kind_of(order, rv):
 
 # ---------------------------------------------------------------- rendering
 
-def render(order, idx, total, cfg, risk, state, today):
-    ready, label, rv = status_of(order, risk, state, today)
+def render(order, idx, total, cfg, risk, state, today, now):
+    ready, label, rv = status_of(order, risk, state, today, now)
     broker = str(cfg.get("broker", "alpaca")).lower()
     paper = cfg.get("paper", True)
     acct = "PAPER account" if paper else "LIVE ACCOUNT, REAL MONEY"
@@ -379,8 +395,8 @@ def render(order, idx, total, cfg, risk, state, today):
     return "\n".join(lines), ready
 
 
-def ticket_json(order, idx, cfg, risk, state, today):
-    ready, label, rv = status_of(order, risk, state, today)
+def ticket_json(order, idx, cfg, risk, state, today, now):
+    ready, label, rv = status_of(order, risk, state, today, now)
     loss, stop = max_loss(order)
     return {"index": idx, "ready": ready, "status": label, "plain": plain(order),
             "fingerprint": fingerprint(order), "paper": bool(cfg.get("paper", True)),
@@ -483,12 +499,12 @@ def cmd_show(a):
     orders, cfg, risk, state, today, now = _load(a)
     picks = [(a.index, _pick(orders, a.index))] if a.index else list(enumerate(orders, 1))
     if a.json:
-        out = [ticket_json(o, i, cfg, risk, state, today) for i, o in picks]
+        out = [ticket_json(o, i, cfg, risk, state, today, now) for i, o in picks]
         print(json.dumps(out[0] if a.index else out, indent=2))
         return 0 if any(t["ready"] for t in out) else 1
     blocks, any_ready = [], False
     for i, o in picks:
-        text, ready = render(o, i, len(orders), cfg, risk, state, today)
+        text, ready = render(o, i, len(orders), cfg, risk, state, today, now)
         blocks.append(text)
         any_ready = any_ready or ready
     print("\n\n".join(blocks))
@@ -500,7 +516,7 @@ def cmd_show(a):
 def cmd_approve(a):
     orders, cfg, risk, state, today, now = _load(a)
     order = _pick(orders, a.index)
-    ready, label, rv = status_of(order, risk, state, today)
+    ready, label, rv = status_of(order, risk, state, today, now)
     if not ready:
         raise TicketError("order %d is not ready: %s" % (a.index, label))
     ok, why = parse_yes(a.reply, order, [o.get("symbol", "") for o in orders])
