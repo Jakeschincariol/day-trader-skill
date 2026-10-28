@@ -77,6 +77,35 @@ class Apple(unittest.TestCase):
         self.assertEqual((q["2025-03-31"]["fy"], q["2025-03-31"]["fp"]), (2025, "Q1"))
 
 
+def _q(end, val, fp, form, accn, start):
+    return {"start": start, "end": end, "val": val, "fy": 2026, "fp": fp, "form": form, "filed": end, "accn": accn}
+
+
+class DerivedFlag(unittest.TestCase):
+    def test_derived_includes_a_q4_that_is_only_derived_in_eps(self):
+        # revenue and net income are reported directly for all four quarters (not derived);
+        # only EPS skips Q4, so only the eps_diluted series needs the FY-minus-Q1..Q3 derivation
+        quarters = [("2026-01-01", "2026-03-31", "Q1", 100), ("2026-04-01", "2026-06-30", "Q2", 110),
+                   ("2026-07-01", "2026-09-30", "Q3", 120), ("2026-10-01", "2026-12-31", "Q4", 130)]
+        revenue = [_q(end, val, fp, "10-Q", fp, start) for start, end, fp, val in quarters]
+        net_income = [_q(end, val / 10.0, fp, "10-Q", fp + "n", start) for start, end, fp, val in quarters]
+        eps = [_q(end, val, fp, "10-Q", fp + "e", start)
+              for start, end, fp, val in (("2026-01-01", "2026-03-31", "Q1", 1.00),
+                                           ("2026-04-01", "2026-06-30", "Q2", 1.10),
+                                           ("2026-07-01", "2026-09-30", "Q3", 1.20))]
+        eps.append(_q("2026-12-31", 4.50, "FY", "10-K", "fy", "2026-01-01"))
+        companyfacts = {"entityName": "Test Co", "cik": 1, "facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": revenue}},
+            "NetIncomeLoss": {"units": {"USD": net_income}},
+            "EarningsPerShareDiluted": {"units": {"USD/shares": eps}},
+        }}}
+        result = facts.analyse(companyfacts, quarters=4)
+        q4 = next(r for r in result["rows"] if r["end"] == "2026-12-31")
+        self.assertFalse(facts.quarterly(revenue)["2026-12-31"]["derived"])
+        self.assertTrue(q4["derived"])
+        self.assertEqual(q4["eps_diluted"], 1.2)       # 4.50 - (1.00 + 1.10 + 1.20)
+
+
 class Filings(unittest.TestCase):
     def test_latest_10q_and_earnings_press_release(self):
         with open(os.path.join(DIR, "submissions-CIK0000320193.json")) as fh:
