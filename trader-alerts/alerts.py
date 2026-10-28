@@ -513,8 +513,10 @@ def rules_from_plan(plan, cfg_flat_by=None):
     flat = plan.get("flat_by") or cfg_flat_by or "15:55"
     if _hhmm(flat) is None:
         raise AlertError("the plan's flat_by %r is not a time like 15:55" % flat)
+    # The plan's flat_by is already resolved for its own day (trader-exit moves it up on an
+    # early close): don't shift it again here with before_close, or it rings 3 hours early.
     out.append({"id": "%s-flat-by" % sym.lower(), "symbol": sym, "type": "time", "at": flat,
-                "label": "flat by close", "before_close": True})
+                "label": "flat by close"})
     if plan.get("date"):
         for r in out:
             r["date"] = str(plan["date"])
