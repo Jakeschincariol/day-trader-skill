@@ -141,7 +141,11 @@ class Reel(unittest.TestCase):
         self.assertEqual((p["symbol"], p["entry"], p["stop"], p["target"], p["entry_bar"], p["entry_time"]),
                          ("TSLA", 364.18, 358.32, 370.04, 8, "10:15 AM"))
         self.assertEqual((p["risk_per_share"], p["target_r"], p["flat_by"]), (5.86, 1.0, "15:55"))
-        self.assertEqual(self.doc["warnings"], [])
+        # the fixture's data runs to 10:49 ET, 6 closed bars past the 10:15 entry: real but
+        # unresolved (neither the stop 358.32 nor the target 370.04 was touched by 10:45)
+        self.assertEqual(self.doc["warnings"],
+                         ["6 bar(s) after the entry are already in the data and were not used: the odds "
+                          "are from the entry bar only"])
 
     def test_the_text_report(self):
         text = "\n".join(tm.report(self.doc))
@@ -296,7 +300,9 @@ class Bars(unittest.TestCase):
         last = sessions[-1][1]
         p = plan(date="2026-11-27", entry=round(last[8]["c"], 2), stop=round(last[8]["c"], 2) - 5,
                  target=round(last[8]["c"], 2) + 5, stop_rule="pct")
-        later = tm.parse_now("2026-11-28 12:00")
+        # right after the entry bar closes: nothing past it is in the data yet, so the real
+        # bars after the entry can't have already resolved the trade
+        later = tm.parse_now("2026-11-27 10:16")
         doc = machine(p, text=text, now=later, replays=300)
         self.assertEqual((doc["mc"]["until"], doc["mc"]["bars_left"], doc["mc"]["pool_sessions"]), ("13:00", 33, 29))
         self.assertIn("to 1:00 PM", "\n".join(tm.report(doc)))
@@ -360,6 +366,14 @@ class Plans(unittest.TestCase):
     def test_an_entry_outside_its_bar_is_flagged(self):
         doc = machine(plan(entry=368.0, stop=362.0, target=374.0), replays=200)
         self.assertIn("outside that bar's range", doc["warnings"][0])
+
+    def test_refuses_odds_once_the_real_bars_already_resolved_it(self):
+        # the fixture's 10:20 bar (high 365.88) already hits this target before the sim starts
+        with self.assertRaises(tm.TMError) as cm:
+            machine(plan(stop=360.0, target=365.50), replays=10)
+        msg = str(cm.exception)
+        self.assertIn("target was hit at 10:25 (bar 10) on 2026-10-19", msg)
+        self.assertIn("hindsight, not a forecast", msg)
 
     def test_stop_rounds_away_from_the_entry(self):
         self.assertEqual(tm.cents_away(358.325, True), 358.32)
