@@ -482,9 +482,11 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     or_bars = [b for b in bars if b["slot"] < n_or]
     avg_vol = (sum(b["v"] for b in or_bars) / float(len(or_bars))) if or_bars else None
     if or_bars:
+        # "complete" is bar count, not the clock: a missing bar (data gap) must not look done
+        # just because enough time has passed.
         res["opening_range"] = {"high": r2(max(b["h"] for b in or_bars)), "low": r2(min(b["l"] for b in or_bars)),
                                 "minutes": or_minutes, "bars": len(or_bars), "of": n_or,
-                                "complete": local >= or_end, "avg_volume": int(round(avg_vol))}
+                                "complete": len(or_bars) == n_or, "avg_volume": int(round(avg_vol))}
     if setup == "orb":
         if local < or_end:
             res.update(phase="forming", reason="%d of %d range bars closed; the range is set at %s" % (
@@ -492,6 +494,11 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
             return res
         if not or_bars:
             res.update(status="no-data", phase="open", reason="Yahoo sent no bars for the opening range")
+            return res
+        if len(or_bars) != n_or:
+            res.update(status="no-data", phase="open",
+                       reason="the opening range is missing %d of %d bar(s): Yahoo has a gap, the range "
+                              "cannot be trusted" % (n_or - len(or_bars), n_or))
             return res
         lvl = max(b["h"] for b in or_bars)
     else:

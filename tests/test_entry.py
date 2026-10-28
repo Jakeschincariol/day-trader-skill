@@ -71,6 +71,16 @@ def no_breakout(d=None):
     return d
 
 
+def drop_bar(d, slot):
+    """Remove one bar (e.g. the 9:30 open) to simulate a Yahoo data gap."""
+    d = copy.deepcopy(d if d is not None else doc())
+    r = d["chart"]["result"][0]
+    del r["timestamp"][slot]
+    for k, arr in r["indicators"]["quote"][0].items():
+        del arr[slot]
+    return d
+
+
 def run(argv):
     out, err = io.StringIO(), io.StringIO()
     with redirect_stdout(out), redirect_stderr(err):
@@ -115,6 +125,16 @@ class TheReel(unittest.TestCase):
         r = at("2026-10-19 09:46")
         self.assertEqual((r["status"], r["phase"]), ("waiting", "open"))
         self.assertEqual(r["opening_range"]["bars"], 3)
+
+    def test_a_missing_opening_range_bar_is_not_complete_and_does_not_trigger(self):
+        d = drop_bar(doc(), 0)                     # the 9:30 bar never arrived
+        r = at("2026-10-19 09:50", d)
+        self.assertEqual(r["opening_range"]["bars"], 2)
+        self.assertFalse(r["opening_range"]["complete"])
+        self.assertEqual(r["status"], "no-data")
+        self.assertIn("missing 1 of 3 bar", r["reason"])
+        r = at("2026-10-19 10:15", d)               # would have triggered with the full range
+        self.assertEqual(r["status"], "no-data")
 
     def test_the_live_tick_and_the_in_progress_bar_are_dropped(self):
         c = chart()
