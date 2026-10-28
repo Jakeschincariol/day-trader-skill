@@ -52,10 +52,14 @@ Below it: a note when more than 40 % of the replays hit neither (the price at
 
 5-minute bars only: Yahoo keeps 60 days of 5-min bars but only about 7 days of
 1-min bars, too few sessions for a fair pool. The run refuses with a plain
-message when there are fewer than 20 full sessions or the entry bar is not in
-the data. Same plan, same data and same --seed give the same numbers on any
-machine. A simulation built from the stock's own recent bars is not a
-prediction: earnings, news and halts can do what the last 60 days never did.
+message when there are fewer than 20 full sessions, the entry bar is not in
+the data, or the real bars after the entry are already in the data and
+already settled the trade (same stop-first tie rule as the sim): odds on a
+done trade would be hindsight. When later real bars exist but did not settle
+it, the run still works and says those bars were not used. Same plan, same
+data and same --seed give the same numbers on any machine. A simulation
+built from the stock's own recent bars is not a prediction: earnings, news
+and halts can do what the last 60 days never did.
 
 Data: https://query2.finance.yahoo.com/v8/finance/chart/<T>?range=60d&interval=5m
 (unofficial and free, can lag; falls back to query1 on 429 or 5xx).
@@ -424,6 +428,22 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
     }
 
 
+def real_outcome(entry_day, k, last, entry, stop, target, long):
+    """What actually happened after the entry, on the plan-day bars already in the data
+    (same stop-before-target tie rule as simulate()). (outcome, slot, every later slot
+    already in the data); outcome and slot are None when none of them resolved it."""
+    avail = sorted(s for s in entry_day if k < s <= last)
+    for s in avail:
+        b = entry_day[s]
+        hit_stop = b["l"] <= stop if long else b["h"] >= stop
+        hit_target = b["h"] >= target if long else b["l"] <= target
+        if hit_stop:
+            return "stop", s, avail
+        if hit_target:
+            return "target", s, avail
+    return None, None, avail
+
+
 # ---------------------------------------------------------------- stop rules and the history replay
 
 def cents_away(x, long):
@@ -716,6 +736,15 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     if not eb["l"] - 0.01 <= plan["entry"] <= eb["h"] + 0.01:
         warn.append("the plan's entry %.2f is outside that bar's range %.2f to %.2f"
                     % (plan["entry"], eb["l"], eb["h"]))
+    outcome, resolved_at, later_bars = real_outcome(entry_day, k, last, plan["entry"], plan["stop"],
+                                                     plan["target"], plan["side"] == "buy")
+    if outcome:
+        raise TMError("the real bars already settled this: %s was hit at %s (bar %d) on %s. Odds from "
+                      "here would be hindsight, not a forecast; run the time machine before the entry."
+                      % (outcome, clock24(OPEN_MIN + 5 * (resolved_at + 1)), resolved_at, plan["date"]))
+    if later_bars:
+        warn.append("%d bar(s) after the entry are already in the data and were not used: the odds are "
+                    "from the entry bar only" % len(later_bars))
     sessions, short = full_sessions(days, plan["date"])
     if len(sessions) < MIN_SESSIONS:
         raise TMError("only %d full session(s) of %s before %s in the data; the time machine needs at least %d"

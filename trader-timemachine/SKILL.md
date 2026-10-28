@@ -92,9 +92,14 @@ Say the seed with every result so the user can repeat it.
 **5-minute bars only.** Yahoo keeps 60 days of 5-min bars but only about 7
 days of 1-min bars, too few sessions for a fair pool. It refuses, in one
 plain line, when there are fewer than 20 full sessions, when the entry bar is
-not in the data (wrong date, not closed yet, a future day), or when the plan
+not in the data (wrong date, not closed yet, a future day), when the plan
 does not make sense (a stop above a buy's entry, an entry off the 5-minute
-grid). A live in-progress bar is never used.
+grid), or when the real bars after the entry are already in the data and
+already hit the stop or the target (same stop-first tie rule as the sim):
+odds on a settled trade would be hindsight, not a forecast. A live
+in-progress bar is never used. If later real bars are in the data but did
+not resolve it yet, it still runs, with a warning that those bars were not
+used.
 
 ## Steps
 
