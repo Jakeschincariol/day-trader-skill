@@ -256,7 +256,7 @@ def analyse(companyfacts, quarters=6, name=None):
         rows.append({
             "end": end, "start": base.get("start"),
             "fiscal": "%s %s" % (base.get("fp") or "", base.get("fy") or ""),
-            "derived": any(s[k].get(end, {}).get("derived") for k in ("revenue", "net_income")),
+            "derived": any(s[k].get(end, {}).get("derived") for k in ("revenue", "net_income", "eps_diluted")),
             "revenue": r, "gross_profit": gp, "operating_income": oi, "net_income": ni,
             "eps_diluted": round(eps, 2) if eps is not None else None,
             "gross_margin": margin(gp, r), "operating_margin": margin(oi, r),
