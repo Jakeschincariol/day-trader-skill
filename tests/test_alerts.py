@@ -266,7 +266,8 @@ class Rules(unittest.TestCase):
         self.assertEqual([(r["id"], r["type"]) for r in rules],
                          [("tsla-plan-stop", "stop"), ("tsla-plan-target", "target"), ("tsla-flat-by", "time")])
         self.assertEqual((rules[0]["price"], rules[1]["price"]), (358.32, 370.04))
-        self.assertEqual((rules[2]["at"], rules[2]["label"], rules[2]["before_close"]), ("15:55", "flat by close", True))
+        self.assertEqual((rules[2]["at"], rules[2]["label"]), ("15:55", "flat by close"))
+        self.assertNotIn("before_close", rules[2])  # the plan's flat_by is already resolved for its day
         self.assertTrue(all(r["date"] == "2026-10-19" for r in rules))
         rings, st = self.at("2026-10-19 10:52", rules)          # the real 10:52 quote, 366.475
         self.assertEqual(rings, [])
@@ -290,6 +291,20 @@ class Rules(unittest.TestCase):
         rings, _ = self.at("2026-10-19 16:10", rules)
         self.assertIn("the market has closed", rings[0]["message"])
         self.assertEqual(self.at("2026-10-20 15:56", rules, st)[0], [])     # plan rules: their day only
+
+    def test_plan_flat_by_rings_at_the_plans_own_time_on_an_early_close(self):
+        # trader-exit already moves flat_by up for a 1 PM early close (15:55 -> 12:55); the
+        # plan rule must ring exactly then, not 3 hours earlier again.
+        plan = dict(symbol="TSLA", stop=358.32, target=370.04, flat_by="12:55", date="2026-11-27")
+        rule = alerts.rules_from_plan(plan)[2]
+        self.assertEqual(self.at("2026-11-27 12:54", [rule])[0], [])
+        rings, _ = self.at("2026-11-27 12:55", [rule])
+        self.assertIn("set for 12:55", rings[0]["message"])
+        # an explicit --flat-by 12:30 (left alone by trader-exit since it is before the 1 PM close)
+        plan2 = dict(plan, flat_by="12:30")
+        rule2 = alerts.rules_from_plan(plan2)[2]
+        self.assertEqual(self.at("2026-11-27 09:30", [rule2])[0], [])
+        self.assertEqual(len(self.at("2026-11-27 12:30", [rule2])[0]), 1)
 
     def test_a_time_alert_moves_with_an_early_close(self):
         rule = [{"id": "flat", "type": "time", "at": "15:55", "label": "flat by close", "before_close": True}]
