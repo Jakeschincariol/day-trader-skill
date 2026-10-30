@@ -457,6 +457,12 @@ def clean_title(title):
     return re.sub(r"\s*/[A-Z]{2,5}/?\s*$", "", title or "").strip() or None
 
 
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+US_ONLY = ("%s is a Canadian listing: trader-analyst is US-only for now. It reads SEC EDGAR's XBRL "
+           "facts, and Canadian companies file with SEDAR+ instead (sedarplus.ca, no free API). "
+           "A company also listed in the US may file with the SEC: try its US ticker (SHOP for SHOP.TO).")
+
+
 def ticker_ciks(fetcher):
     """ticker -> (10-digit CIK, company name) from company_tickers.json."""
     data = fetcher.json(TICKERS_URL, "company_tickers.json")
@@ -481,6 +487,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not args.tickers and not args.cik:
         ap.print_help()
+        return 2
+    canadian = [t for t in args.tickers if t.upper().endswith(CA_SUFFIXES)]
+    for t in canadian:
+        print("facts: " + US_ONLY % t.upper(), file=sys.stderr)
+    args.tickers = [t for t in args.tickers if t not in canadian]
+    if canadian and not args.tickers and not args.cik:
         return 2
     ua = user_agent(args.user_agent, args.config)
     if not ua and not args.offline:

@@ -198,3 +198,14 @@ class ParseReport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    def test_a_canadian_ticker_is_us_only_for_now(self):
+        path = os.path.join(DIR, "ptr-20035143.txt")
+        code, out, err = run(["parse", path, "--tickers", "SHOP.TO", "BE", "--portfolio", "/nonexistent"])
+        self.assertEqual(code, 0)                                   # the report still runs for BE
+        self.assertIn("SHOP.TO is a Canadian listing: trader-pelosi is US-only for now", err)
+        self.assertIn("PTR 20035143", out)
+        code, out, err = run(["parse", path, "--tickers", "BE", "--portfolio", "/nonexistent"])
+        self.assertEqual(err, "")
