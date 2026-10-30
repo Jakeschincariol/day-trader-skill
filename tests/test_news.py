@@ -206,3 +206,27 @@ class Check(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """.TO / .V tickers: Yahoo headlines and the move, no SEC 8-Ks (SEDAR+ has no free API)."""
+
+    def test_no_sec_for_a_canadian_ticker(self):
+        fetcher = news.Fetcher("Test Person test@example.org", offline=DIR)
+        errors = []
+        news.collect(fetcher, {"RY.TO": None}, {}, sec=True, errors=errors)
+        self.assertTrue(any(e.startswith("SEC 8-Ks skipped for RY.TO: Canadian listings file with SEDAR+")
+                            for e in errors), errors)
+        self.assertFalse(any("SEC ticker list" in e or "no SEC CIK" in e for e in errors), errors)
+        errors = []
+        items = news.collect(fetcher, {"RY.TO": None, "AAPL": None}, {}, sec=True, errors=errors)
+        self.assertEqual({i["ticker"] for i in items if i["kind"] == "filing"}, {"AAPL"})   # US: unchanged
+        self.assertFalse(any("no SEC CIK for RY.TO" in e for e in errors), errors)
+
+    def test_symbols_and_mentions(self):
+        self.assertEqual(news.yahoo_symbol("RY.TO"), "RY.TO")
+        self.assertEqual(news.yahoo_symbol("bbd.b.to"), "BBD-B.TO")
+        self.assertEqual(news.yahoo_symbol("BRK.B"), "BRK-B")
+        rx = news.mention_patterns({"RY.TO": None})["RY.TO"]
+        self.assertTrue(rx.search("Royal Bank (TSX: RY) raises its dividend"))
+        self.assertFalse(rx.search("TSX: RYX rallies"))

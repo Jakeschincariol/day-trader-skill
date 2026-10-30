@@ -59,6 +59,15 @@ python3 "${CLAUDE_SKILL_DIR}/news.py" --no-sec --json
 - **No predictions.** Report what was published and how far the price is from
   yesterday's close. Never say what the stock will do next.
 
+## Canada (TSX and TSXV)
+
+A `.TO` or `.V` ticker (`RY.TO`, `SHOP.TO`, `AUMB.V`) gets the Yahoo headlines and the day's move,
+the same as a US one. It gets no SEC part: Canadian listings file with SEDAR+ (sedarplus.ca),
+which has no clean free API, so the 8-K step is skipped and the notes say so. Tell the user to
+check SEDAR+ by hand for material-change reports and earnings. With `"market": "ca"` in
+`trader/config.json` (or `--market ca`), a bare `--tickers RY` means `RY.TO`. A headline that
+says "(TSX: RY)" counts as touching RY.TO.
+
 ## Steps
 
 1. Run the check: `python3 "${CLAUDE_SKILL_DIR}/news.py"`. Exit code 1 means
