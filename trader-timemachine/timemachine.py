@@ -27,7 +27,7 @@ How the replays work (the reel's sim.py, same algorithm, same random draws):
      so a bar that touches both counts as the stop (the conservative call).
   4. Outcomes: "target" or "stop" (whichever was touched first), or "neither"
      when the trade is still open at --until (default 16:00, the close, or
-     13:00 on an NYSE early-close day).
+     13:00 on an early-close day: the NYSE's, or the TSX's with "market": "ca").
      "green" = target first, or above the entry at --until (below for a sell).
      R = the target's R at the target, -1 at the stop, otherwise
      (price at --until - entry) / risk. A gap through the stop still counts
@@ -101,11 +101,52 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET, from https://www.nyse.com/markets/hours-ca
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+# "market": "ca": the TSX's 1:00 p.m. close, from TMX's 2026 holiday list at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30), footnote
+# "Closing at 1:00 PM (TSX/TSXV)". TMX had not published 2027 yet. Holidays need no list here:
+# a closed day has no bars in the data.
+TSX_EARLY_CLOSE = {
+    "2026-12-24": "Christmas Eve",
+}
+EARLY_CLOSES = {"us": NYSE_EARLY_CLOSE, "ca": TSX_EARLY_CLOSE}
+MARKET = "us"
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
 EARLY_MIN = 13 * 60
 
 
 class TMError(Exception):
     pass
+
+
+def use_market(name):
+    """"us" (the default) or "ca": which exchange's early closes count."""
+    global MARKET
+    name = (name or "us").strip().lower()
+    if name not in EARLY_CLOSES:
+        raise TMError('market wants "us" or "ca", not "%s"' % name)
+    MARKET = name
+    return name
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return "us"
+    return (doc.get("market") if isinstance(doc, dict) else None) or "us"
+
+
+def to_yahoo(sym):
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
 
 
 # ---------------------------------------------------------------- time (copied from trader-alerts)
@@ -187,7 +228,7 @@ def clock24(minutes):
 
 def chart_url(sym, host="query2"):
     return "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=60d&interval=5m" % (
-        host, urllib.parse.quote(sym.upper().replace(".", "-")))
+        host, urllib.parse.quote(to_yahoo(sym)))
 
 
 def _sleep(seconds):
@@ -508,7 +549,10 @@ def load_plan(a, now_utc):
         missing = [f for f in ("entry", "stop", "target", "entry_time") if getattr(a, f) is None]
         if missing:
             raise TMError("with --symbol also give %s" % ", ".join("--" + m.replace("_", "-") for m in missing))
-        raw = {"symbol": a.symbol, "side": a.side, "date": a.date or to_eastern(now_utc).date().isoformat(),
+        sym = a.symbol.strip().upper()
+        if MARKET == "ca" and not sym.endswith(CA_SUFFIXES):
+            sym += ".TO"                       # a bare ticker is a TSX listing
+        raw = {"symbol": sym, "side": a.side, "date": a.date or to_eastern(now_utc).date().isoformat(),
                "entry": a.entry, "stop": a.stop, "target": a.target, "entry_time": a.entry_time,
                "setup": a.setup, "opening_range": {"minutes": a.or_minutes}, "stop_rule": a.stop_rule,
                "interval": "5m"}
@@ -524,6 +568,8 @@ def load_plan(a, now_utc):
             raise TMError("%s is not valid JSON: %s" % (a.plan, e))
         if not isinstance(raw, dict):
             raise TMError("%s is not a plan" % a.plan)
+        if raw.get("market") and not getattr(a, "market", None):
+            use_market(raw["market"])          # trader-exit writes "market": "ca" on a Canadian plan
         src = a.plan
     return normalize_plan(raw, src)
 
@@ -686,7 +732,7 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     result = chart_result(text, sym)
     meta, bars, dropped = parse_bars(result, now_utc)
     msym = str(meta.get("symbol") or "").upper()
-    if msym and msym != sym.replace(".", "-"):
+    if msym and msym != to_yahoo(sym):
         raise TMError("the data is for %s but the plan is for %s" % (msym, sym))
     gran = meta.get("dataGranularity")
     if gran and gran != "5m":
@@ -694,7 +740,7 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     if not bars:
         raise TMError("no complete 5-minute bars for %s in the data" % sym)
     k = plan["entry_bar"]
-    early = plan["date"] in NYSE_EARLY_CLOSE
+    early = plan["date"] in EARLY_CLOSES[MARKET]
     end_min = EARLY_MIN if early else CLOSE_MIN
     until_min = end_min if until is None else parse_clock(until, "--until")
     if (until_min - OPEN_MIN) % 5 or until_min > end_min:
@@ -931,6 +977,9 @@ def main(argv=None):
         p.add_argument("--until", help="end each replay at this time (default 16:00, the close)")
         p.add_argument("--offline", metavar="FILE", help="a saved Yahoo chart JSON (.json or .json.gz), no network")
         p.add_argument("--now", help='pretend it is this time ("2026-10-19 10:15" New York, or ISO with Z)')
+        p.add_argument("--config", default="trader/config.json")
+        p.add_argument("--market", choices=sorted(EARLY_CLOSES), help='"us" or "ca" (default: the plan\'s, '
+                       'the config\'s, else us)')
 
     p = sub.add_parser("run", help="replay the plan: 10,000 simulated sessions plus the history")
     common(p)
@@ -946,6 +995,7 @@ def main(argv=None):
         ap.print_help()
         return 1
     try:
+        use_market(config_market(a.config, a.market))
         return {"run": cmd_run, "chart": cmd_chart}[a.cmd](a)
     except TMError as e:
         print("timemachine.py: %s" % e, file=sys.stderr)
