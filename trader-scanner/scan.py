@@ -8,6 +8,10 @@
     python3 scan.py orb --at 10:15 --or-minutes 15    # cut the clock at 10:15 AM ET
     python3 scan.py orb --offline wall5m.json.gz --now "2026-10-19 10:15" --min-price 0
 
+Market: "us" (the default) or "ca", from --market or "market" in trader/config.json. With "ca"
+the calendar is the TSX's, prices print as C$, a bare ticker is a TSX listing (RY -> RY.TO), and
+universe reads TMX's company directory instead of Nasdaq Trader's (see below).
+
 universe  Downloads Nasdaq Trader's symbol directories (nasdaqlisted.txt and
           otherlisted.txt) and keeps US-listed common stocks, ordinary shares
           and ADRs. The rule, in order:
@@ -24,6 +28,14 @@ universe  Downloads Nasdaq Trader's symbol directories (nasdaqlisted.txt and
                Global depositary shares, or partnership / trust units
             5. out: the name still says unit, right, bond, preferred or preference
             6. in: everything else (plain names like "AMETEK, Inc.")
+
+universe, "ca": TMX's company directory, the free JSON behind tsx.com's Listed Company
+          Directory (tsx.json; --venture adds tsxv.json). Kept: common shares, class shares
+          (BBD.B -> BBD-B.TO) and trust / REIT units (.UN). Out: .PR / .PF preferreds, .DB / .NT
+          debentures and notes, .WT warrants, rights, .U USD lines, .P capital pool shells, and
+          names that say ETF, fund (not a royalty fund), portfolio, index, CDR, bond or
+          split corp. Or bring
+          your own list with --from FILE (one ticker a line, or a CSV: the S&P/TSX Composite).
 
 daily     Pre-market scan of daily CLOSES (Yahoo spark: 20 symbols a request,
           3 months of 1-day bars, closes only). Liquidity from the spark meta:
@@ -120,7 +132,36 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
-CALENDAR_YEARS = (2026, 2027)
+# TSX and TSXV, for "market": "ca" in trader/config.json. The market holidays as TMX publishes them
+# ("2026 Stock Market Holidays - Stock Markets Closed") at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30). TMX had not
+# published 2027 yet, so 2027 is not covered. The five U.S. holidays that page also lists are TSX
+# trading days: TMX marks them "Special Settlement for Issues trading in USD", not closed.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "In Lieu of Boxing Day",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET, the page's footnote: "Closing at 1:00 PM (TSX/TSXV)"
+    "2026-12-24": "Christmas Eve",
+}
+MARKETS = {  # the same 9:30 to 4:00 p.m. ET session and the same 1:00 p.m. early close on both
+    "us": {"exchange": "NYSE", "holidays": NYSE_HOLIDAYS, "early": NYSE_EARLY_CLOSE, "years": (2026, 2027),
+           "site": "nyse.com", "currency": "USD", "sign": "$"},
+    "ca": {"exchange": "TSX", "holidays": TSX_HOLIDAYS, "early": TSX_EARLY_CLOSE, "years": (2026,),
+           "site": "tsx.com", "currency": "CAD", "sign": "C$"},
+}
+MARKET = "us"
+EXCHANGE, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = "NYSE", NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, (2026, 2027)
+SIGN = "$"
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
@@ -137,6 +178,18 @@ LABEL = dict(SETUPS)
 
 class ScanError(Exception):
     pass
+
+
+def use_market(name):
+    """Switch the calendar, the exchange name and the money sign: "us" (the default) or "ca"."""
+    global MARKET, EXCHANGE, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS, SIGN
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise ScanError('market wants "us" or "ca", not "%s"' % name)
+    m = MARKETS[name]
+    MARKET, EXCHANGE, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS, SIGN = (
+        name, m["exchange"], m["holidays"], m["early"], m["years"], m["sign"])
+    return name
 
 
 # ---------------------------------------------------------------- time
@@ -197,12 +250,12 @@ def parse_hhmm(text, flag="--at"):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NYSE holiday list."""
+    """(is_trading_day, reason). Weekends and the exchange's holiday list (NYSE, or TSX for "ca")."""
     if d.weekday() >= 5:
         return False, "weekend"
-    name = NYSE_HOLIDAYS.get(d.isoformat())
+    name = HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -211,7 +264,7 @@ def session(d):
     ok, _ = trading_day(d)
     if not ok:
         return None
-    return OPEN, (EARLY if d.isoformat() in NYSE_EARLY_CLOSE else CLOSE)
+    return OPEN, (EARLY if d.isoformat() in EARLY_CLOSE else CLOSE)
 
 
 def clock_label(t):
@@ -268,7 +321,18 @@ def yahoo_get(path):
 
 
 def to_yahoo(sym):
-    return sym.upper().replace(".", "-")
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def ca_symbol(sym):
+    """For "ca": a bare ticker is a TSX listing (RY -> RY.TO); .TO and .V are kept."""
+    s = sym.strip().upper()
+    return s if s.endswith(CA_SUFFIXES) else s + ".TO"
 
 
 def spark_path(symbols, rng, interval):
@@ -478,6 +542,92 @@ def build_universe(texts):
                 sym = (r.get("Symbol") or r.get("ACT Symbol")).strip()
                 kept[sym] = " ".join((r.get("Security Name") or "").split())
     return sorted(kept.items()), counts, created
+
+
+# ---------------------------------------------------------------- universe, Canada
+
+# TMX's company directory, the list behind tsx.com's Listed Company Directory: free JSON,
+# {"last_updated": ..., "length": N, "results": [{"symbol", "name", "instruments": [{"symbol", "name"}]}]}.
+# One record per issuer, every listed line under instruments. There is no type field, so the
+# rule reads TMX's own symbol suffixes and the issuer name.
+TMX_URL = "https://www.tsx.com/json/company-directory/search/%s/%%5E*"
+TMX_FILES = {"tsx": "tsx.json", "tsxv": "tsxv.json"}
+TMX_YAHOO = {"tsx": ".TO", "tsxv": ".V"}
+TMX_TICKER = re.compile(r"^[A-Z0-9]{1,6}(\.[A-Z]{1,2})?$")
+TMX_SUFFIX_OUT = [  # in order; .A / .B class shares and .UN trust or REIT units stay in
+    ("preferred", re.compile(r"\.P[RF]\.")),
+    ("debenture or note", re.compile(r"\.(DB|NT|NO)(\.|$)")),
+    ("warrant", re.compile(r"\.(WT|W)(\.|$)")),
+    ("right or receipt", re.compile(r"\.(RT|R|IR|SR)(\.|$)")),
+    ("USD line", re.compile(r"\.U$")),
+    ("capital pool company", re.compile(r"\.P$")),
+    ("halted or other", re.compile(r"\.H$")),
+]
+TMX_NAME_OUT = [
+    ("ETF or fund", re.compile(r"\betfs?\b|\bfund\b|\bportfolio\b|\bindex\b")),
+    ("CDR", re.compile(r"\bcdrs?\b")),
+    ("bond or split-share fund", re.compile(r"\bbonds?\b|\bbnd\b|\bsplit corp")),
+]
+
+
+def classify_tmx(sym, issuer, line_name=""):
+    """One TMX instrument -> 'keep' or the rule that drops it. Common shares, class shares and
+    trust / REIT units stay in; preferreds, debentures, warrants, rights, USD lines, capital
+    pool shells, ETFs, funds and CDRs go."""
+    sym = (sym or "").strip().upper()
+    for tag, rx in TMX_SUFFIX_OUT:
+        if rx.search(sym):
+            return tag
+    if not TMX_TICKER.match(re.sub(r"\.UN$", "", sym)):
+        return "not a plain ticker"
+    name = " ".join(("%s %s" % (issuer or "", line_name or "")).lower().split())
+    for tag, rx in TMX_NAME_OUT:
+        if rx.search(name) and not (tag == "ETF or fund" and "royalt" in name):
+            return tag                  # a royalty income fund (SRV.UN) trades like a business: kept
+    return "keep"
+
+
+def build_universe_ca(docs):
+    """{"tsx": doc, "tsxv": doc} -> (kept [(YAHOO_SYM, name)], counts, updated)."""
+    kept, counts, updated = {}, {}, None
+    for board in ("tsx", "tsxv"):
+        doc = docs.get(board)
+        if doc is None:
+            continue
+        if not isinstance(doc, dict) or not isinstance(doc.get("results"), list):
+            raise ScanError("not TMX's company directory (no results list) for %s" % board.upper())
+        if doc.get("last_updated"):
+            t = datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(doc["last_updated"]))
+            updated = max(updated or t, t)
+        for rec in doc["results"]:
+            issuer = " ".join(str(rec.get("name") or "").split())
+            for ins in rec.get("instruments") or [{"symbol": rec.get("symbol"), "name": issuer}]:
+                counts["rows"] = counts.get("rows", 0) + 1
+                why = classify_tmx(ins.get("symbol"), issuer, ins.get("name"))
+                counts[why] = counts.get(why, 0) + 1
+                if why == "keep":
+                    kept[ins["symbol"].strip().upper() + TMX_YAHOO[board]] = issuer
+    return sorted(kept.items()), counts, updated
+
+
+def read_user_list(path):
+    """A list you supply (say the S&P/TSX Composite constituents): one ticker a line, or a CSV
+    whose first column is the ticker (a header row is skipped). RY, RY.TO, BBD.B, SHOP.TO."""
+    if not os.path.exists(path):
+        raise ScanError("no file at %s" % path)
+    with open(path, encoding="utf-8-sig", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    out = {}
+    for ln in lines:
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        cells = [c.strip().strip('"') for c in re.split(r"[|,;\t]", ln)]
+        sym = cells[0].upper()
+        if sym in ("SYMBOL", "TICKER", "CODE") or not re.match(r"^[A-Z0-9.\-]{1,12}$", sym):
+            continue
+        out[ca_symbol(sym.replace("-", "."))] = cells[1] if len(cells) > 1 else ""
+    return sorted(out.items())
 
 
 # ---------------------------------------------------------------- daily setups
@@ -780,6 +930,8 @@ def read_symbols(a, offline_syms=None):
         if not os.path.exists(path):
             raise ScanError("no %s yet: run `scan.py universe` first, or pass --symbols" % path)
         syms = symbols_from_file(path)
+    if MARKET == "ca":
+        syms = [ca_symbol(s) for s in syms]
     out = []
     for s in syms:
         if s not in out:
@@ -832,12 +984,72 @@ def write_json(path, doc):
 
 
 def money(x):
-    return "${:,.2f}".format(x)
+    return SIGN + "{:,.2f}".format(x)
 
 
 # ---------------------------------------------------------------- commands
 
+def cmd_universe_ca(a):
+    t0 = time.time()
+    if a.from_file:
+        kept, counts, updated = read_user_list(a.from_file), {}, None
+        source = os.path.basename(a.from_file)
+    else:
+        boards = ["tsx"] + (["tsxv"] if a.venture else [])
+        docs = {}
+        for k, board in enumerate(boards):
+            if a.offline:
+                p = os.path.join(a.offline, TMX_FILES[board])
+                if not os.path.exists(p):
+                    raise ScanError("no %s in %s" % (TMX_FILES[board], a.offline))
+                text = _read_maybe_gz(p)
+            else:
+                if k and a.pause:
+                    SLEEP(a.pause)
+                try:
+                    text = http_get(TMX_URL % board, timeout=60)
+                except urllib.error.HTTPError as e:
+                    raise ScanError("tsx.com answered HTTP %d for the %s directory: pass your own list "
+                                    "with --from FILE" % (e.code, board.upper()))
+                except (urllib.error.URLError, OSError) as e:
+                    raise ScanError("could not reach tsx.com (%s): pass your own list with --from FILE, "
+                                    "for example the S&P/TSX Composite constituents" % getattr(e, "reason", e))
+            try:
+                docs[board] = json.loads(text)
+            except ValueError:
+                raise ScanError("tsx.com's %s directory is not JSON: pass your own list with --from FILE"
+                                % board.upper())
+        kept, counts, updated = build_universe_ca(docs)
+        source = "TMX company directory (%s)" % " and ".join(b.upper() for b in boards)
+    if not a.no_write:
+        d = os.path.dirname(a.out)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(a.out, "w", encoding="utf-8") as fh:
+            for sym, name in kept:
+                fh.write("%s|%s\n" % (sym, name))
+    dropped = {k: v for k, v in counts.items() if k not in ("keep", "rows")}
+    if a.json:
+        print(json.dumps({"market": "ca", "source": source, "count": len(kept), "rows": counts.get("rows"),
+                          "updated": updated.strftime("%Y-%m-%d %H:%M UTC") if updated else None,
+                          "dropped": dropped, "out": None if a.no_write else a.out,
+                          "seconds": round(time.time() - t0, 1)}, indent=2))
+    else:
+        print("%s%s: %s lines." % (source, (", updated %s UTC" % updated.strftime("%Y-%m-%d %H:%M"))
+                                   if updated else "", "{:,}".format(counts.get("rows", len(kept)))))
+        print("Kept %s Canadian common shares, class shares and trust units (Yahoo .TO / .V tickers)."
+              % "{:,}".format(len(kept)))
+        if dropped:
+            print("Dropped: " + ", ".join("%s %s" % ("{:,}".format(v), k)
+                                          for k, v in sorted(dropped.items(), key=lambda kv: -kv[1])) + ".")
+        if not a.no_write:
+            print("Wrote %s (one SYMBOL|Name a line)." % a.out)
+    return 0 if kept else 1
+
+
 def cmd_universe(a):
+    if MARKET == "ca":
+        return cmd_universe_ca(a)
     t0 = time.time()
     texts = {}
     for k, fname in enumerate(NASDAQ_FILES):
@@ -909,10 +1121,10 @@ def cmd_daily(a):
     local = to_eastern(now)
     print("Daily scan, %s ET, closes through %s (Yahoo spark, daily closes only)." % (
         local.strftime("%a %Y-%m-%d %H:%M"), last_date.isoformat() if last_date else "nothing"))
-    print("Fetched %s of %s charts%s. %s passed the liquidity filter ($%s+ and %s+ shares)%s; "
+    print("Fetched %s of %s charts%s. %s passed the liquidity filter (%s%s+ and %s+ shares)%s; "
           "%s scanned." % ("{:,}".format(counts["fetched"]), "{:,}".format(len(symbols)),
                            (" (%s failed or had no data)" % "{:,}".format(nfailed)) if nfailed else "",
-                           "{:,}".format(counts["fetched"] - counts["illiquid"]), _n(a.min_price),
+                           "{:,}".format(counts["fetched"] - counts["illiquid"]), SIGN, _n(a.min_price),
                            "{:,}".format(a.min_volume),
                            (", %d had under %d days" % (counts["short"], MIN_DAILY_BARS)) if counts["short"] else "",
                            "{:,}".format(counts["scanned"])))
@@ -1031,9 +1243,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Chart Scanner (trader-scanner): daily setups and opening-range breakouts.")
     sub = ap.add_subparsers(dest="cmd")
 
-    p = sub.add_parser("universe", help="download Nasdaq Trader's lists -> trader/universe.txt")
+    def market(p):
+        p.add_argument("--market", choices=sorted(MARKETS), help='"us" or "ca" (default: config market, else us)')
+        p.add_argument("--config", default="trader/config.json")
+
+    p = sub.add_parser("universe", help="download Nasdaq Trader's lists (us) or TMX's (ca) -> trader/universe.txt")
+    market(p)
     p.add_argument("--out", default=DEFAULT_UNIVERSE)
-    p.add_argument("--offline", metavar="DIR", help="a folder with nasdaqlisted.txt and otherlisted.txt")
+    p.add_argument("--offline", metavar="DIR", help="a folder with nasdaqlisted.txt and otherlisted.txt "
+                   "(ca: tsx.json, tsxv.json)")
+    p.add_argument("--venture", action="store_true", help="ca: add TSX Venture (.V) listings")
+    p.add_argument("--from", dest="from_file", metavar="FILE",
+                   help="ca: your own list instead of TMX's directory (one ticker a line, or a CSV)")
     p.add_argument("--no-write", action="store_true")
     p.add_argument("--pause", type=float, default=PAUSE)
     p.add_argument("--json", action="store_true")
@@ -1054,6 +1275,7 @@ def main(argv=None):
         p.add_argument("--show", type=int, default=50, help="hits to print (all are written)")
         p.add_argument("--quiet", action="store_true")
         p.add_argument("--json", action="store_true")
+        market(p)
 
     p = sub.add_parser("daily", help="pre-market setups from daily closes")
     common(p, 5.0, 1000000)
@@ -1064,12 +1286,12 @@ def main(argv=None):
                    help="v8 charts to fetch in stage 2, most traded first (%d; 0 = all)" % MAX_CONFIRM)
     p.add_argument("--at", help="cut the clock at this New York time, HH:MM")
     p.add_argument("--until", help="no new entries after HH:MM (default: config no_entries_after, 15:30)")
-    p.add_argument("--config", default="trader/config.json")
     a = ap.parse_args(argv)
     if not a.cmd:
         ap.print_help()
         return 1
     try:
+        use_market(a.market or read_config(a.config).get("market") or "us")
         return {"universe": cmd_universe, "daily": cmd_daily, "orb": cmd_orb}[a.cmd](a)
     except ScanError as e:
         print("scan.py: %s" % e, file=sys.stderr)

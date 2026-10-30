@@ -452,3 +452,45 @@ class Cli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# TSX holidays as published at https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30)
+TSX_2026 = ["2026-01-01", "2026-02-16", "2026-04-03", "2026-05-18", "2026-07-01", "2026-08-03", "2026-09-07",
+            "2026-10-12", "2026-12-25", "2026-12-28"]
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": the TSX clock, Yahoo .TO quotes, Stooq refused, C$."""
+
+    def tearDown(self):
+        alerts.use_market("us")
+
+    def test_the_tsx_calendar_is_tmx_s(self):
+        self.assertEqual(sorted(alerts.TSX_HOLIDAYS), TSX_2026)
+        self.assertEqual(sorted(alerts.TSX_EARLY_CLOSE), ["2026-12-24"])
+        for d in TSX_2026:
+            self.assertLess(DT.strptime(d, "%Y-%m-%d").weekday(), 5, d)
+        self.assertFalse(set(TSX_2026) & {"2026-01-19", "2026-05-25", "2026-06-19", "2026-07-03", "2026-11-26"})
+
+    def test_the_clock(self):
+        code, text, _ = run(["clock", "--market", "ca", "--now", "2026-10-12 10:30"])
+        self.assertEqual(code, 1)
+        self.assertIn("TSX closed, TSX holiday: Thanksgiving Day", text)
+        self.assertIn("Next open: 2026-10-13 09:30", text)
+        code, text, _ = run(["clock", "--market", "ca", "--now", "2026-11-26 10:30"])
+        self.assertEqual(code, 0)                                   # U.S. Thanksgiving: the TSX is open
+        self.assertIn("TSX OPEN", text)
+        code, text, _ = run(["clock", "--market", "ca", "--now", "2027-02-01 10:30"])
+        self.assertIn("check tsx.com", text)
+        code, text, _ = run(["clock", "--now", "2026-11-26 10:30", "--config", "/nonexistent.json"])
+        self.assertIn("NYSE closed, NYSE holiday: Thanksgiving Day", text)   # the US default is unchanged
+
+    def test_quotes(self):
+        self.assertIn("/chart/BBD-B.TO?", alerts.yahoo_url("bbd.b.to"))
+        alerts.use_market("ca")
+        quotes, errors = alerts.get_quotes(["RY.TO"], source="stooq", offline=QDIR)
+        self.assertEqual(quotes, {})
+        self.assertIn("use --source yahoo for RY.TO", errors[0])
+        out = io.StringIO()
+        alerts.Relabel(out).write("RY.TO $190.40")
+        self.assertEqual(out.getvalue(), "RY.TO C$190.40")

@@ -132,6 +132,12 @@ does not click it or automate it. The route:
    and you write it up in the same shape as the House rows, with the report
    link, and the same 45-day caveat.
 
+## Canada: US-only for now
+
+Congress's STOCK Act disclosures name US tickers, so a `.TO` or `.V` ticker passed to
+`--tickers` gets a plain "US-only for now" message and never matches. Watch the company's US
+ticker if it has one (`SHOP` for `SHOP.TO`).
+
 ## What it never does
 
 - Never says or implies a member has inside information, or that copying a

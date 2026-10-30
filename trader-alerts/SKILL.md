@@ -101,6 +101,13 @@ Daylight saving time is worked out in the tool, so it needs no time zone
 files and ignores the computer's own zone. For any other year it says the
 holiday list is unknown.
 
+## Canada (TSX and TSXV)
+
+With `"market": "ca"` in `trader/config.json` (or `--market ca`): `clock` is the TSX clock (TMX's
+2026 holidays; the U.S.-only holidays are TSX trading days; 1:00 PM close on Christmas Eve; 2027
+not published yet), the opening bell is the TSX's, prices print as C$ and quotes come from Yahoo
+(`RY.TO`, `AUMB.V`). Stooq is wired for US tickers (`.us`) and is refused for a Canadian one.
+
 ## Steps
 
 1. Right after trader-exit writes the plan, run `add --from-plan`. Confirm

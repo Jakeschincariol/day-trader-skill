@@ -39,11 +39,14 @@ What blocks an entry (on top):
   daily limit   max_orders_per_day orders placed today
   stop          no stop while "require_stop": true (a bracket stop_loss_stop_price
                 or the order's plan stop); a stop on the wrong side of the entry
-  loss          qty x (entry - stop) over max_loss_per_trade_usd. The entry is
+  loss          qty x (entry - stop), plus 2 x commission_per_trade (in and
+                out) when you set one, over max_loss_per_trade_usd. The entry is
                 the limit price for a limit order, else the HIGHER of the plan's
                 entry and a fresh price (under 15 minutes old), so a stale plan
                 cannot understate the risk
-  reward:risk   (target - entry) / (entry - stop) under min_reward_risk
+  reward:risk   (target - entry) / (entry - stop) under min_reward_risk; with a
+                commission, what is left of the reward after both commissions
+                over the max loss
   daily loss    the max losses at the stops of today's entries plus this one
                 over max_daily_loss_usd (win or lose, each counts in full)
   trades        max_trades_per_day entries already placed today
@@ -53,6 +56,13 @@ What blocks an entry (on top):
                 3 hours earlier too)
   pdt           only with "pdt_guard": true: 3 day trades already in the last
                 5 business days (a 4th would trip the old pattern-day-trader rule)
+
+"market": "ca" (TSX and TSXV): the TSX calendar for the window and the pdt
+business days, .TO / .V tickers, C$ amounts (a *_cad key stands in for its
+*_usd twin), half-cent prices under $0.50. "pdt_guard" stays off by default:
+Canada has no pattern-day-trader rule. A TFSA warning on every check: day
+trading inside a TFSA risks the CRA taxing it as business income (set
+"account_type": "tfsa", "margin" or "cash" to say which account it is).
 
 Exit code 0 when every order passes, 1 when any order is blocked.
 The verdicts go to trader/state/risk.json with a fingerprint of each order,
@@ -73,8 +83,11 @@ DEFAULTS = {
     "max_orders_per_day": 10, "min_reward_risk": 1.0, "require_stop": True,
     "no_entries_before": "09:45", "no_entries_after": "15:30", "flat_by": "15:55",
     "paper": True, "blocked": [], "allow_options": False, "allow_margin": False, "allow_short": False,
-    "pdt_guard": False,
+    "pdt_guard": False, "market": "us", "commission_per_trade": 0, "account_type": None,
 }
+TFSA_WARNING = ("TFSA: do not day trade inside a TFSA. The CRA can treat frequent trading there as carrying "
+                "on a business, and tax the gains as business income, not tax-free. Use a margin or cash "
+                "account for day trades. Not tax advice: ask a tax professional.")
 ALPACA_FIELDS = ("symbol", "side", "qty", "notional", "type", "time_in_force", "limit_price",
                  "stop_price", "trail_price", "trail_percent", "extended_hours", "client_order_id",
                  "order_class", "take_profit_limit_price", "stop_loss_stop_price",
@@ -85,6 +98,7 @@ TYPES = {"market", "limit", "stop", "stop_limit", "trailing_stop"}
 TIFS = {"day", "gtc", "opg", "cls", "ioc", "fok"}
 OCC = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
 TICKER = re.compile(r"^[A-Z]{1,5}([.\-][A-Z]{1,2})?$")
+CA_TICKER = re.compile(r"^[A-Z0-9]{1,6}([.\-][A-Z]{1,2})?\.(TO|V)$")   # RY.TO, BBD.B.TO, REI.UN.TO, AUMB.V
 HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 CENT = 0.005
 FRESH_MINUTES = 15
@@ -118,7 +132,88 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
-CALENDAR_YEARS = (2026, 2027)
+# TSX and TSXV, for "market": "ca" in trader/config.json. The market holidays as TMX publishes them
+# ("2026 Stock Market Holidays - Stock Markets Closed") at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30). TMX had not
+# published 2027 yet, so 2027 is not covered. The five U.S. holidays that page also lists are TSX
+# trading days: TMX marks them "Special Settlement for Issues trading in USD", not closed.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "In Lieu of Boxing Day",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET, the page's footnote: "Closing at 1:00 PM (TSX/TSXV)"
+    "2026-12-24": "Christmas Eve",
+}
+MARKETS = {  # the same 9:30 to 4:00 p.m. ET session and the same 1:00 p.m. early close on both
+    "us": {"exchange": "NYSE", "holidays": NYSE_HOLIDAYS, "early": NYSE_EARLY_CLOSE, "years": (2026, 2027),
+           "site": "nyse.com", "sign": "$"},
+    "ca": {"exchange": "TSX", "holidays": TSX_HOLIDAYS, "early": TSX_EARLY_CLOSE, "years": (2026,),
+           "site": "tsx.com", "sign": "C$"},
+}
+MARKET, EXCHANGE, SITE, SIGN = "us", "NYSE", "nyse.com", "$"
+HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, (2026, 2027)
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
+def use_market(name):
+    """Switch the calendar, the exchange name and the money sign: "us" (the default) or "ca"."""
+    global MARKET, EXCHANGE, SITE, SIGN, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise RiskError('market wants "us" or "ca", not "%s"' % name)
+    m = MARKETS[name]
+    MARKET, EXCHANGE, SITE, SIGN = name, m["exchange"], m["site"], m["sign"]
+    HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = m["holidays"], m["early"], m["years"]
+    return name
+
+
+def to_yahoo(sym):
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def ca_symbol(sym):
+    """For "ca": a bare ticker is a TSX listing (RY -> RY.TO); .TO and .V are kept."""
+    s = sym.strip().upper()
+    return s if s.endswith(CA_SUFFIXES) else s + ".TO"
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return "us"
+    return (doc.get("market") if isinstance(doc, dict) else None) or "us"
+
+
+class Relabel(object):
+    """For "ca": every price this tool prints is Canadian dollars, so its "$" reads "C$"."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, text):
+        return self.out.write(text.replace("$", SIGN))
+
+    def flush(self):
+        self.out.flush()
+
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
@@ -186,12 +281,12 @@ def parse_utc(text):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NYSE holiday list."""
+    """(is_trading_day, reason). Weekends and the exchange's holiday list (NYSE, or TSX for "ca")."""
     if d.weekday() >= 5:
         return False, "weekend"
-    name = NYSE_HOLIDAYS.get(d.isoformat())
+    name = HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -219,20 +314,20 @@ def window_check(now_et, c):
     warns = []
     d, t = now_et.date(), now_et.time().replace(second=0, microsecond=0)
     if d.year not in CALENDAR_YEARS:
-        warns.append("the holiday list covers %s only: check nyse.com for %s"
-                     % (" and ".join(map(str, CALENDAR_YEARS)), d.isoformat()))
+        warns.append("the holiday list covers %s only: check %s for %s"
+                     % (" and ".join(map(str, CALENDAR_YEARS)), SITE, d.isoformat()))
     ok, why = trading_day(d)
     stamp = now_et.strftime("%a %Y-%m-%d %H:%M")
     if not ok:
         return ["window: the market is closed today (%s, %s New York)" % (why, stamp)], warns
-    close = EARLY if d.isoformat() in NYSE_EARLY_CLOSE else CLOSE
+    close = EARLY if d.isoformat() in EARLY_CLOSE else CLOSE
     if t < OPEN or now_et.time() >= close:
         return ["window: the market is closed (%s New York; the session is %s to %s)"
                 % (stamp, OPEN.strftime("%H:%M"), close.strftime("%H:%M"))], warns
     if close == EARLY and after is not None:
         after = _shift(after, 3)
         warns.append("early close at 1:00 p.m. today (%s): no new entries after %s"
-                     % (NYSE_EARLY_CLOSE[d.isoformat()], after.strftime("%H:%M")))
+                     % (EARLY_CLOSE[d.isoformat()], after.strftime("%H:%M")))
     if before is not None and t < before:
         return ["window: no new entries before %s New York (it is %s)" % (before.strftime("%H:%M"),
                                                                           t.strftime("%H:%M"))], warns
@@ -243,7 +338,7 @@ def window_check(now_et, c):
 
 
 def business_days(today, n=5):
-    """The last n NYSE trading days up to and including today, newest first."""
+    """The last n trading days (NYSE, or TSX for "ca") up to and including today, newest first."""
     out, d = [], today
     for _ in range(40):
         if trading_day(d)[0]:
@@ -287,12 +382,20 @@ def money(x):
 
 
 def _cent(x):
-    """A price to the cent, half up (366.475 -> 366.48)."""
+    """A price to the cent, half up (366.475 -> 366.48). "ca": half a cent under $0.50 (TSX)."""
+    if MARKET == "ca" and float(x) < 0.5 - 1e-9:
+        return int(float(x) * 200 + 0.5 + 1e-9) / 200.0
     return int(float(x) * 100 + 0.5 + 1e-9) / 100.0
 
 
 def _p(x):
-    return "%.2f" % float(x)
+    x = float(x)
+    return "%.2f" % x if abs(x * 100 - round(x * 100)) < 1e-6 else "%.3f" % x   # a TSX half cent: 0.395
+
+
+def _mills(x):
+    """Dollars -> whole tenths of a cent: exact for cents and TSX half cents."""
+    return int(round(float(x) * 1000))
 
 
 def account(cfg, portfolio, prices):
@@ -377,6 +480,15 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     price_times  {SYM: naive UTC time of that price}; None = every price counts as fresh"""
     c = dict(DEFAULTS)
     c.update(cfg or {})
+    use_market(c.get("market"))
+    if MARKET == "ca":
+        for k in list(c):
+            if k.endswith("_cad") and c[k] is not None:
+                c[k[:-4] + "_usd"] = c[k]     # max_loss_per_trade_cad stands in for max_loss_per_trade_usd
+    tol = CENT if MARKET == "us" else 0.0005  # a TSX stop can sit half a cent under the entry
+    fee_cfg = _f(c.get("commission_per_trade")) or 0.0
+    if fee_cfg < 0:
+        raise RiskError("commission_per_trade must be 0 or more")
     prices = {str(k).upper(): float(v) for k, v in (prices or {}).items() if _f(v)}
     now_utc = now or parse_now(None)
     now_et = to_eastern(now_utc)
@@ -402,6 +514,16 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     batch_entries, batch_loss = 0, 0.0
     if not c.get("paper", True):
         top_warn.append("LIVE account (\"paper\": false): these orders use real money")
+    if MARKET == "ca":
+        acct_type = str(c.get("account_type") or "").strip().lower()
+        if acct_type == "tfsa":
+            top_warn.append(TFSA_WARNING)
+        elif not acct_type:
+            top_warn.append("TFSA: if this account is a TFSA, do not day trade in it (CRA business-income "
+                            "risk). Set \"account_type\" in the config to say which account it is.")
+        if c.get("pdt_guard"):
+            top_warn.append("pdt: Canada has no pattern-day-trader rule; \"pdt_guard\" is on in your config, "
+                            "so day trades are still counted")
     top_warn.extend(win_warns)
 
     def fresh(sym):
@@ -479,7 +601,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                                "(\"allow_options\": false)" % sym)
             else:
                 warns.append("option order: options can lose 100%% of what you pay")
-        elif sym and ("/" in sym or not TICKER.match(sym)):
+        elif sym and MARKET == "ca" and ("/" in sym or not CA_TICKER.match(sym)):
+            reasons.append("asset: %s does not look like a TSX or TSXV ticker (RY.TO, AUMB.V); "
+                           "this pack trades stocks and ETFs only" % sym)
+        elif sym and MARKET != "ca" and ("/" in sym or not TICKER.match(sym)):
             reasons.append("asset: %s does not look like a US stock or ETF ticker; "
                            "this pack trades stocks and ETFs only" % sym)
 
@@ -587,26 +712,38 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 else:
                     warns.append("no stop: the max loss is not capped, so it is not counted in the daily loss")
             elif ref:
-                if (long and stop >= ref - CENT) or (not long and stop <= ref + CENT):
+                fee = max(fee_cfg, _f(plan.get("commission_per_trade")) or 0.0)
+                fees = round(2 * fee, 2)  # one commission in, one out
+                if (long and stop >= ref - tol) or (not long and stop <= ref + tol):
                     later.append("stop: the stop %s must be %s the entry %s for a %s"
                                  % (_p(stop), "below" if long else "above", _p(ref), side))
                 else:
-                    risk_c = int(round(abs(ref - stop) * 100))
-                    risk_ps = risk_c / 100.0
+                    risk_c = _mills(abs(ref - stop))
+                    risk_ps = risk_c / 1000.0
                     shares = q if q is not None else ((value or 0) / ref)
-                    max_loss = round(shares * risk_ps, 2)
+                    max_loss = round(shares * risk_ps + fees, 2)
                     cap = _f(c.get("max_loss_per_trade_usd"))
-                    if cap and max_loss > cap + CENT:
+                    if cap and max_loss > cap + CENT and fees:
+                        later.append("loss: %s shares x %s risk a share + %s commission in and out = %s at the "
+                                     "stop, over your %s max loss per trade"
+                                     % (_num(shares), _p(risk_ps), money(fees), money(max_loss), money(cap)))
+                    elif cap and max_loss > cap + CENT:
                         later.append("loss: %s shares x %s risk a share = %s at the stop, over your %s max loss "
                                      "per trade" % (_num(shares), _p(risk_ps), money(max_loss), money(cap)))
                     min_rr = _f(c.get("min_reward_risk"))
                     if target:
-                        if (long and target <= ref + CENT) or (not long and target >= ref - CENT):
+                        if (long and target <= ref + tol) or (not long and target >= ref - tol):
                             later.append("target: the target %s must be %s the entry %s"
                                          % (_p(target), "above" if long else "below", _p(ref)))
                         else:
-                            rr = round(int(round(abs(target - ref) * 100)) / float(risk_c), 2)
-                            if min_rr and rr < min_rr - 1e-9:
+                            rr = round(_mills(abs(target - ref)) / float(risk_c), 2)
+                            if fees:              # what is left of the reward after both commissions
+                                rr = round((shares * _mills(abs(target - ref)) / 1000.0 - fees) / max_loss, 2)
+                                if min_rr and rr < min_rr - 1e-9:
+                                    later.append("reward:risk: %.2f after %s commission in and out (target %s, "
+                                                 "entry %s, stop %s) is under your minimum %s"
+                                                 % (rr, money(fees), _p(target), _p(ref), _p(stop), _num(min_rr)))
+                            elif min_rr and rr < min_rr - 1e-9:
                                 later.append("reward:risk: %.2f (target %s, entry %s, stop %s) is under your "
                                              "minimum %s" % (rr, _p(target), _p(ref), _p(stop), _num(min_rr)))
                     elif min_rr:
@@ -691,7 +828,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             "reasons": reasons, "warnings": warns, "info": info,
         })
 
-    return {
+    out = {
         "date": today,
         "now_new_york": now_et.strftime("%Y-%m-%d %H:%M"),
         "paper": bool(c.get("paper", True)),
@@ -703,6 +840,9 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         "today": {"orders_placed": count_today, "entries_placed": len(entries_today),
                   "loss_at_risk": round(loss_today, 2), "day_trades_5d": pdt_n if c.get("pdt_guard") else None},
     }
+    if MARKET != "us":
+        out.update(market=MARKET, currency="CAD")
+    return out
 
 
 def _pct(x):
@@ -779,6 +919,7 @@ def main(argv=None):
     ap.add_argument("--no-write", action="store_true", help="do not record the verdicts")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    real_out = sys.stdout
     try:
         now = parse_now(a.now)
         if a.today and not re.match(r"^\d{4}-\d{2}-\d{2}$", a.today):
@@ -811,7 +952,12 @@ def main(argv=None):
     except RiskError as e:
         print("check.py: %s" % e, file=sys.stderr)
         return 1
-    print(json.dumps(res, indent=2) if a.json else report(res))
+    if MARKET == "ca":
+        sys.stdout = Relabel(real_out)
+    try:
+        print(json.dumps(res, indent=2) if a.json else report(res))
+    finally:
+        sys.stdout = real_out
     return 1 if res["block"] else 0
 
 

@@ -29,6 +29,12 @@ Sources, one request each per ticker:
     price against yesterday's close:
     https://query2.finance.yahoo.com/v8/finance/chart/<TICKER>?range=1d&interval=5m
 
+Canada: a .TO / .V ticker (RY.TO, AUMB.V) gets Yahoo headlines and the move,
+but no SEC part: Canadian listings file with SEDAR+, which has no free API,
+so its 8-Ks are skipped and the notes say so. "market": "ca" in the config
+(or --market ca) reads a bare --tickers RY as RY.TO. A "(TSX: RY)" mention
+in a headline counts for RY.TO.
+
 Times print in New York time (ET). State: trader/state/news.json remembers
 what you have seen (30 days), so an item shows once. Offline: --offline DIR
 reads yahoo-<TICKER>.xml, chart-<TICKER>.json, sec-<FORM>-<CIK>.xml and
@@ -191,8 +197,32 @@ class Fetcher(object):
             raise NewsError("could not reach %s: %s" % (url, exc.reason))
 
 
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
 def yahoo_symbol(ticker):
-    return ticker.upper().replace(".", "-")
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = ticker.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def is_canadian(ticker):
+    return ticker.upper().endswith(CA_SUFFIXES)
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    cfg = load_json(path) or {}
+    return (cfg.get("market") if isinstance(cfg, dict) else None) or "us"
+
+
+SEDAR_NOTE = ("SEC 8-Ks skipped for %s: Canadian listings file with SEDAR+ (sedarplus.ca), which has no "
+              "free API. Headlines and the move still run; check SEDAR+ by hand for filings.")
 
 
 def cik_map(fetcher, state):
@@ -329,6 +359,9 @@ def mention_patterns(watch):
     for t, name in watch.items():
         alts = [r"\(%s\)" % re.escape(t), r"\$%s\b" % re.escape(t),
                 r"\b(?:NYSE|NASDAQ|Nasdaq)\s*:\s*%s\b" % re.escape(t)]
+        if is_canadian(t):                     # "(TSX: RY)", "TSXV:AUMB" name the base ticker
+            base = t.rsplit(".", 1)[0]
+            alts.append(r"\b(?:TSX|TSXV|TSX-V)\s*:\s*%s\b" % re.escape(base))
         if name and len(name) >= 4:
             alts.append(r"\b%s\b" % re.escape(name).replace(r"\ ", r"[\s-]"))
         pats[t] = re.compile("|".join(alts))
@@ -386,13 +419,18 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
             items += parse_rss(fetcher.get(YAHOO % yahoo_symbol(t), "yahoo-%s.xml" % t), t)
         except NewsError as exc:
             errors.append("headlines for %s: %s" % (t, exc))
+    canadian = sorted(t for t in watch if is_canadian(t))
+    if sec and canadian:
+        errors.append(SEDAR_NOTE % ", ".join(canadian))
+    if sec and len(canadian) == len(watch):
+        sec = False                           # nothing left for EDGAR: skip its ticker list too
     if sec:
         try:
             ciks = cik_map(fetcher, state)
         except NewsError as exc:
             errors.append("SEC ticker list: %s" % exc)
             ciks = {}
-        for t in sorted(watch):
+        for t in sorted(set(watch) - set(canadian)):
             cik = ciks.get(t)
             if not cik:
                 if ciks:
@@ -493,6 +531,7 @@ def main(argv=None):
     ap.add_argument("--move-pct", type=float, default=MOVE_PCT, help="flag a move this big (percent)")
     ap.add_argument("--user-agent", help="SEC User-Agent: \"Your Name you@example.com\"")
     ap.add_argument("--config", default="trader/config.json")
+    ap.add_argument("--market", choices=["us", "ca"], help='"ca": a bare ticker is a TSX listing (RY -> RY.TO)')
     ap.add_argument("--offline", metavar="DIR")
     ap.add_argument("--now", help="ISO time, for reproducible runs")
     ap.add_argument("--dry-run", action="store_true", help="do not update the state file")
@@ -500,7 +539,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     if args.tickers:
-        watch = {t.upper(): None for t in args.tickers}
+        ca = config_market(args.config, args.market) == "ca"
+        watch = {(t.upper() if not ca or is_canadian(t) else t.upper() + ".TO"): None for t in args.tickers}
         known = watch_from_files(args.portfolio, args.watchlist, args.plan)
         watch.update({t: known[t] for t in watch if known.get(t)})
     else:

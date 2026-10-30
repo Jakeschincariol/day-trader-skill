@@ -34,6 +34,11 @@ or lose. On a 1:00 p.m. early close it moves up with the close (12:55).
 "min_reward_risk" in the config (default 1.0) only warns here; trader-risk
 enforces it.
 
+"market": "ca" in the config (or --market ca): the TSX calendar, .TO / .V tickers, prices in C$
+on the TSX grid: a cent, or half a cent ($0.005) under $0.50, so a C$0.42 stock's stop can be 0.395.
+"commission_per_trade" (default 0): your broker's fee for each order. It is shown here and
+trader-budget and trader-risk count it twice (in and out) in the max loss and the reward:risk.
+
 A stop is a plan, not a guarantee: a gap or a fast market can fill past it.
 Exit codes: plan 0 = a plan, 1 = refused or an error. show 0 = a plan exists.
 """
@@ -54,10 +59,11 @@ UA = "Mozilla/5.0 (compatible; day-trader-skill/2.0; +https://github.com/Jakesch
 BACKOFF = 5.0
 HOSTS = ("query2", "query1")
 INTERVALS = {"1m": 60, "5m": 300}
-DEFAULTS = {"flat_by": "15:55", "min_reward_risk": 1.0}
+DEFAULTS = {"flat_by": "15:55", "min_reward_risk": 1.0, "commission_per_trade": 0}
 ATR_BARS = 14
 MIN_RISK_PCT = Decimal("0.05")     # risk under 0.05% of the price is inside the spread's noise
 CENT = Decimal("0.01")
+HALF_CENT = Decimal("0.005")   # "ca": the TSX tick under $0.50 (a cent at $0.50 and up)
 EPOCH = datetime.datetime(1970, 1, 1)
 NOTE = "A stop is a plan, not a guarantee: a gap or a fast market can fill past it."
 
@@ -88,6 +94,88 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+# TSX and TSXV, for "market": "ca" in trader/config.json. The market holidays as TMX publishes them
+# ("2026 Stock Market Holidays - Stock Markets Closed") at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30). TMX had not
+# published 2027 yet, so 2027 is not covered. The five U.S. holidays that page also lists are TSX
+# trading days: TMX marks them "Special Settlement for Issues trading in USD", not closed.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "In Lieu of Boxing Day",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET, the page's footnote: "Closing at 1:00 PM (TSX/TSXV)"
+    "2026-12-24": "Christmas Eve",
+}
+MARKETS = {  # the same 9:30 to 4:00 p.m. ET session and the same 1:00 p.m. early close on both
+    "us": {"exchange": "NYSE", "holidays": NYSE_HOLIDAYS, "early": NYSE_EARLY_CLOSE, "years": (2026, 2027),
+           "site": "nyse.com", "sign": "$"},
+    "ca": {"exchange": "TSX", "holidays": TSX_HOLIDAYS, "early": TSX_EARLY_CLOSE, "years": (2026,),
+           "site": "tsx.com", "sign": "C$"},
+}
+MARKET, EXCHANGE, SITE, SIGN = "us", "NYSE", "nyse.com", "$"
+HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, (2026, 2027)
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
+def use_market(name):
+    """Switch the calendar, the exchange name and the money sign: "us" (the default) or "ca"."""
+    global MARKET, EXCHANGE, SITE, SIGN, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise PlanError('market wants "us" or "ca", not "%s"' % name)
+    m = MARKETS[name]
+    MARKET, EXCHANGE, SITE, SIGN = name, m["exchange"], m["site"], m["sign"]
+    HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = m["holidays"], m["early"], m["years"]
+    return name
+
+
+def to_yahoo(sym):
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def ca_symbol(sym):
+    """For "ca": a bare ticker is a TSX listing (RY -> RY.TO); .TO and .V are kept."""
+    s = sym.strip().upper()
+    return s if s.endswith(CA_SUFFIXES) else s + ".TO"
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return "us"
+    return (doc.get("market") if isinstance(doc, dict) else None) or "us"
+
+
+class Relabel(object):
+    """For "ca": every price this tool prints is Canadian dollars, so its "$" reads "C$"."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, text):
+        return self.out.write(text.replace("$", SIGN))
+
+    def flush(self):
+        self.out.flush()
+
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
@@ -186,9 +274,9 @@ def ampm(t):
 
 def session(d):
     """(open_time, close_time) in New York time, or None if closed all day."""
-    if d.weekday() >= 5 or d.isoformat() in NYSE_HOLIDAYS:
+    if d.weekday() >= 5 or d.isoformat() in HOLIDAYS:
         return None
-    return OPEN, (EARLY if d.isoformat() in NYSE_EARLY_CLOSE else CLOSE)
+    return OPEN, (EARLY if d.isoformat() in EARLY_CLOSE else CLOSE)
 
 
 # ---------------------------------------------------------------- money math (Decimal, to the cent)
@@ -212,8 +300,25 @@ def floor_cents(x):
     return D(x).quantize(CENT, rounding=ROUND_FLOOR)
 
 
+def tick(price):
+    """The price grid: a cent, or for "ca" half a cent under $0.50 (TSX)."""
+    return HALF_CENT if MARKET == "ca" and D(price) < Decimal("0.50") else CENT
+
+
+def to_tick(x, rounding=ROUND_HALF_UP):
+    """A price on the exchange's grid. US: the cent. TSX: the cent, or $0.005 under $0.50."""
+    x = D(x)
+    t = tick(x)
+    if t == CENT:
+        return x.quantize(CENT, rounding=rounding)
+    return ((x / t).quantize(Decimal(1), rounding=rounding) * t).quantize(Decimal("0.001"))
+
+
 def money(x):
-    return "$%s" % format(D(x).quantize(CENT), ",f")
+    x = D(x)
+    if x == x.quantize(CENT):
+        return "$%s" % format(x.quantize(CENT), ",f")
+    return "$%s" % format(x.quantize(Decimal("0.001")), ",f")   # a TSX half-cent price
 
 
 def num(x):
@@ -269,15 +374,16 @@ def r_label(r):
 
 def compute(entry, stop_rule, stop_param, target_rule, target_param, or_high=None, or_low=None,
             atr=None, atr_bars=None):
-    """The stop, the target and the risk, in exact cents. Raises PlanError with the reason."""
-    e = cents(entry)
+    """The stop, the target and the risk, on the price grid (cents; TSX half cents under $0.50).
+    Raises PlanError with the reason."""
+    e = to_tick(entry)
     if e <= 0:
         raise PlanError("the entry price must be above $0")
     detail = ""
     if stop_rule in ("or_mid", "or_low"):
         if or_high is None or or_low is None:
             raise PlanError("an %s stop needs the opening range (--or-high and --or-low)" % stop_rule.replace("_", "-"))
-        oh, ol = cents(or_high), cents(or_low)
+        oh, ol = to_tick(or_high), to_tick(or_low)
         if oh <= ol:
             raise PlanError("the opening-range high %s must be above its low %s" % (money(oh), money(ol)))
         if stop_rule == "or_mid":
@@ -302,7 +408,7 @@ def compute(entry, stop_rule, stop_param, target_rule, target_param, or_high=Non
             num(a.quantize(Decimal("0.0001"))), atr_bars, " (fewer than 14 so far)" if atr_bars < ATR_BARS else "")
     else:
         raise PlanError("unknown stop rule %r" % stop_rule)
-    stop = floor_cents(raw)
+    stop = to_tick(raw, ROUND_FLOOR)
     if stop != D(raw):
         detail = (detail + ", rounded down" if detail else "$%s rounded down" % num(raw))
     if stop >= e:
@@ -317,10 +423,10 @@ def compute(entry, stop_rule, stop_param, target_rule, target_param, or_high=Non
                         "survive the spread, normal wiggle would stop you out. Widen it."
                         % (money(risk), money(floor_risk.quantize(CENT, rounding=ROUND_HALF_UP)), money(e)))
     if target_rule == "r":
-        target = cents(e + target_param * risk)
+        target = to_tick(e + target_param * risk)
         t_label = r_label(target_param)
     else:
-        target = cents(target_param)
+        target = to_tick(target_param)
         t_label = None
     if target <= e:
         raise PlanError("the target %s is at or below the entry %s: a long's target goes above it"
@@ -391,7 +497,7 @@ def read_text(path):
 
 
 def load_chart(sym, interval, day, offline=None):
-    ysym = sym.upper().replace(".", "-")
+    ysym = to_yahoo(sym)
     if offline:
         path = offline
         if os.path.isdir(offline):
@@ -517,7 +623,7 @@ def resolve_flat_by(day, explicit, cfg, entry_time):
             if moved.time() <= OPEN:
                 raise PlanError("flat_by %s in the config is at or after the close" % hm(t))
             t = moved.time()
-            note = "moved up for the 1:00 p.m. early close (%s)" % NYSE_EARLY_CLOSE.get(day.isoformat(), "")
+            note = "moved up for the 1:00 p.m. early close (%s)" % EARLY_CLOSE.get(day.isoformat(), "")
     if entry_time and entry_time >= t:
         raise PlanError("the entry at %s is at or after your flat-by %s: there is no time left to hold it"
                         % (ampm(entry_time), hm(t)))
@@ -535,7 +641,7 @@ def gather(a):
             raise PlanError("--symbol needs --entry PRICE")
         if (a.or_high is None) != (a.or_low is None):
             raise PlanError("give both --or-high and --or-low, or neither")
-        info = {"symbol": a.symbol.upper(), "entry": a.entry, "setup": a.setup or ("orb" if a.or_high is not None else "level"),
+        info = {"symbol": ca_symbol(a.symbol) if MARKET == "ca" else a.symbol.upper(), "entry": a.entry, "setup": a.setup or ("orb" if a.or_high is not None else "level"),
                 "date": a.date, "entry_time": a.time, "entry_bar": a.entry_bar, "interval": a.interval or "5m",
                 "or_high": a.or_high, "or_low": a.or_low, "or_minutes": a.or_minutes, "source": "flags"}
     else:
@@ -605,6 +711,13 @@ def build_plan(a, now_utc):
             "target": float(c["target"]), "target_r": float(c["target_r"]), "target_label": c["target_label"],
             "risk_per_share": float(c["risk"]), "reward_risk": float(c["reward_risk"]), "flat_by": flat_by,
             "stop_detail": c["stop_detail"], "created_at": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), "note": NOTE}
+    if MARKET != "us":
+        plan["market"], plan["currency"] = MARKET, "CAD"
+    fee = D(cfg.get("commission_per_trade") or 0, "commission_per_trade")
+    if fee < 0:
+        raise PlanError("commission_per_trade in the config can not be under 0")
+    if fee:
+        plan["commission_per_trade"] = float(fee)
     if atr is not None:
         plan["atr"] = round(atr, 4)
         plan["atr_bars"] = atr_n
@@ -643,6 +756,9 @@ def describe(plan):
     out.append("  Target        %s  %s" % (money(plan["target"]), plan["target_label"]))
     out.append("  Risk a share  %s (%s%% of the entry)" % (money(plan["risk_per_share"]), pct))
     out.append("  Reward:risk   %s" % ratio(plan["reward_risk"]))
+    if plan.get("commission_per_trade"):
+        out.append("  Commission    %s an order, %s in and out: /trader-budget counts it in the max loss"
+                   % (money(plan["commission_per_trade"]), money(D(plan["commission_per_trade"]) * 2)))
     out.append("  Flat by       %s ET, win or lose: no overnight hold" % plan["flat_by"])
     out.append("Set before the entry. If price hits the stop, you are out; never move it further away.")
     out.append(NOTE)
@@ -711,6 +827,7 @@ def main(argv=None):
     p.add_argument("--target", help="2R (default), 1R, 1.5R, price:X")
     p.add_argument("--flat-by", help="HH:MM New York (default: config flat_by, 15:55)")
     p.add_argument("--config", default="trader/config.json")
+    p.add_argument("--market", choices=sorted(MARKETS), help='"us" or "ca" (default: config market, else us)')
     p.add_argument("--offline", metavar="PATH", help="saved Yahoo chart JSON for an atr stop")
     p.add_argument("--now", help='pretend it is this New York time, e.g. "2026-10-19 10:15"')
     p.add_argument("--write", nargs="?", const="trader/plan.json", metavar="PATH",
@@ -719,16 +836,23 @@ def main(argv=None):
     p = sub.add_parser("show", help="print the current plan")
     p.add_argument("--plan", default="trader/plan.json")
     p.add_argument("--now")
+    p.add_argument("--config", default="trader/config.json")
+    p.add_argument("--market", choices=sorted(MARKETS), help='"us" or "ca" (default: config market, else us)')
     p.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     if not a.cmd:
         ap.print_help()
         return 1
+    real_out = sys.stdout
     try:
+        if use_market(config_market(a.config, a.market)) == "ca":
+            sys.stdout = Relabel(real_out)
         return {"plan": cmd_plan, "show": cmd_show}[a.cmd](a)
     except PlanError as e:
         print("exit.py: %s" % e, file=sys.stderr)
         return 1
+    finally:
+        sys.stdout = real_out
 
 
 if __name__ == "__main__":

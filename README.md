@@ -152,6 +152,43 @@ for the 60 days to October 19 2026, the 10:15 AM opening-range scan, Yahoo's
 TSLA headlines that morning, the House Clerk's 2026 index, real PTR text and
 real XBRL facts. They reproduce every number in the example above.
 
+## Canada (TSX and TSXV)
+
+Set `"market": "ca"` in `trader/config.json` and the same pack works on the Toronto Stock
+Exchange and the TSX Venture. `"us"` stays the default, so nothing changes until you set it.
+
+```json
+{
+  "market": "ca",
+  "commission_per_trade": 4.95,
+  "account_type": "margin",
+  "budget": 5000,
+  "max_loss_per_trade_cad": 50,
+  "max_daily_loss_cad": 150,
+  "paper": true
+}
+```
+
+What changes with `"market": "ca"`:
+
+| skill | in Canada |
+| --- | --- |
+| every clock | TMX's 2026 TSX holidays and the 1:00 PM close on Christmas Eve, cited from [tsx.com](https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar). The session is the same 9:30 to 4:00 PM ET. The U.S.-only holidays (U.S. Thanksgiving, Juneteenth, July 3) are TSX trading days. **TMX has not published 2027 yet**, so for a 2027 date the tools say the calendar is not covered instead of guessing. |
+| tickers | Yahoo's: `RY.TO` on the TSX, `AUMB.V` on the Venture, `BBD.B` as `BBD-B.TO`. A bare `RY` reads as `RY.TO`. |
+| `/trader-scanner` | `scan.py universe` reads TMX's company directory (the free JSON behind tsx.com's Listed Company Directory) and keeps common shares, class shares and trust units; `--venture` adds the TSXV. No network to tsx.com? `--from composite.csv` takes your own list, such as the S&P/TSX Composite constituents. The 1,000,000-share volume floor is a US number: try `--min-volume 250000`. |
+| `/trader-exit`, `/trader-budget`, `/trader-risk` | C$ amounts (a `_cad` key stands in for its `_usd` twin). The TSX price grid: a cent, or half a cent ($0.005) under $0.50. `commission_per_trade` (any market, default 0) counts twice, in and out, in the share count, the max loss and the reward:risk. |
+| `/trader-risk` | `pdt_guard` is off: Canada has no pattern-day-trader rule. A TFSA warning on every check (see below). |
+| `/trader-broker` | Interactive Brokers by default (Alpaca's stock trading is for US-listed shares), paper account first. The ticket names the IBKR contract (`RY` on TSE, CAD). **The three gates are unchanged:** a trader-risk PASS for that exact order, your typed yes for that one order, and Claude's Allow once card; IBKR's own approval comes on top. |
+| `/trader-news` | Yahoo headlines and the move. No SEC 8-Ks for `.TO` / `.V`: Canadian companies file with SEDAR+, which has no clean free API, so that step is skipped and the output says so. Check sedarplus.ca by hand. |
+| `/trader-alerts` | The TSX clock and opening bell, Yahoo quotes only (the Stooq fallback is wired for US tickers). |
+| `/trader-timemachine`, `/trader-entry` | The same rules on the stock's own bars, with the TSX calendar. |
+| `/trader-analyst`, `/trader-pelosi` | US-only for now. A Canadian ticker gets a plain message saying so. A company also listed in the US may still work under its US ticker (`SHOP` for `SHOP.TO`). |
+
+**Do not day trade inside a TFSA.** The CRA can treat frequent trading in a TFSA as carrying on
+a business and tax the gains as business income, not tax-free. Use a margin or cash account.
+Set `"account_type"` (`"tfsa"`, `"margin"` or `"cash"`) so `/trader-risk` knows which account it is.
+Not tax advice: talk to a tax professional.
+
 ## Fine print
 
 **Not financial advice.** This is software that reads public data and does

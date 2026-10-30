@@ -603,3 +603,59 @@ class SkillDoc(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": the TSX calendar and .TO tickers."""
+
+    def setUp(self):
+        entry.use_market("ca")
+
+    def tearDown(self):
+        entry.use_market("us")
+
+    def test_tsx_holiday_and_a_us_holiday(self):
+        r = at("2026-10-12 10:30")                                 # Canadian Thanksgiving
+        self.assertEqual((r["status"], r["phase"]), ("no-data", "closed"))
+        self.assertEqual(r["reason"], "the TSX is closed today (TSX holiday: Thanksgiving Day)")
+        thanks = shift_to(doc(), datetime.date(2026, 11, 26), edt=False)   # U.S. Thanksgiving: TSX trades
+        r = at("2026-11-26 10:15", thanks)
+        self.assertEqual((r["status"], r["trigger"]["time"]), ("triggered", "10:15 AM"))
+        entry.use_market("us")
+        self.assertEqual(at("2026-11-26 10:15", thanks)["status"], "no-data")
+        self.assertNotEqual(at("2026-10-12 10:30")["phase"], "closed")      # the NYSE trades that day
+
+    def test_2027_is_not_covered_yet(self):
+        self.assertFalse(at("2027-03-01 10:30")["calendar_known"])
+        self.assertIn("check tsx.com", "\n".join(entry.describe(at("2027-03-01 10:30"))))
+
+    def test_tickers_and_labels(self):
+        self.assertEqual(entry.yahoo_symbol("BBD.B.TO"), "BBD-B.TO")
+        self.assertEqual(entry.chart_path("RY.TO", "1d", "5m"), "/v8/finance/chart/RY.TO?range=1d&interval=5m")
+        code, _, err = run(["check", "ry", "--market", "ca", "--offline", EDIR])
+        self.assertEqual(code, 1)
+        self.assertIn("RY.TO", err)
+        out = io.StringIO()
+        entry.Relabel(out).write("close above $362.18")
+        self.assertEqual(out.getvalue(), "close above C$362.18")
+
+
+class CanadaRealData(unittest.TestCase):
+    """RY.TO's real 5-minute bars, Oct 23 to 29 2026 (Yahoo), and SHOP.TO's from the time machine fixture."""
+
+    def setUp(self):
+        entry.use_market("ca")
+
+    def tearDown(self):
+        entry.use_market("us")
+
+    def test_ry_waits_and_shop_triggers(self):
+        code, text, _ = run(["check", "ry", "--offline", os.path.join(EDIR, "RY.TO-5d-5m.json"),
+                             "--now", "2026-10-29 10:15", "--market", "ca"])
+        self.assertEqual(code, 1)
+        self.assertIn("Opening range 9:30-9:45: high C$289.90, low C$287.40", text)
+        self.assertIn("WAITING  last close C$289.12 (10:10 bar)", text)
+        shop = os.path.join(FIX, "trader-timemachine", "SHOP.TO-60d5m.json.gz")
+        code, text, _ = run(["check", "SHOP", "--offline", shop, "--now", "2026-10-29 10:15", "--market", "ca"])
+        self.assertEqual(code, 0)
+        self.assertIn("TRIGGERED 10:00 AM at C$234.39", text)

@@ -161,3 +161,15 @@ class Cli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    def test_a_canadian_ticker_is_us_only_for_now(self):
+        code, out, err = run(["RY.TO", "--offline", DIR])
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("RY.TO is a Canadian listing: trader-analyst is US-only for now", err)
+        self.assertIn("SEDAR+", err)
+        code, out, err = run(["SHOP.TO", "AAPL", "--offline", DIR, "--no-filings"])   # the US one still runs
+        self.assertIn("SHOP.TO is a Canadian listing", err)
+        self.assertIn("Apple", out)

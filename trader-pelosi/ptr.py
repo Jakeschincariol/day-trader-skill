@@ -347,8 +347,15 @@ def pdf_to_text(pdf_path):
 
 # ---------------------------------------------------------------- output
 
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
 def watchlist(args):
     tickers = {t.upper() for t in (args.tickers or [])}
+    for t in sorted(x for x in tickers if x.endswith(CA_SUFFIXES)):
+        print("ptr: %s is a Canadian listing: trader-pelosi is US-only for now. It reads the House "
+              "Clerk's STOCK Act disclosures, which name US tickers, so a TSX or TSXV ticker will not "
+              "match. Watch the company's US ticker if it has one (SHOP for SHOP.TO)." % t, file=sys.stderr)
     path = getattr(args, "portfolio", None)
     if path and os.path.isfile(path):
         with open(path, encoding="utf-8") as fh:

@@ -68,6 +68,13 @@ email. It refuses to call SEC without one.
   the business (investment marks, tax items) are inside it. The tool says so.
   Banks and insurers have no gross margin: blank, not zero.
 
+## Canada: US-only for now
+
+This skill reads SEC EDGAR's XBRL facts. Canadian companies file with SEDAR+ (sedarplus.ca),
+which has no clean free API, so a `.TO` or `.V` ticker gets a plain "US-only for now" message
+and is skipped. A company that is also listed in the US may file with the SEC (Shopify files
+there): try its US ticker (`SHOP` for `SHOP.TO`).
+
 ## Steps
 
 1. Run it for the companies in question (or the tickers on

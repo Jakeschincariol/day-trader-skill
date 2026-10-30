@@ -612,3 +612,58 @@ class Cli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": the TSX's early closes, .TO tickers, the market from the plan."""
+
+    def tearDown(self):
+        tm.use_market("us")
+
+    def test_the_day_after_us_thanksgiving_is_a_full_tsx_day(self):
+        p = plan(date="2026-11-27")
+        with self.assertRaises(tm.TMError) as cm:                 # NYSE: a 1:00 p.m. close
+            machine(p, until="15:00")
+        self.assertIn("no later than 1:00 PM (an early close)", str(cm.exception))
+        tm.use_market("ca")
+        with self.assertRaises(tm.TMError) as cm:                 # TSX: a full day, so 15:00 is fine
+            machine(p, until="15:00")
+        self.assertIn("the entry is not in the data", str(cm.exception))
+        with self.assertRaises(tm.TMError) as cm:                 # Christmas Eve closes at 1:00 on both
+            machine(plan(date="2026-12-24"), until="15:00")
+        self.assertIn("an early close", str(cm.exception))
+
+    def test_tickers_and_the_plan_market(self):
+        self.assertEqual(tm.to_yahoo("BBD.B.TO"), "BBD-B.TO")
+        self.assertIn("/chart/RY.TO?range=60d", tm.chart_url("ry.to"))
+        d = tempfile.mkdtemp()
+        try:
+            path = os.path.join(d, "plan.json")
+            with open(path, "w") as fh:
+                json.dump(dict(PLAN, symbol="RY.TO", market="ca"), fh)
+            a = type("A", (), {"symbol": None, "plan": path, "market": None})()
+            self.assertEqual(tm.load_plan(a, NOW_UTC)["symbol"], "RY.TO")
+            self.assertEqual(tm.MARKET, "ca")
+        finally:
+            shutil.rmtree(d)
+
+
+class CanadaRealData(unittest.TestCase):
+    """SHOP.TO's real 60 days of 5-minute bars: the Oct 29 2026 breakout, replayed."""
+
+    def test_shop_breakout(self):
+        tm.use_market("ca")
+        try:
+            with gzip.open(os.path.join(DIR, "SHOP.TO-60d5m.json.gz"), "rt", encoding="utf-8") as fh:
+                text = fh.read()
+            p = tm.normalize_plan({"symbol": "SHOP.TO", "side": "buy", "date": "2026-10-29", "setup": "orb",
+                                   "entry": 234.39, "stop": 230.66, "target": 238.12, "entry_time": "10:00 AM",
+                                   "opening_range": {"high": 233.7, "low": 227.63, "minutes": 15},
+                                   "stop_rule": "or_mid", "interval": "5m", "market": "ca"})
+            doc = tm.time_machine(text, p, tm.parse_now("2026-10-29 10:00"), replays=2000)
+        finally:
+            tm.use_market("us")
+        m = doc["mc"]
+        self.assertEqual((m["pool_sessions"], m["pool_from"], m["pool_to"]), (59, "2026-08-05", "2026-10-28"))
+        self.assertNotIn("2026-10-12", json.dumps(doc))                    # TSX Thanksgiving: no session
+        self.assertEqual(m["until"], "16:00")

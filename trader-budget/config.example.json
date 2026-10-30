@@ -1,10 +1,12 @@
 {
+  "market": "us",
   "budget": 5000,
   "cash_buffer_pct": 10,
   "max_position_pct": 75,
   "max_order_usd": 4000,
   "min_order_usd": 5,
   "max_loss_per_trade_usd": 50,
+  "commission_per_trade": 0,
   "max_daily_loss_usd": 150,
   "max_trades_per_day": 3,
   "max_orders_per_day": 10,

@@ -147,6 +147,22 @@ reward:risk 0.44. At 9:40 they are blocked by the window (no new entries
 before 9:45). The 3:55 PM sell that closes the position passes, even though
 it is after the 3:30 entry cutoff: it is an exit.
 
+## Commission and Canada
+
+- `"commission_per_trade"` (default 0, any market): your broker's fee for each order. The max
+  loss is `qty x risk a share + 2 x commission` (in and out), and the reward:risk is what is left
+  of the reward after both commissions, over that max loss. With 0 the numbers are the old ones.
+- `"market": "ca"`: the TSX calendar sets the window (a U.S. holiday is a TSX trading day; TSX
+  holidays are closed; the Christmas Eve 1:00 PM close pulls the window in by three hours),
+  tickers must be `.TO` or `.V`, amounts are C$ (a `_cad` key stands in for its `_usd` twin), and a
+  stop can sit half a cent under the entry on a stock under $0.50.
+- `pdt_guard` is off by default. Canada has no pattern-day-trader rule; turning it on still counts
+  day trades and says so.
+- **TFSA.** Every Canadian check carries a TFSA line. With `"account_type": "tfsa"` it is a full
+  warning: do not day trade inside a TFSA, because the CRA can treat frequent trading there as
+  carrying on a business and tax the gains as business income. It warns; it does not block, and
+  it is not tax advice. Say it to the user in plain words.
+
 ## Rules
 
 - A PASS only means the order is allowed to be shown to the user. It is not a yes.

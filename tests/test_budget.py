@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
@@ -19,6 +20,7 @@ REEL_V1 = {"AAPL": 1250, "AXP": 1119, "GOOGL": 823, "KO": 708, "BAC": 600}
 PRICES = {"AAPL": 341.27, "AXP": 309.84, "GOOGL": 353.78, "KO": 90.11, "BAC": 53.96}
 # the contract's v2 config, key for key
 CONTRACT_CFG = {
+    "market": "us", "commission_per_trade": 0,   # the Canada adaptation: both keep the US behaviour
     "budget": 5000, "cash_buffer_pct": 10, "max_position_pct": 75, "max_order_usd": 4000, "min_order_usd": 5,
     "max_loss_per_trade_usd": 50, "max_daily_loss_usd": 150, "max_trades_per_day": 3, "max_orders_per_day": 10,
     "min_reward_risk": 1.0, "require_stop": True,
@@ -372,3 +374,78 @@ class WeightsMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": C$ labels, the TSX half-cent grid, and a commission in the max loss."""
+
+    def setUp(self):
+        size.use_market("ca")
+
+    def tearDown(self):
+        size.use_market("us")
+
+    def ry(self, **over):
+        p = {"symbol": "RY.TO", "side": "buy", "date": "2026-11-26", "setup": "orb", "entry": 190.40,
+             "stop": 189.30, "target": 192.60, "entry_time": "10:15 AM", "market": "ca", "currency": "CAD"}
+        p.update(over)
+        return p
+
+    def test_commission_comes_off_the_max_loss(self):
+        s = size.size_trade(self.ry(), cfg(budget=20000, max_order_usd=20000, market="ca", commission_per_trade=4.95), today="2026-11-26")
+        self.assertEqual(s["qty"], 36)                          # (50 - 9.90) / 1.10 = 36.45
+        self.assertEqual(s["max_loss"], 49.5)                   # 36 x 1.10 + 9.90
+        self.assertEqual(s["commissions"], 9.9)
+        self.assertEqual(s["reward_risk_net"], 1.4)             # (79.20 - 9.90) / (39.60 + 9.90) = 69.30 / 49.50
+        self.assertEqual(s["currency"], "CAD")
+        o = size.bracket_order(s)
+        self.assertEqual(o["plan"]["commission_per_trade"], 4.95)
+        self.assertIn("(36 x 1.10 + $9.90 commission in and out = $49.50 at the stop)", o["why"])
+        no_fee = size.size_trade(self.ry(), cfg(budget=20000, max_order_usd=20000, market="ca"), today="2026-11-26")
+        self.assertEqual((no_fee["qty"], no_fee["max_loss"]), (45, 49.5))   # 0 commission: the old math
+        self.assertNotIn("commissions", no_fee)
+
+    def test_commission_can_sink_the_reward_risk(self):
+        s = size.size_trade(self.ry(target=191.60), cfg(budget=20000, max_order_usd=20000, market="ca", commission_per_trade=4.95, min_reward_risk=1.0),
+                            today="2026-11-26")
+        self.assertEqual(s["reward_risk"], 1.09)               # a share: 1.20 over 1.10
+        self.assertIn("reward:risk after", s["refusal"])       # 36 shares: (43.20 - 9.90) / 49.50 = 0.67
+        s = size.size_trade(self.ry(), cfg(budget=20000, max_order_usd=20000, market="ca", commission_per_trade=30), today="2026-11-26")
+        self.assertEqual(s["qty"], 0)
+        self.assertIn("plus $60 commission in and out", s["refusal"])
+
+    def test_half_cent_prices_under_fifty_cents(self):
+        s = size.size_trade(self.ry(symbol="AUMB.V", entry=0.42, stop=0.395, target=0.47), cfg(budget=20000, max_order_usd=20000, market="ca"),
+                            today="2026-11-26")
+        self.assertEqual(s["risk_per_share"], 0.025)
+        self.assertEqual(s["qty"], 2000)                        # 50 / 0.025
+        self.assertEqual(size.bracket_order(s)["stop_loss_stop_price"], "0.395")
+        size.use_market("us")
+        self.assertEqual(size._price(0.395), "0.40")            # US: cents, as before
+
+    def test_cad_keys_and_labels(self):
+        d = tempfile.mkdtemp()
+        try:
+            c = os.path.join(d, "config.json")
+            with open(c, "w") as fh:
+                json.dump(cfg(budget=20000, max_order_usd=20000, market="ca", max_loss_per_trade_cad=40, commission_per_trade=0), fh)
+            p = os.path.join(d, "plan.json")
+            with open(p, "w") as fh:
+                json.dump(self.ry(), fh)
+            size.use_market("us")
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = size.main(["--plan", p, "--config", c, "--now", "2026-11-26 10:15",
+                                  "--portfolio", os.path.join(d, "none.json")])
+            self.assertEqual(code, 0, err.getvalue())
+            text = out.getvalue()
+            self.assertIn("C$40 max loss / 1.10 risk a share", text)   # the _cad key, read as C$
+            self.assertNotIn(" $", text)
+        finally:
+            shutil.rmtree(d)
+
+    def test_a_canadian_plan_needs_a_canadian_config(self):
+        size.use_market("us")
+        with self.assertRaises(size.SizeError) as cm:
+            size.size_trade(self.ry(), cfg(), today="2026-11-26")
+        self.assertIn("the plan is for the ca market", str(cm.exception))

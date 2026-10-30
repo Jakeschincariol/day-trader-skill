@@ -82,6 +82,8 @@ DEFAULTS = {
     "allow_margin": False,
     "allow_short": False,
     "pdt_guard": False,
+    "market": "us",
+    "commission_per_trade": 0,
 }
 EPS = 1e-9
 FRESH_MINUTES = 15
@@ -90,6 +92,35 @@ SETUP_WORDS = {"orb": "opening-range breakout", "flag": "flag", "bounce": "overs
 
 class SizeError(Exception):
     pass
+
+
+# ---------------------------------------------------------------- market ("us" or "ca")
+
+MARKETS = ("us", "ca")
+MARKET, SIGN = "us", "$"
+
+
+def use_market(name):
+    """"us" (the default) or "ca": the TSX price grid and C$ labels."""
+    global MARKET, SIGN
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise SizeError('market wants "us" or "ca", not "%s"' % name)
+    MARKET, SIGN = name, ("C$" if name == "ca" else "$")
+    return name
+
+
+class Relabel(object):
+    """For "ca": every amount this tool prints is Canadian dollars, so its "$" reads "C$"."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, text):
+        return self.out.write(text.replace("$", SIGN))
+
+    def flush(self):
+        self.out.flush()
 
 
 # ---------------------------------------------------------------- time (New York, no tz files)
@@ -168,9 +199,15 @@ def read_json(path, what):
 
 
 def load_config(path):
+    """DEFAULTS + trader/config.json. With "market": "ca" a *_cad key (max_loss_per_trade_cad)
+    stands in for its *_usd twin, so the amounts read as what they are."""
     cfg = dict(DEFAULTS)
     if path and os.path.exists(path):
         cfg.update(read_json(path, "config"))
+    if str(cfg.get("market") or "us").lower() == "ca":
+        for k in list(cfg):
+            if k.endswith("_cad") and cfg[k] is not None:
+                cfg[k[:-4] + "_usd"] = cfg[k]
     return cfg
 
 
@@ -268,21 +305,29 @@ def fresh_price(doc, sym, now_utc, minutes=FRESH_MINUTES):
 # ---------------------------------------------------------------- money helpers
 
 def round_cent(x):
-    """Round a price to the cent (half up)."""
+    """Round a price to the cent (half up). "ca": to the TSX grid, half a cent under $0.50."""
+    if MARKET == "ca" and float(x) < 0.5 - EPS:
+        return math.floor(float(x) * 200 + 0.5 + EPS) / 200.0
     return math.floor(float(x) * 100 + 0.5 + EPS) / 100.0
 
 
+def mills(x):
+    """Dollars -> whole tenths of a cent: exact for cent prices and TSX half cents."""
+    return int(round(float(x) * 1000))
+
+
 def shares_for(usd, per_share):
-    """Whole shares that fit in usd at per_share, in exact integer cents."""
-    u, p = int(round(float(usd) * 100)), int(round(float(per_share) * 100))
+    """Whole shares that fit in usd at per_share, in exact integer tenths of a cent."""
+    u, p = mills(usd), mills(per_share)
     if p <= 0 or u <= 0:
         return 0
     return u // p
 
 
 def _price(x):
-    """358.32 -> "358.32": Alpaca wants prices as strings."""
-    return "%.2f" % round_cent(x)
+    """358.32 -> "358.32": Alpaca wants prices as strings. A TSX half cent keeps 3 places: "0.395"."""
+    x = round_cent(x)
+    return "%.2f" % x if abs(x * 100 - round(x * 100)) < EPS * 100 else "%.3f" % x
 
 
 def _num(x):
@@ -327,6 +372,9 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
         if v is None or v <= 0:
             raise SizeError("the plan needs a positive %s (run trader-exit); a bracket order needs entry, "
                             "stop and target" % name)
+    if str(plan.get("market") or "us").lower() != MARKET:
+        raise SizeError("the plan is for the %s market but trader/config.json says %s: set \"market\" to match"
+                        % (plan.get("market") or "us", MARKET))
     blocked = {str(b).upper() for b in (c.get("blocked") or [])}
     if sym in blocked:
         raise SizeError("%s is on your blocked list" % sym)
@@ -351,9 +399,13 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     if target <= ref:
         raise SizeError("the target %s is not above the entry %s: the move has already happened. "
                         "Skip it or make a new plan with trader-exit" % (_price(target), _price(ref)))
-    risk_c = int(round((ref - stop) * 100))
-    reward_c = int(round((target - ref) * 100))
-    risk = risk_c / 100.0
+    risk_c = mills(ref - stop)            # tenths of a cent, so a TSX half cent is exact
+    reward_c = mills(target - ref)
+    risk = risk_c / 1000.0
+    fee = _f(c.get("commission_per_trade")) or 0.0
+    if fee < 0:
+        raise SizeError("commission_per_trade must be 0 or more")
+    fees = round(2 * fee, 2)              # one commission in, one out
 
     cash_buffer = round(budget * buf_pct / 100.0, 2)
     available = budget - cash_buffer
@@ -361,11 +413,19 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     if cash is not None and cash - cash_buffer < available - 0.005:
         available = cash - cash_buffer
         cash_note = "cash %s in trader/portfolio.json minus the %s buffer" % (money(cash), money(cash_buffer))
+    if fee:
+        available -= fee                  # the buy's own commission comes out of the cash
+        cash_note += " minus the %s commission" % money(fee)
     available = max(round(available, 2), 0.0)
 
     limits = []
     max_loss = _f(c.get("max_loss_per_trade_usd"))
-    if max_loss:
+    if max_loss and fee:
+        room = max(round(max_loss - fees, 2), 0.0)
+        limits.append({"name": "max loss", "usd": max_loss, "per": risk, "shares": shares_for(room, risk),
+                       "how": "(%s max loss - %s commission in and out) / %s risk a share"
+                              % (money(max_loss), money(fees), _price(risk))})
+    elif max_loss:
         limits.append({"name": "max loss", "usd": max_loss, "per": risk, "shares": shares_for(max_loss, risk),
                        "how": "%s max loss / %s risk a share" % (money(max_loss), _price(risk))})
     cap_pct = _f(c.get("max_position_pct"))
@@ -385,16 +445,28 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     for l in limits:
         l["binds"] = l["name"] == bound[0]
     cost = round(qty * ref, 2)
-    loss = round(qty * risk_c / 100.0, 2)
+    loss = round(qty * risk_c / 1000.0 + fees, 2)
+    net_rr = None
+    if fee and qty:
+        net_rr = (qty * reward_c / 1000.0 - fees) / (qty * risk_c / 1000.0 + fees)
     refusal = None
     if qty == 0:
-        if bound[0] == "max loss":
+        if bound[0] == "max loss" and fee and max_loss and max_loss <= fees + risk - EPS:
+            refusal = ("one share risks %s plus %s commission in and out, more than your %s max loss per "
+                       "trade. No order. Skip this trade, or plan a closer stop with trader-exit."
+                       % (money(risk), money(fees), money(max_loss)))
+        elif bound[0] == "max loss":
             refusal = ("one share risks %s (entry %s minus stop %s), more than your %s max loss per trade. "
                        "No order. Skip this trade, or plan a closer stop with trader-exit."
                        % (money(risk), _price(ref), _price(stop), money(max_loss)))
         else:
             refusal = ("one share of %s costs %s, more than your %s limit (%s). No order."
                        % (sym, money(ref), bound[0], limits[[l["name"] for l in limits].index(bound[0])]["how"]))
+    elif net_rr is not None and _f(c.get("min_reward_risk")) and net_rr < _f(c["min_reward_risk"]) - EPS:
+        refusal = ("reward:risk after %s commission in and out is %.2f (%d shares: %s to the target, %s at the "
+                   "stop), under your minimum %s, so trader-risk would block it. No order."
+                   % (money(fees), net_rr, qty, money(qty * reward_c / 1000.0 - fees), money(loss),
+                      _num(c["min_reward_risk"])))
     elif _f(c.get("min_reward_risk")) and reward_c < _f(c["min_reward_risk"]) * risk_c - EPS:
         refusal = ("reward:risk %.2f (target %s, entry %s, stop %s) is under your minimum %s, so trader-risk "
                    "would block it. No order. Skip it, or make a new plan with trader-exit."
@@ -402,7 +474,7 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     elif cost < float(c.get("min_order_usd") or 0) - 0.005:
         refusal = ("%d share%s of %s is %s, under your %s minimum order. No order."
                    % (qty, "" if qty == 1 else "s", sym, money(cost), money(c["min_order_usd"])))
-    return {
+    out = {
         "symbol": sym, "side": "buy", "setup": plan.get("setup", ""), "date": plan.get("date"),
         "entry_time": plan.get("entry_time", ""), "entry_plan": round_cent(entry_plan),
         "entry": ref, "entry_from": ref_from, "stop": stop, "target": target,
@@ -413,6 +485,12 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
         "cost": cost, "max_loss": loss, "flat_by": plan.get("flat_by") or c.get("flat_by"),
         "order_type": "limit" if limit is not None else "market", "refusal": refusal,
     }
+    if fee:
+        out.update(commission_per_trade=fee, commissions=fees,
+                   reward_risk_net=round(net_rr, 2) if net_rr is not None else None)
+    if MARKET != "us":
+        out.update(market=MARKET, currency="CAD")
+    return out
 
 
 def bracket_order(s):
@@ -438,6 +516,12 @@ def bracket_order(s):
                  "risk_per_share": s["risk_per_share"], "max_loss": s["max_loss"], "setup": s["setup"],
                  "entry_time": s["entry_time"], "flat_by": s["flat_by"]},
     })
+    if s.get("commissions"):
+        o["plan"]["commission_per_trade"] = s["commission_per_trade"]
+        o["why"] = o["why"].replace(" = %s at the stop)" % money(s["max_loss"]), " + %s commission in and out = %s "
+                                    "at the stop)" % (money(s["commissions"]), money(s["max_loss"])))
+    if s.get("market"):
+        o["plan"]["currency"] = s["currency"]
     return o
 
 
@@ -466,9 +550,16 @@ def plan_report(s, order, notes=()):
         lines.append("No order: " + s["refusal"])
         lines.append("Education and tooling, not financial advice.")
         return "\n".join(lines)
-    lines.append("Size: %d shares of %s = %s at %s. Max loss at the stop: %d x %s = %s."
-                 % (s["qty"], s["symbol"], money(s["cost"]), _price(s["entry"]), s["qty"],
-                    _price(s["risk_per_share"]), money(s["max_loss"])))
+    if s.get("commissions"):
+        lines.append("Size: %d shares of %s = %s at %s. Max loss at the stop: %d x %s + %s commission in and "
+                     "out = %s. Reward:risk after commission %.2f."
+                     % (s["qty"], s["symbol"], money(s["cost"]), _price(s["entry"]), s["qty"],
+                        _price(s["risk_per_share"]), money(s["commissions"]), money(s["max_loss"]),
+                        s["reward_risk_net"]))
+    else:
+        lines.append("Size: %d shares of %s = %s at %s. Max loss at the stop: %d x %s = %s."
+                     % (s["qty"], s["symbol"], money(s["cost"]), _price(s["entry"]), s["qty"],
+                        _price(s["risk_per_share"]), money(s["max_loss"])))
     lines.append("A stop is an order, not a promise: in a fast market it can fill below %s." % _price(s["stop"]))
     lines.append("")
     lines.append("Proposed bracket order (place_stock_order arguments, nothing has been placed):")
@@ -758,6 +849,7 @@ def write_orders(path, orders, cfg, source="", now_utc=None):
         "created_at": utc_iso(now_utc),
         "status": "proposed",
         "paper": bool(cfg.get("paper", True)),
+        "market": MARKET,
         "note": ("Proposals only. Nothing is placed until trader-risk passes each order "
                  "and you say yes to it in the chat."),
         "source": source,
@@ -855,6 +947,7 @@ def main(argv=None):
     ap.add_argument("--portfolio", default="trader/portfolio.json",
                     help="your account; its cash caps the size if it exists")
     ap.add_argument("--now", help="pretend it is this New York time, e.g. \"2026-10-19 10:15\"")
+    ap.add_argument("--market", choices=MARKETS, help='"us" or "ca" (default: config market, else us)')
     ap.add_argument("--write", nargs="?", const="trader/orders.json", metavar="PATH",
                     help="write the proposed order (default trader/orders.json)")
     ap.add_argument("--json", action="store_true", help="print JSON instead of the report")
@@ -865,8 +958,14 @@ def main(argv=None):
     g.add_argument("--whole-shares", action="store_true", help="whole shares only (needs --prices)")
     g.add_argument("--cents", action="store_true", help="size to the cent instead of whole dollars")
     a = ap.parse_args(argv)
+    real_out = sys.stdout
     try:
         cfg = load_config(a.config)
+        if a.market:
+            cfg["market"] = a.market
+            cfg = dict(cfg, **{k[:-4] + "_usd": v for k, v in cfg.items() if k.endswith("_cad") and a.market == "ca"})
+        if use_market(cfg.get("market")) == "ca":
+            sys.stdout = Relabel(real_out)
         if a.weights or a.targets:
             return run_weights(a, cfg)
         if a.top or a.whole_shares or a.cents:
@@ -875,6 +974,8 @@ def main(argv=None):
     except SizeError as e:
         print("size.py: %s" % e, file=sys.stderr)
         return 1
+    finally:
+        sys.stdout = real_out
 
 
 if __name__ == "__main__":
