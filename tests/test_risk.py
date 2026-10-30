@@ -521,3 +521,73 @@ class Cli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def ry(qty="36", **over):
+    """RY.TO, the shape trader-budget writes for "market": "ca" (entry 190.40, stop 189.30, target 192.60)."""
+    o = {"symbol": "RY.TO", "side": "buy", "qty": qty, "type": "market", "time_in_force": "day",
+         "order_class": "bracket", "take_profit_limit_price": "192.60", "stop_loss_stop_price": "189.30",
+         "plan": {"entry": 190.40, "stop": 189.30, "target": 192.60, "risk_per_share": 1.10, "setup": "orb",
+                  "entry_time": "10:15 AM", "flat_by": "15:55", "currency": "CAD"}}
+    o.update(over)
+    return o
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": the TSX calendar and tickers, commission in the max loss, pdt off, the TFSA warning."""
+
+    def ca(self, **over):
+        return cfg(market="ca", budget=20000, max_order_usd=20000, **over)
+
+    def tearDown(self):
+        check.use_market("us")
+
+    def test_a_us_holiday_is_a_tsx_trading_day(self):
+        res = check.check([ry()], self.ca(), now=at("2026-11-26 10:15"))      # U.S. Thanksgiving
+        self.assertEqual(verdicts(res), ["PASS"], reasons(res))
+        self.assertEqual(res["currency"], "CAD")
+        res = check.check([ry()], self.ca(), now=at("2026-10-12 10:15"))      # Canadian Thanksgiving
+        self.assertIn("window: the market is closed today (TSX holiday: Thanksgiving Day", reasons(res))
+        res = check.check([ry()], self.ca(), now=at("2026-12-24 12:45"))      # the 1:00 p.m. close
+        self.assertIn("no new entries after 12:30", reasons(res))
+
+    def test_commission_counts_in_the_max_loss(self):
+        res = check.check([ry()], self.ca(commission_per_trade=4.95), now=at("2026-11-26 10:15"))
+        r = res["results"][0]
+        self.assertEqual((r["verdict"], r["max_loss"], r["reward_risk"]), ("PASS", 49.5, 1.4))
+        res = check.check([ry("40")], self.ca(commission_per_trade=4.95), now=at("2026-11-26 10:15"))
+        self.assertIn("40 shares x 1.10 risk a share + $9.90 commission in and out = $53.90", reasons(res))
+        res = check.check([ry(take_profit_limit_price="191.60")], self.ca(commission_per_trade=4.95),
+                          now=at("2026-11-26 10:15"))
+        self.assertIn("reward:risk: 0.67 after $9.90 commission in and out", reasons(res))
+        o = ry("40", plan=dict(ry()["plan"], commission_per_trade=4.95))  # the order's own fee counts too
+        self.assertIn("commission in and out", reasons(check.check([o], self.ca(), now=at("2026-11-26 10:15"))))
+        res = check.check([tsla()], cfg(), now=at(NOW))                    # US, no commission: unchanged
+        self.assertEqual(res["results"][0]["max_loss"], 46.88)
+
+    def test_tickers(self):
+        for sym, ok in (("RY.TO", True), ("BBD.B.TO", True), ("REI.UN.TO", True), ("AUMB.V", True),
+                        ("RY", False), ("TSLA", False)):
+            res = check.check([ry(symbol=sym)], self.ca(), now=at("2026-11-26 10:15"))
+            self.assertEqual("asset:" in reasons(res), not ok, sym)
+        self.assertIn("US stock", reasons(check.check([ry(symbol="BBD.B.TO")], cfg(), now=at(NOW))))
+
+    def test_half_cent_stop(self):
+        o = ry("1000", symbol="AUMB.V", take_profit_limit_price="0.47", stop_loss_stop_price="0.395",
+               plan={"entry": 0.42, "stop": 0.395, "target": 0.47})
+        res = check.check([o], self.ca(), now=at("2026-11-26 10:15"))
+        r = res["results"][0]
+        self.assertEqual((r["verdict"], r["risk_per_share"], r["max_loss"]), ("PASS", 0.025, 25.0), reasons(res))
+
+    def test_pdt_off_and_the_tfsa_warning(self):
+        res = check.check([ry()], self.ca(), now=at("2026-11-26 10:15"))
+        self.assertIsNone(res["today"]["day_trades_5d"])                    # pdt_guard is off by default
+        self.assertTrue(any(w.startswith("TFSA: if this account is a TFSA") for w in res["warnings"]))
+        res = check.check([ry()], self.ca(account_type="tfsa"), now=at("2026-11-26 10:15"))
+        self.assertIn(check.TFSA_WARNING, res["warnings"])
+        self.assertIn("business income", check.TFSA_WARNING)
+        res = check.check([ry()], self.ca(account_type="margin", pdt_guard=True), now=at("2026-11-26 10:15"))
+        self.assertFalse(any(w.startswith("TFSA") for w in res["warnings"]))
+        self.assertTrue(any("Canada has no pattern-day-trader rule" in w for w in res["warnings"]))
+        res = check.check([tsla()], cfg(), now=at(NOW))                    # US: no TFSA line
+        self.assertFalse(any("TFSA" in w for w in res["warnings"]))
