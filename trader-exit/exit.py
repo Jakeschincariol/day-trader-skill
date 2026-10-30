@@ -135,10 +135,10 @@ def utc_of(ts):
 
 
 def parse_now(text):
-    """--now -> naive UTC. A time without an offset is New York time."""
+    """--now -> naive UTC. A bare time is New York time; an offset or Z makes it absolute."""
     if not text:
         return utc_now()
-    t = text.strip()
+    t = str(text).strip()
     if t.upper().endswith(" ET"):
         t = t[:-3].strip()
     if re.match(r"^\d{1,2}:\d{2}$", t):

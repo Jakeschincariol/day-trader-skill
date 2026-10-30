@@ -140,14 +140,19 @@ def eastern_to_utc(local):
 
 
 def parse_now(text):
-    """ISO time -> naive UTC. A time without an offset is taken as New York time."""
+    """--now -> naive UTC. A bare time is New York time; an offset or Z makes it absolute."""
     if not text:
         return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0, tzinfo=None)
-    t = text.strip().replace("Z", "+00:00")
+    t = str(text).strip()
+    if t.upper().endswith(" ET"):
+        t = t[:-3].strip()
+    if re.match(r"^\d{1,2}:\d{2}$", t):
+        t = "%s %s" % (to_eastern(datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0, tzinfo=None)).date().isoformat(), t.zfill(5))
+    t = t.replace("Z", "+00:00")
     try:
         dt = datetime.datetime.fromisoformat(t)
     except ValueError:
-        raise TMError("--now wants a time like \"2026-10-19 10:15\" (New York) or ...Z (UTC)")
+        raise TMError('--now wants a New York time like "2026-10-19 10:15" (or ...Z for UTC)')
     if dt.tzinfo is None:
         return eastern_to_utc(dt)
     return (dt - dt.utcoffset()).replace(tzinfo=None)
