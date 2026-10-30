@@ -70,6 +70,19 @@ A level setup has no opening range to lean on, so it needs a stop you name.
   win or lose, no overnight hold. On a 1:00 p.m. early close it moves up to
   12:55. An entry at or after the flat-by time is refused.
 
+## Canada (TSX and TSXV)
+
+With `"market": "ca"` in `trader/config.json` (or `--market ca`):
+
+- Prices are C$ and sit on the TSX grid: a cent at $0.50 and up, half a cent ($0.005) under
+  $0.50. The stop still rounds down, away from the entry, and the target rounds half up, on that grid.
+- The TSX calendar sets the session: the 1:00 PM close on Christmas Eve 2026 moves flat-by up to
+  12:55, and a TSX holiday has no session.
+- Tickers are Yahoo's `.TO` / `.V`; a bare `RY` is read as `RY.TO`.
+- `"commission_per_trade"` (your broker's fee for each order, default 0, any market) is shown on
+  the plan. trader-budget and trader-risk count it twice (in and out) in the max loss and the
+  reward:risk, because the share count is theirs to pick.
+
 ## Steps
 
 1. Run it right after `/trader-entry` triggers. Before that, `--entry PRICE`

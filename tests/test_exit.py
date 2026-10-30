@@ -288,3 +288,56 @@ class SkillDoc(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": the TSX price grid (a cent, half a cent under $0.50), C$ and the commission."""
+
+    def setUp(self):
+        exitp.use_market("ca")
+        self.d = tempfile.mkdtemp()
+
+    def tearDown(self):
+        exitp.use_market("us")
+        shutil.rmtree(self.d)
+
+    def test_half_cent_ticks_under_fifty_cents(self):
+        p = c(0.42, "or-mid", "2R", oh=0.415, ol=0.37)
+        self.assertEqual(p["stop"], Decimal("0.390"))                     # (0.415 + 0.37) / 2 = 0.3925, down
+        self.assertEqual(p["risk"], Decimal("0.030"))
+        self.assertEqual(p["target"], Decimal("0.480"))
+        p = c(0.30, "pct:5", "1R", oh=None, ol=None)
+        self.assertEqual(p["stop"], Decimal("0.285"))                     # 0.285 is on the half-cent grid
+        self.assertEqual(p["target"], Decimal("0.315"))
+        exitp.use_market("us")
+        self.assertEqual(c(0.30, "pct:5", "1R", oh=None, ol=None)["stop"], Decimal("0.28"))  # US: cents
+
+    def test_a_cent_from_fifty_cents_up(self):
+        p = c(364.18, "or-mid", "1R")
+        self.assertEqual((p["stop"], p["target"]), (Decimal("358.32"), Decimal("370.04")))
+        self.assertEqual(exitp.to_tick(Decimal("0.5049"), exitp.ROUND_FLOOR), Decimal("0.50"))
+        self.assertEqual(exitp.to_tick(Decimal("0.4999"), exitp.ROUND_FLOOR), Decimal("0.495"))
+        self.assertEqual(exitp.money(Decimal("0.395")), "$0.395")
+
+    def test_plan_in_cad_with_a_commission(self):
+        cfg = os.path.join(self.d, "config.json")
+        with open(cfg, "w") as fh:
+            json.dump({"market": "ca", "commission_per_trade": 4.95}, fh)
+        exitp.use_market("us")
+        out = os.path.join(self.d, "plan.json")
+        code, text, err = run(exitp, ["plan", "--symbol", "ry", "--entry", "190.40", "--or-high", "190.00",
+                                      "--or-low", "188.60", "--date", "2026-11-26", "--time", "10:15 AM",
+                                      "--config", cfg, "--now", "2026-11-26 10:15", "--write", out])
+        self.assertEqual(code, 0, err)
+        with open(out) as fh:
+            plan = json.load(fh)
+        self.assertEqual((plan["symbol"], plan["market"], plan["currency"]), ("RY.TO", "ca", "CAD"))
+        self.assertEqual((plan["stop"], plan["target"], plan["commission_per_trade"]), (189.3, 192.6, 4.95))
+        self.assertIn("Entry         C$190.40", text)
+        self.assertIn("Commission    C$4.95 an order, C$9.90 in and out", text)
+        self.assertNotIn(" $", text)
+
+    def test_tsx_early_close_and_holiday(self):
+        self.assertEqual(exitp.session(exitp.datetime.date(2026, 12, 24))[1], exitp.EARLY)
+        self.assertIsNone(exitp.session(exitp.datetime.date(2026, 12, 28)))     # in lieu of Boxing Day
+        self.assertEqual(exitp.session(exitp.datetime.date(2026, 11, 27))[1], exitp.CLOSE)
