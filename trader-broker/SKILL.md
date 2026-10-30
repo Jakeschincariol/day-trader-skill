@@ -135,6 +135,24 @@ submits orders directly to the market. So with IBKR the final yes happens in
 IBKR as well. Set `"broker": "ibkr"` in `trader/config.json`. Set its tools
 that draft orders to Needs approval too.
 
+## Canada: Interactive Brokers, paper first
+
+With `"market": "ca"` and no `"broker"` in `trader/config.json`, the broker is Interactive
+Brokers (Setup B), because Alpaca's stock trading is for US-listed shares. A `"broker"` you set
+yourself always wins.
+
+- **Paper first.** `"paper": true` stays the default. IBKR's paper account has its own login, so
+  sign the connector in to the paper account, not the live one. The ticket says so; if the user is
+  not sure which account the connector is signed in to, stop.
+- **Check the contract.** A Canadian ticket names the IBKR contract: `RY.TO` is RY on TSE
+  (Toronto Stock Exchange) in CAD, `AUMB.V` is AUMB on VENTURE. The user checks that in IBKR's
+  own review before approving there.
+- **The three gates are the same, never fewer.** trader-risk passed this exact order today (by
+  fingerprint), the user typed yes for this one order, and Claude's own Allow once / Deny card
+  appears because the IBKR tools are set to Needs approval. IBKR's own approval comes on top.
+- **TFSA.** Do not day trade inside a TFSA: the CRA can tax frequent trading there as business
+  income. trader-risk warns on every Canadian check. Not tax advice.
+
 ## Steps: the entry
 
 1. `ticket.py show`. Only READY tickets go to the user. A ticket that is NOT

@@ -305,3 +305,76 @@ class Flow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RY_ORDER = {"symbol": "RY.TO", "side": "buy", "qty": "36", "type": "market", "time_in_force": "day",
+            "order_class": "bracket", "take_profit_limit_price": "192.60", "stop_loss_stop_price": "189.30",
+            "why": "opening-range breakout on RY.TO: 36 shares",
+            "plan": {"entry": 190.40, "stop": 189.30, "target": 192.60, "risk_per_share": 1.10, "max_loss": 49.5,
+                     "setup": "orb", "entry_time": "10:15 AM", "flat_by": "15:55", "commission_per_trade": 4.95,
+                     "currency": "CAD"}}
+CA_NOW = "2026-11-26 10:15"   # U.S. Thanksgiving: the NYSE is closed, the TSX trades
+
+
+class Canada(unittest.TestCase):
+    """"market": "ca": Interactive Brokers by default, paper first, and the same three gates."""
+    args, run_risk, state_doc, tearDown = Flow.args, Flow.run_risk, Flow.state_doc, Flow.tearDown
+
+    def setUp(self):
+        Flow.setUp(self)
+        with open(self.orders, "w") as fh:
+            json.dump({"orders": [RY_ORDER]}, fh)
+        with open(self.cfg) as fh:
+            c = json.load(fh)
+        c.update(market="ca", budget=20000, max_order_usd=20000, commission_per_trade=4.95)
+        del c["broker"]                                   # no broker in the config: the default
+        with open(self.cfg, "w") as fh:
+            json.dump(c, fh)
+
+    def test_ibkr_paper_is_the_default(self):
+        self.assertEqual(ticket.broker_of({"market": "ca"}), "ibkr")
+        self.assertEqual(ticket.broker_of({}), "alpaca")                      # US: unchanged
+        self.assertEqual(ticket.broker_of({"market": "ca", "broker": "alpaca"}), "alpaca")  # yours wins
+        self.assertEqual(ticket.ibkr_contract("BBD-B.TO")[:2], ("BBD.B", "TSE"))
+        self.assertEqual(ticket.ibkr_contract("AUMB.V")[:2], ("AUMB", "VENTURE"))
+        self.assertEqual(self.run_risk(CA_NOW), 0)
+        code, text, _ = run(self.args("show", "--index", "1", now=CA_NOW))
+        self.assertEqual(code, 0)
+        self.assertIn("ORDER 1 of 1, PAPER account, Interactive Brokers", text)
+        self.assertIn("READY: trader-risk PASS, waiting for your yes", text)
+        self.assertIn("In IBKR it is RY on TSE (Toronto Stock Exchange), in CAD", text)
+        self.assertIn("signed in to your IBKR paper account", text)
+        self.assertIn("Reply \"yes\" to place this one order", text)
+        self.assertIn("Claude's own card then asks again: Allow once", text)
+        self.assertIn("max loss about C$49.50", text)
+        self.assertNotIn("place_stock_order", text)
+
+    def test_the_three_gates_hold(self):
+        code, text, _ = run(self.args("show", "--index", "1", now=CA_NOW))      # 1. no risk PASS yet
+        self.assertEqual(code, 1)
+        self.assertIn("NOT READY", text)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes", now=CA_NOW))
+        self.assertIn("not ready", err)
+        self.run_risk(CA_NOW)
+        for reply in ("sure", "ok", "yes to all", "yes 40 shares"):            # 2. your typed yes, this order
+            code, text, _ = run(self.args("approve", "--index", "1", "--reply", reply, now=CA_NOW))
+            self.assertEqual(code, 1, reply)
+            self.assertIn("Not recorded", text)
+        code, text, _ = run(self.args("approve", "--index", "1", "--reply", "yes", now=CA_NOW))
+        self.assertEqual(code, 0)
+        self.assertIn("approve it in your IBKR account", text)
+        self.assertIn("Allow once / Deny", text)                               # 3. Claude's own card
+        self.assertEqual(self.state_doc()["orders"][-1]["broker"], "ibkr")
+        self.assertIs(self.state_doc()["orders"][-1]["paper"], True)
+
+    def test_a_blocked_order_never_gets_a_ticket(self):
+        with open(self.cfg) as fh:
+            c = json.load(fh)
+        c["max_loss_per_trade_cad"] = 40                                       # 49.50 is over C$40
+        with open(self.cfg, "w") as fh:
+            json.dump(c, fh)
+        self.assertEqual(self.run_risk(CA_NOW), 1)
+        code, text, _ = run(self.args("show", "--index", "1", now=CA_NOW))
+        self.assertEqual(code, 1)
+        self.assertIn("BLOCKED by trader-risk: loss:", text)
+        self.assertNotIn("Reply \"yes\"", text)
