@@ -638,3 +638,24 @@ class Canada(unittest.TestCase):
         out = io.StringIO()
         entry.Relabel(out).write("close above $362.18")
         self.assertEqual(out.getvalue(), "close above C$362.18")
+
+
+class CanadaRealData(unittest.TestCase):
+    """RY.TO's real 5-minute bars, Oct 23 to 29 2026 (Yahoo), and SHOP.TO's from the time machine fixture."""
+
+    def setUp(self):
+        entry.use_market("ca")
+
+    def tearDown(self):
+        entry.use_market("us")
+
+    def test_ry_waits_and_shop_triggers(self):
+        code, text, _ = run(["check", "ry", "--offline", os.path.join(EDIR, "RY.TO-5d-5m.json"),
+                             "--now", "2026-10-29 10:15", "--market", "ca"])
+        self.assertEqual(code, 1)
+        self.assertIn("Opening range 9:30-9:45: high C$289.90, low C$287.40", text)
+        self.assertIn("WAITING  last close C$289.12 (10:10 bar)", text)
+        shop = os.path.join(FIX, "trader-timemachine", "SHOP.TO-60d5m.json.gz")
+        code, text, _ = run(["check", "SHOP", "--offline", shop, "--now", "2026-10-29 10:15", "--market", "ca"])
+        self.assertEqual(code, 0)
+        self.assertIn("TRIGGERED 10:00 AM at C$234.39", text)

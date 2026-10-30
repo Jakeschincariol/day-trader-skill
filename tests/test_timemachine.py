@@ -646,3 +646,24 @@ class Canada(unittest.TestCase):
             self.assertEqual(tm.MARKET, "ca")
         finally:
             shutil.rmtree(d)
+
+
+class CanadaRealData(unittest.TestCase):
+    """SHOP.TO's real 60 days of 5-minute bars: the Oct 29 2026 breakout, replayed."""
+
+    def test_shop_breakout(self):
+        tm.use_market("ca")
+        try:
+            with gzip.open(os.path.join(DIR, "SHOP.TO-60d5m.json.gz"), "rt", encoding="utf-8") as fh:
+                text = fh.read()
+            p = tm.normalize_plan({"symbol": "SHOP.TO", "side": "buy", "date": "2026-10-29", "setup": "orb",
+                                   "entry": 234.39, "stop": 230.66, "target": 238.12, "entry_time": "10:00 AM",
+                                   "opening_range": {"high": 233.7, "low": 227.63, "minutes": 15},
+                                   "stop_rule": "or_mid", "interval": "5m", "market": "ca"})
+            doc = tm.time_machine(text, p, tm.parse_now("2026-10-29 10:00"), replays=2000)
+        finally:
+            tm.use_market("us")
+        m = doc["mc"]
+        self.assertEqual((m["pool_sessions"], m["pool_from"], m["pool_to"]), (59, "2026-08-05", "2026-10-28"))
+        self.assertNotIn("2026-10-12", json.dumps(doc))                    # TSX Thanksgiving: no session
+        self.assertEqual(m["until"], "16:00")

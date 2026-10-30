@@ -31,9 +31,10 @@ universe  Downloads Nasdaq Trader's symbol directories (nasdaqlisted.txt and
 
 universe, "ca": TMX's company directory, the free JSON behind tsx.com's Listed Company
           Directory (tsx.json; --venture adds tsxv.json). Kept: common shares, class shares
-          (BBD.B -> BBD-B.TO) and trust / REIT units (.UN). Out: .PR preferreds, .DB / .NT
+          (BBD.B -> BBD-B.TO) and trust / REIT units (.UN). Out: .PR / .PF preferreds, .DB / .NT
           debentures and notes, .WT warrants, rights, .U USD lines, .P capital pool shells, and
-          names that say ETF, fund, portfolio, index, CDR, bond or split corp. Or bring
+          names that say ETF, fund (not a royalty fund), portfolio, index, CDR, bond or
+          split corp. Or bring
           your own list with --from FILE (one ticker a line, or a CSV: the S&P/TSX Composite).
 
 daily     Pre-market scan of daily CLOSES (Yahoo spark: 20 symbols a request,
@@ -554,7 +555,7 @@ TMX_FILES = {"tsx": "tsx.json", "tsxv": "tsxv.json"}
 TMX_YAHOO = {"tsx": ".TO", "tsxv": ".V"}
 TMX_TICKER = re.compile(r"^[A-Z0-9]{1,6}(\.[A-Z]{1,2})?$")
 TMX_SUFFIX_OUT = [  # in order; .A / .B class shares and .UN trust or REIT units stay in
-    ("preferred", re.compile(r"\.PR\.")),
+    ("preferred", re.compile(r"\.P[RF]\.")),
     ("debenture or note", re.compile(r"\.(DB|NT|NO)(\.|$)")),
     ("warrant", re.compile(r"\.(WT|W)(\.|$)")),
     ("right or receipt", re.compile(r"\.(RT|R|IR|SR)(\.|$)")),
@@ -581,8 +582,8 @@ def classify_tmx(sym, issuer, line_name=""):
         return "not a plain ticker"
     name = " ".join(("%s %s" % (issuer or "", line_name or "")).lower().split())
     for tag, rx in TMX_NAME_OUT:
-        if rx.search(name):
-            return tag
+        if rx.search(name) and not (tag == "ETF or fund" and "royalt" in name):
+            return tag                  # a royalty income fund (SRV.UN) trades like a business: kept
     return "keep"
 
 

@@ -729,3 +729,63 @@ class Canada(unittest.TestCase):
         code, _, _ = run(["daily", "--offline", DAILY, "--now", "2026-10-19 09:00", "--no-write", "--json",
                           "--config", os.path.join(self.d, "none.json")])
         self.assertEqual(scan.MARKET, "us")                                # no config: the default
+
+
+TMX_REAL = os.path.join(SDIR, "tmx")                       # TMX's tsx.json and tsxv.json, fetched 2026-10-29
+CA_60D = {s: os.path.join(FIX, "trader-timemachine", "%s-60d5m.json.gz" % s) for s in ("RY.TO", "SHOP.TO")}
+
+
+class CanadaRealData(unittest.TestCase):
+    """Real data: TMX's directory and RY.TO / SHOP.TO 5-minute bars from Yahoo, Aug 5 to Oct 29 2026."""
+
+    def setUp(self):
+        scan.use_market("ca")
+        self.d = tempfile.mkdtemp()
+        self.charts = os.path.join(self.d, "charts")
+        os.makedirs(self.charts)
+        for sym, path in CA_60D.items():
+            shutil.copy(path, os.path.join(self.charts, sym + ".json.gz"))
+
+    def tearDown(self):
+        scan.use_market("us")
+        shutil.rmtree(self.d)
+
+    def test_the_tmx_directory(self):
+        docs = {}
+        for b in ("tsx", "tsxv"):
+            with open(os.path.join(TMX_REAL, b + ".json")) as fh:
+                docs[b] = json.load(fh)
+        self.assertEqual((len(docs["tsx"]["results"]), len(docs["tsxv"]["results"])), (2338, 1416))
+        kept, counts, _ = scan.build_universe_ca(docs)
+        k = dict(kept)
+        for sym in ("RY.TO", "SHOP.TO", "TD.TO", "ENB.TO", "BBD.B.TO", "REI.UN.TO", "AP.UN.TO", "SRV.UN.TO"):
+            self.assertIn(sym, k, sym)
+        self.assertEqual(scan.to_yahoo("BBD.B.TO"), "BBD-B.TO")
+        self.assertEqual(scan.classify_tmx("ENB.PF.C", "Enbridge Inc.", "Enbridge Ser 11 Pr"), "preferred")
+        self.assertEqual(len(kept), 1981)
+        self.assertEqual(counts["rows"], 4541)
+        tsx_only, _, _ = scan.build_universe_ca({"tsx": docs["tsx"]})
+        self.assertEqual(len(tsx_only), 708)
+        self.assertFalse([s for s, _ in tsx_only if not s.endswith(".TO")])
+
+    def test_a_tsx_holiday_has_no_bars(self):
+        data, _ = scan.load_offline(self.charts)
+        ry = data["RY.TO"]
+        for day, n in ((D(2026, 10, 9), 78), (D(2026, 10, 12), 0), (D(2026, 9, 7), 0), (D(2026, 10, 13), 78)):
+            got = scan.session_bars(ry, day, DT.combine(day, datetime.time(16, 0)))
+            self.assertEqual(len(got), n, day)                          # Thanksgiving and Labour Day: closed
+        with self.assertRaises(scan.ScanError) as cm:
+            scan.orb_window(scan.parse_now("2026-10-12 10:15"), None, 15, None, D(2026, 10, 12))
+        self.assertIn("TSX holiday: Thanksgiving Day", str(cm.exception))
+
+    def test_daily_and_orb_on_real_bars(self):
+        code, text, _ = run(["daily", "--offline", self.charts, "--now", "2026-10-29 17:00", "--min-volume", "0",
+                             "--no-write", "--json"])
+        doc = json.loads(text)
+        self.assertEqual(code, 0)
+        self.assertEqual([(h["symbol"], h["setups"], h["price"]) for h in doc["hits"]],
+                         [("RY.TO", ["breakout_20d"], 288.21)])
+        code, text, _ = run(["orb", "--offline", self.charts, "--now", "2026-10-29 10:15", "--no-write", "--json"])
+        hits = json.loads(text)["hits"]
+        self.assertEqual([(h["symbol"], h["at"], h["price"], h["or_low"], h["or_high"]) for h in hits],
+                         [("SHOP.TO", "10:00 AM", 234.39, 227.63, 233.7)])
