@@ -131,6 +131,23 @@ weekend or holiday, after the close, or after `no_entries_after` (an expired
 setup) it prints one plain line and writes nothing. The 1:00 PM early closes
 are in the calendar.
 
+## Canada (TSX and TSXV)
+
+With `"market": "ca"` in `trader/config.json` (or `--market ca`), the scanner works on the
+Toronto Stock Exchange:
+
+- The calendar is the TSX's: TMX's published 2026 holidays and the 1:00 PM close on Christmas
+  Eve. The session is the same 9:30 to 4:00 PM ET. The U.S.-only holidays (U.S. Thanksgiving,
+  Juneteenth and so on) are TSX trading days. TMX has not published 2027 yet, so say so for a 2027 date.
+- Tickers are Yahoo's: `RY.TO` on the TSX, `AUMB.V` on the TSX Venture, `BBD.B` becomes `BBD-B.TO`.
+  A bare ticker (`RY`) is read as a TSX listing.
+- `scan.py universe --market ca` reads TMX's company directory (the free JSON behind tsx.com's
+  Listed Company Directory) and keeps common shares, class shares and trust units. `--venture` adds
+  the TSXV. If tsx.com cannot be reached, pass your own list: `--from composite.csv` (one ticker a
+  line, or a CSV whose first column is the ticker, such as the S&P/TSX Composite constituents).
+- Prices print as C$. The 1,000,000-share volume floor is a US number: on the TSX, try
+  `--min-volume 250000`.
+
 ## Data and limits
 
 - Yahoo's chart and spark endpoints are free, unofficial and can lag. Bars are
