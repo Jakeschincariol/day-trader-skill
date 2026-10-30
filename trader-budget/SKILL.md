@@ -140,6 +140,25 @@ needs prices (`--prices trader/prices.json`). These are plain buys with no stop:
 `require_stop` is true and counts each one against `max_trades_per_day`. Use
 a separate config (`--config`) for a long-term split.
 
+## Commission and Canada
+
+`"commission_per_trade"` in `trader/config.json` (default 0, any market) is your broker's fee
+for each order. A day trade pays it twice, in and out, so the sizing counts both:
+
+    shares = floor((max_loss_per_trade - 2 x commission) / risk per share)
+    max loss at the stop = shares x risk per share + 2 x commission
+    reward:risk after commission = (shares x reward per share - 2 x commission) / max loss
+
+The buy's commission also comes out of the cash limit. If the commission alone eats the max
+loss, or the reward:risk after commission is under `min_reward_risk`, there is no order.
+
+With `"market": "ca"`: amounts are C$, and a `_cad` key (`max_loss_per_trade_cad`,
+`max_daily_loss_cad`, `max_order_cad`) stands in for its `_usd` twin. Prices sit on the TSX grid
+(half a cent under $0.50, so a stop can be 0.395). A Canadian plan from trader-exit carries
+`"market": "ca"`, and a config that says otherwise is refused, so you never size a C$ plan with US
+rules. Day trading inside a TFSA risks the CRA taxing the gains as business income: trader-risk
+warns about it.
+
 ## Rules
 
 - Proposals only. This skill never calls a broker tool.
