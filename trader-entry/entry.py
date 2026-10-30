@@ -98,7 +98,88 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
-CALENDAR_YEARS = (2026, 2027)
+# TSX and TSXV, for "market": "ca" in trader/config.json. The market holidays as TMX publishes them
+# ("2026 Stock Market Holidays - Stock Markets Closed") at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30). TMX had not
+# published 2027 yet, so 2027 is not covered. The five U.S. holidays that page also lists are TSX
+# trading days: TMX marks them "Special Settlement for Issues trading in USD", not closed.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "In Lieu of Boxing Day",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET, the page's footnote: "Closing at 1:00 PM (TSX/TSXV)"
+    "2026-12-24": "Christmas Eve",
+}
+MARKETS = {  # the same 9:30 to 4:00 p.m. ET session and the same 1:00 p.m. early close on both
+    "us": {"exchange": "NYSE", "holidays": NYSE_HOLIDAYS, "early": NYSE_EARLY_CLOSE, "years": (2026, 2027),
+           "site": "nyse.com", "sign": "$"},
+    "ca": {"exchange": "TSX", "holidays": TSX_HOLIDAYS, "early": TSX_EARLY_CLOSE, "years": (2026,),
+           "site": "tsx.com", "sign": "C$"},
+}
+MARKET, EXCHANGE, SITE, SIGN = "us", "NYSE", "nyse.com", "$"
+HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, (2026, 2027)
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
+def use_market(name):
+    """Switch the calendar, the exchange name and the money sign: "us" (the default) or "ca"."""
+    global MARKET, EXCHANGE, SITE, SIGN, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise EntryError('market wants "us" or "ca", not "%s"' % name)
+    m = MARKETS[name]
+    MARKET, EXCHANGE, SITE, SIGN = name, m["exchange"], m["site"], m["sign"]
+    HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = m["holidays"], m["early"], m["years"]
+    return name
+
+
+def to_yahoo(sym):
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def ca_symbol(sym):
+    """For "ca": a bare ticker is a TSX listing (RY -> RY.TO); .TO and .V are kept."""
+    s = sym.strip().upper()
+    return s if s.endswith(CA_SUFFIXES) else s + ".TO"
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return "us"
+    return (doc.get("market") if isinstance(doc, dict) else None) or "us"
+
+
+class Relabel(object):
+    """For "ca": every price this tool prints is Canadian dollars, so its "$" reads "C$"."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, text):
+        return self.out.write(text.replace("$", SIGN))
+
+    def flush(self):
+        self.out.flush()
+
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
@@ -199,12 +280,12 @@ def ampm(t):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NYSE holiday list."""
+    """(is_trading_day, reason). Weekends and the exchange's holiday list (NYSE, or TSX for "ca")."""
     if d.weekday() >= 5:
         return False, "weekend"
-    name = NYSE_HOLIDAYS.get(d.isoformat())
+    name = HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -213,7 +294,7 @@ def session(d):
     ok, _ = trading_day(d)
     if not ok:
         return None
-    return OPEN, (EARLY if d.isoformat() in NYSE_EARLY_CLOSE else CLOSE)
+    return OPEN, (EARLY if d.isoformat() in EARLY_CLOSE else CLOSE)
 
 
 def next_open(d):
@@ -228,7 +309,7 @@ def next_open(d):
 # ---------------------------------------------------------------- Yahoo
 
 def yahoo_symbol(sym):
-    return sym.upper().replace(".", "-")
+    return to_yahoo(sym)
 
 
 def chart_path(sym, rng, interval):
@@ -430,7 +511,7 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     res["data_time"] = to_eastern(utc_of(dt)).strftime("%Y-%m-%d %H:%M:%S") if dt else None
     ok, why = trading_day(day)
     if not ok:
-        res.update(status="no-data", phase="closed", reason="the NYSE is closed today (%s)" % why,
+        res.update(status="no-data", phase="closed", reason="the %s is closed today (%s)" % (EXCHANGE, why),
                    next_open=next_open(day))
         return res
     o, c = session(day)
@@ -440,7 +521,7 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     before = datetime.datetime.combine(day, parse_hhmm(cfg["no_entries_before"], "no_entries_before"))
     cutoff = early_cutoff(day, parse_hhmm(cfg["no_entries_after"], "no_entries_after"), close_dt)
     or_end = open_dt + datetime.timedelta(minutes=or_minutes)
-    res.update(opens=hm(o), closes=hm(c), early_close=NYSE_EARLY_CLOSE.get(day.isoformat()),
+    res.update(opens=hm(o), closes=hm(c), early_close=EARLY_CLOSE.get(day.isoformat()),
                no_entries_before=hm(before), no_entries_after=hm(cutoff))
 
     by_slot = {}
@@ -475,7 +556,7 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     res["bars_closed"] = len(bars)
 
     if local < open_dt:
-        res.update(phase="pre-open", reason="the NYSE opens at 9:30%s" % (
+        res.update(phase="pre-open", reason="the %s opens at 9:30%s" % (EXCHANGE,
             " and the %d-minute range is set at %s" % (or_minutes, short(or_end)) if setup == "orb" else ""))
         return res
 
@@ -643,7 +724,7 @@ def describe(res):
         out.append("Early close today at 1:00 p.m. (%s): no new entries after %s." % (
             res["early_close"], res["no_entries_after"]))
     if not res.get("calendar_known"):
-        out.append("Holiday list covers %s only: check nyse.com for this date." % " and ".join(map(str, CALENDAR_YEARS)))
+        out.append("Holiday list covers %s only: check %s for this date." % (" and ".join(map(str, CALENDAR_YEARS)), SITE))
     return out
 
 
@@ -807,7 +888,7 @@ def _load(a, sym, now):
 def cmd_check(a):
     cfg = read_config(a.config)
     opts = _opts(a, cfg)
-    sym = a.symbol.upper()
+    sym = ca_symbol(a.symbol) if MARKET == "ca" else a.symbol.upper()
     chart, now = _load(a, sym, parse_now(a.now) if a.now else None)
     res = evaluate(chart, now, **opts)
     if a.write:
@@ -825,7 +906,7 @@ def cmd_check(a):
 def cmd_watch(a):
     cfg = read_config(a.config)
     opts = _opts(a, cfg)
-    sym = a.symbol.upper()
+    sym = ca_symbol(a.symbol) if MARKET == "ca" else a.symbol.upper()
     if a.every <= 0:
         raise EntryError("--every must be above 0 seconds")
     start = parse_now(a.now) if a.now else None
@@ -925,6 +1006,7 @@ def main(argv=None):
         p.add_argument("--now", help='pretend it is this New York time, e.g. "2026-10-19 10:15"')
         p.add_argument("--offline", metavar="PATH", help="saved Yahoo chart JSON (.json/.json.gz) or a folder")
         p.add_argument("--config", default="trader/config.json")
+        p.add_argument("--market", choices=sorted(MARKETS), help='"us" or "ca" (default: config market, else us)')
 
     p = sub.add_parser("check", help="the setup's status right now")
     p.add_argument("symbol")
@@ -946,7 +1028,10 @@ def main(argv=None):
     if not a.cmd:
         ap.print_help()
         return 1
+    real_out = sys.stdout
     try:
+        if use_market(config_market(a.config, a.market)) == "ca":
+            sys.stdout = Relabel(real_out)
         return {"check": cmd_check, "watch": cmd_watch, "watchlist": cmd_watchlist}[a.cmd](a)
     except EntryError as e:
         print("entry.py: %s" % e, file=sys.stderr)
@@ -954,6 +1039,8 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("entry.py: stopped.", file=sys.stderr)
         return 1
+    finally:
+        sys.stdout = real_out
 
 
 if __name__ == "__main__":

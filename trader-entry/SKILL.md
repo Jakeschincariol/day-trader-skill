@@ -73,6 +73,13 @@ day bar by bar without waiting.
   triggered, expired, or no data. Before 9:30: not open yet. Before 9:45: the
   range is still forming. Weekends and NYSE holidays: the market is closed.
 
+## Canada (TSX and TSXV)
+
+With `"market": "ca"` in `trader/config.json` (or `--market ca`): the TSX calendar (TMX's 2026
+holidays, the 1:00 PM Christmas Eve close; 2027 is not published yet), Yahoo tickers with `.TO` or
+`.V` (a bare `RY` is read as `RY.TO`, `BBD.B.TO` is fetched as `BBD-B.TO`) and prices in C$. The
+session and the rule are the same: 9:30 to 4:00 PM ET, a close above the range high.
+
 ## Steps
 
 1. Get the symbol from the user, or run `entry.py watchlist` after
