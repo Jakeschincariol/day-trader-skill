@@ -518,7 +518,8 @@ def bracket_order(s):
     })
     if s.get("commissions"):
         o["plan"]["commission_per_trade"] = s["commission_per_trade"]
-        o["why"] += ", %s commission in and out included" % money(s["commissions"])
+        o["why"] = o["why"].replace(" = %s at the stop)" % money(s["max_loss"]), " + %s commission in and out = %s "
+                                    "at the stop)" % (money(s["commissions"]), money(s["max_loss"])))
     if s.get("market"):
         o["plan"]["currency"] = s["currency"]
     return o

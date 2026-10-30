@@ -400,7 +400,7 @@ class Canada(unittest.TestCase):
         self.assertEqual(s["currency"], "CAD")
         o = size.bracket_order(s)
         self.assertEqual(o["plan"]["commission_per_trade"], 4.95)
-        self.assertIn("commission in and out included", o["why"])
+        self.assertIn("(36 x 1.10 + $9.90 commission in and out = $49.50 at the stop)", o["why"])
         no_fee = size.size_trade(self.ry(), cfg(budget=20000, max_order_usd=20000, market="ca"), today="2026-11-26")
         self.assertEqual((no_fee["qty"], no_fee["max_loss"]), (45, 49.5))   # 0 commission: the old math
         self.assertNotIn("commissions", no_fee)
