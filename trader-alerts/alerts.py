@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Price alerts and the NYSE clock for trader-alerts. Standard library only.
+"""Price alerts and the market clock (NYSE, or TSX for "ca") for trader-alerts. Standard library only.
 
     python3 alerts.py clock                          # is the NYSE open? next open / close
     python3 alerts.py quote TSLA --write             # quotes -> trader/prices.json
@@ -42,6 +42,11 @@ Quotes (free, delayed, unofficial; for alerts only, never for timing an order):
 NYSE calendar: the 2026 and 2027 holidays and 1:00 p.m. early closes as
 published at https://www.nyse.com/markets/hours-calendars (read 2026-10-13).
 Outside those years the clock says the holiday list is unknown.
+
+"market": "ca" in trader/config.json (or --market ca): the TSX calendar (TMX's
+2026 holidays and the 1:00 p.m. Christmas Eve close; 2027 is not published
+yet), .TO / .V tickers, prices in C$. Quotes come from Yahoo only: Stooq is
+wired for US tickers (.us) and is refused for a Canadian one.
 """
 
 import argparse
@@ -90,7 +95,88 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
-CALENDAR_YEARS = (2026, 2027)
+# TSX and TSXV, for "market": "ca" in trader/config.json. The market holidays as TMX publishes them
+# ("2026 Stock Market Holidays - Stock Markets Closed") at
+# https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar (read 2026-10-30). TMX had not
+# published 2027 yet, so 2027 is not covered. The five U.S. holidays that page also lists are TSX
+# trading days: TMX marks them "Special Settlement for Issues trading in USD", not closed.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "In Lieu of Boxing Day",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET, the page's footnote: "Closing at 1:00 PM (TSX/TSXV)"
+    "2026-12-24": "Christmas Eve",
+}
+MARKETS = {  # the same 9:30 to 4:00 p.m. ET session and the same 1:00 p.m. early close on both
+    "us": {"exchange": "NYSE", "holidays": NYSE_HOLIDAYS, "early": NYSE_EARLY_CLOSE, "years": (2026, 2027),
+           "site": "nyse.com", "sign": "$"},
+    "ca": {"exchange": "TSX", "holidays": TSX_HOLIDAYS, "early": TSX_EARLY_CLOSE, "years": (2026,),
+           "site": "tsx.com", "sign": "C$"},
+}
+MARKET, EXCHANGE, SITE, SIGN = "us", "NYSE", "nyse.com", "$"
+HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, (2026, 2027)
+CA_SUFFIXES = (".TO", ".V")  # Yahoo: Toronto Stock Exchange, TSX Venture
+
+
+def use_market(name):
+    """Switch the calendar, the exchange name and the money sign: "us" (the default) or "ca"."""
+    global MARKET, EXCHANGE, SITE, SIGN, HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS
+    name = (name or "us").strip().lower()
+    if name not in MARKETS:
+        raise AlertError('market wants "us" or "ca", not "%s"' % name)
+    m = MARKETS[name]
+    MARKET, EXCHANGE, SITE, SIGN = name, m["exchange"], m["site"], m["sign"]
+    HOLIDAYS, EARLY_CLOSE, CALENDAR_YEARS = m["holidays"], m["early"], m["years"]
+    return name
+
+
+def to_yahoo(sym):
+    """BRK.B -> BRK-B. A Canadian suffix stays: RY.TO -> RY.TO, BBD.B.TO -> BBD-B.TO."""
+    s = sym.upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def ca_symbol(sym):
+    """For "ca": a bare ticker is a TSX listing (RY -> RY.TO); .TO and .V are kept."""
+    s = sym.strip().upper()
+    return s if s.endswith(CA_SUFFIXES) else s + ".TO"
+
+
+def config_market(path, explicit=None):
+    """--market, else "market" in trader/config.json, else "us"."""
+    if explicit:
+        return explicit
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return "us"
+    return (doc.get("market") if isinstance(doc, dict) else None) or "us"
+
+
+class Relabel(object):
+    """For "ca": every price this tool prints is Canadian dollars, so its "$" reads "C$"."""
+
+    def __init__(self, out):
+        self.out = out
+
+    def write(self, text):
+        return self.out.write(text.replace("$", SIGN))
+
+    def flush(self):
+        self.out.flush()
+
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
@@ -146,12 +232,12 @@ def parse_now(text):
 
 
 def trading_day(d):
-    """(is_trading_day, reason). Weekends and the NYSE holiday list."""
+    """(is_trading_day, reason). Weekends and the exchange's holiday list (NYSE, or TSX for "ca")."""
     if d.weekday() >= 5:
         return False, "weekend"
-    name = NYSE_HOLIDAYS.get(d.isoformat())
+    name = HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -160,7 +246,7 @@ def session(d):
     ok, _ = trading_day(d)
     if not ok:
         return None
-    return OPEN, (EARLY if d.isoformat() in NYSE_EARLY_CLOSE else CLOSE)
+    return OPEN, (EARLY if d.isoformat() in EARLY_CLOSE else CLOSE)
 
 
 def market_status(now_utc):
@@ -169,7 +255,7 @@ def market_status(now_utc):
     ok, reason = trading_day(d)
     st = {"now_new_york": local.strftime("%Y-%m-%d %H:%M"), "date": d.isoformat(),
           "weekday": local.strftime("%A"), "calendar_known": d.year in CALENDAR_YEARS,
-          "open": False, "reason": reason, "early_close": NYSE_EARLY_CLOSE.get(d.isoformat())}
+          "open": False, "reason": reason, "early_close": EARLY_CLOSE.get(d.isoformat())}
     s = session(d)
     if s:
         o, c = s
@@ -198,7 +284,7 @@ def stooq_url(sym):
 
 
 def yahoo_url(sym, host=YAHOO_HOSTS[0]):
-    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, sym.upper().replace(".", "-"))
+    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, to_yahoo(sym))
 
 
 def parse_stooq(text, sym):
@@ -316,6 +402,9 @@ def get_quotes(symbols, source="yahoo", offline=None, pause=PAUSE):
     for i, sym in enumerate(symbols):
         sym = sym.upper()
         try:
+            if source == "stooq" and (MARKET == "ca" or sym.endswith(CA_SUFFIXES)):
+                raise AlertError("Stooq is wired for US tickers only (%s.us): use --source yahoo for %s"
+                                 % (sym.lower(), sym))
             if offline:
                 text = _offline_text(offline, source, sym)
             else:
@@ -441,8 +530,8 @@ def evaluate(rules, quotes, status, state, now_utc):
         typ = {"stop": "below", "target": "above"}.get(r["type"], r["type"])
         if typ == "opening_bell":
             if status["open"] and not _rang_today(rung.get(rid), today):
-                rings.append({"id": rid, "symbol": "", "message": "Opening bell: the NYSE is open (%s New York)%s."
-                              % (status["now_new_york"], (", early close at 1:00 p.m. today, "
+                rings.append({"id": rid, "symbol": "", "message": "Opening bell: the %s is open (%s New York)%s."
+                              % (EXCHANGE, status["now_new_york"], (", early close at 1:00 p.m. today, "
                                                           + status["early_close"]) if status.get("early_close") else "")})
                 rung[rid] = stamp
             continue
@@ -547,15 +636,16 @@ def cmd_clock(a):
     if a.json:
         print(json.dumps(st, indent=2))
     else:
-        print("New York %s (%s): NYSE %s, %s." % (st["now_new_york"], st["weekday"],
-                                                  "OPEN" if st["open"] else "closed", st["reason"]))
+        print("New York %s (%s): %s %s, %s." % (st["now_new_york"], st["weekday"], EXCHANGE,
+                                                "OPEN" if st["open"] else "closed", st["reason"]))
         if st.get("opens"):
             print("Today's session: %s to %s%s." % (st["opens"], st["closes"],
                                                     (" (early close: %s)" % st["early_close"]) if st.get("early_close") else ""))
         if not st["open"] and st.get("next_open"):
             print("Next open: %s New York." % st["next_open"])
         if not st["calendar_known"]:
-            print("Holiday list covers %s only: check nyse.com for this date." % " and ".join(map(str, CALENDAR_YEARS)))
+            print("Holiday list covers %s only: check %s for this date." % (" and ".join(map(str, CALENDAR_YEARS)),
+                                                                            SITE))
     return 0 if st["open"] else 1
 
 
@@ -605,8 +695,8 @@ def cmd_check(a):
         print(json.dumps({"market": status, "rings": rings, "errors": errors,
                           "quotes": {s: q["price"] for s, q in quotes.items()}}, indent=2))
     else:
-        print("NYSE %s (%s New York, %s)." % ("OPEN" if status["open"] else "closed", status["now_new_york"],
-                                              status["reason"]))
+        print("%s %s (%s New York, %s)." % (EXCHANGE, "OPEN" if status["open"] else "closed",
+                                            status["now_new_york"], status["reason"]))
         for r in rings:
             print("ALERT " + r["message"])
         if not rings:
@@ -725,9 +815,15 @@ def main(argv=None):
         p.add_argument("--now", help="pretend it is this time (no offset = New York time)")
         p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("clock", help="is the NYSE open?")
+    def market(p):
+        p.add_argument("--market", choices=sorted(MARKETS), help='"us" or "ca" (default: config market, else us)')
+        if not any(o.dest == "config" for o in p._actions):
+            p.add_argument("--config", default="trader/config.json")
+
+    p = sub.add_parser("clock", help="is the market open? (NYSE, or TSX for \"ca\")")
     p.add_argument("--now")
     p.add_argument("--json", action="store_true")
+    market(p)
     p = sub.add_parser("quote", help="latest delayed quotes")
     net(p)
     p.add_argument("symbols", nargs="*")
@@ -736,8 +832,10 @@ def main(argv=None):
     p.add_argument("--plan", default="trader/plan.json")
     p.add_argument("--write", nargs="?", const="trader/prices.json", metavar="PATH",
                    help="save to prices.json (default trader/prices.json)")
+    market(p)
     p = sub.add_parser("check", help="check every rule, ring what hit")
     net(p)
+    market(p)
     p.add_argument("--rules", default="trader/alerts.json")
     p.add_argument("--state", default="trader/state/alerts.json")
     p.add_argument("--prices-out", default="trader/prices.json")
@@ -765,6 +863,7 @@ def main(argv=None):
     p.add_argument("--rearm", action="store_true")
     p.add_argument("--note")
     p.add_argument("--id")
+    market(p)
     p = sub.add_parser("list", help="list the rules")
     p.add_argument("--rules", default="trader/alerts.json")
     p.add_argument("--state", default="trader/state/alerts.json")
@@ -775,12 +874,18 @@ def main(argv=None):
     if not a.cmd:
         ap.print_help()
         return 1
+    real_out = sys.stdout
     try:
+        m = config_market(getattr(a, "config", None) or "trader/config.json", getattr(a, "market", None))
+        if use_market(m) == "ca":
+            sys.stdout = Relabel(real_out)
         return {"clock": cmd_clock, "quote": cmd_quote, "check": cmd_check, "add": cmd_add,
                 "list": cmd_list, "reset": cmd_reset}[a.cmd](a)
     except AlertError as e:
         print("alerts.py: %s" % e, file=sys.stderr)
         return 1
+    finally:
+        sys.stdout = real_out
 
 
 if __name__ == "__main__":
