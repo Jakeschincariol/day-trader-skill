@@ -125,6 +125,24 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
 All standard-library Python. The data tools read public endpoints and are
 polite about it.
 
+### Local dashboard
+
+Run the browser dashboard from the repository root:
+
+```bash
+python dashboard/server.py
+```
+
+Open the printed `127.0.0.1` address. The dashboard reads saved files from
+`trader/` and can run the existing scanner, news, entry, exit, replay, budget,
+risk, alert, analyst and public-disclosure tools. It listens on loopback only;
+broker tickets are view-only, and it cannot place or approve orders. A task's
+output and any tool error appear in the run activity area.
+
+The dashboard adds no dependencies. Public data may be delayed or unofficial,
+and results are not financial advice. Keep brokerage credentials out of the
+dashboard and chat.
+
 ```bash
 python3 trader-scanner/scan.py universe                                # ~5,900 US stocks, Nasdaq Trader
 python3 trader-scanner/scan.py daily                                   # pre-market setups, whole universe
