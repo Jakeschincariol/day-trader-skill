@@ -1,0 +1,169 @@
+<!--
+THESIS: A local trading desk for operating the existing tools, not a brokerage terminal.
+OWN-WORLD: A ruled exchange blotter in slate, paper, teal, and amber; dense tables carry the information.
+STORY: See saved work, run an analysis step, and read its actual output without implying a recommendation.
+FIRST VIEWPORT: A narrow navigation rail frames a session header, five-step workflow ledger, saved watchlist, and task dock.
+FORM: Exchange blotter, first-ranked grounded structure, direct operator staging; concept seed unavailable because Node is unavailable.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e9edeb">
+  <title>Trading desk | Day Trader</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="/" aria-label="Day Trader home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong>DAY TRADER</strong><small>LOCAL OPERATOR</small></span>
+      </a>
+      <div class="nav-group">
+        <p class="nav-label">WORKSPACE</p>
+        <a class="nav-link active" href="#desk"><span class="nav-glyph glyph-desk" aria-hidden="true"></span>Trading desk</a>
+        <a class="nav-link" href="#workflow"><span class="nav-glyph glyph-flow" aria-hidden="true"></span>Workflow</a>
+        <a class="nav-link" href="#saved"><span class="nav-glyph glyph-files" aria-hidden="true"></span>Saved outputs</a>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="local-note">
+          <span class="status-dot"></span>
+          <div><strong>Running on this computer</strong><small>127.0.0.1 · broker actions off</small></div>
+        </div>
+        <p class="sidebar-fine">Analysis only. Market data may be delayed or unofficial. Nothing here is financial advice.</p>
+      </div>
+    </aside>
+
+    <main id="desk" class="main">
+      <header class="topbar">
+        <div>
+          <p class="crumb">DAY TRADER <span>/</span> WORKSPACE</p>
+          <h1>Trading desk</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="clock-box"><span>NEW YORK TIME</span><strong id="ny-clock">--:--:--</strong></div>
+          <div id="account-mode" class="mode-tag unknown"><span></span><b>MODE UNKNOWN</b></div>
+          <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh saved outputs" title="Refresh saved outputs">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.2 7.3A6.6 6.6 0 0 0 4.7 5.5L3.2 7M3.2 7V3.9M3.2 7h3.1M3.8 12.7a6.6 6.6 0 0 0 11.5 1.8l1.5-1.5m0 0v3.1m0-3.1h-3.1"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="summary-strip" aria-label="Workspace status">
+        <div class="summary-cell">
+          <span class="summary-label">SESSION</span>
+          <strong id="session-state">Loading workspace</strong>
+          <small id="session-detail">Checking local trader files</small>
+        </div>
+        <div class="summary-cell">
+          <span class="summary-label">LATEST SCAN</span>
+          <strong id="scan-state">No scan saved</strong>
+          <small id="scan-detail">Run the scanner to refresh the watchlist</small>
+        </div>
+        <div class="summary-cell">
+          <span class="summary-label">ACTIVE PLAN</span>
+          <strong id="plan-state">No plan saved</strong>
+          <small id="plan-detail">Exit plans are read from trader/plan.json</small>
+        </div>
+        <div class="summary-cell summary-updated">
+          <span class="summary-label">WORKSPACE READ</span>
+          <strong id="updated-at">--</strong>
+          <small id="workspace-path">Local files only</small>
+        </div>
+      </section>
+
+      <div class="content-grid">
+        <section id="workflow" class="work-area">
+          <div class="section-heading">
+            <div><h2>Trade workflow</h2><p>Each step reads and writes the existing <code>trader/</code> workspace.</p></div>
+            <span class="step-count" id="workflow-count">0 / 5 FILES</span>
+          </div>
+
+          <div class="workflow-table" role="table" aria-label="Trade workflow saved state">
+            <div class="workflow-head" role="row">
+              <span role="columnheader">STEP</span><span role="columnheader">SAVED STATE</span><span role="columnheader">DETAIL</span><span role="columnheader">ACTION</span>
+            </div>
+            <div class="workflow-row" role="row" data-file="watchlist.json">
+              <span class="step-name" role="cell"><span class="step-mark">01</span>Scan</span>
+              <span role="cell" class="state-cell"><i></i><b>No watchlist</b></span>
+              <span role="cell" class="row-detail">Match setups; not a buy signal</span>
+              <span role="cell"><button class="text-action" data-task="scanner-daily" type="button">Run daily scan <span>↗</span></button></span>
+            </div>
+            <div class="workflow-row" role="row" data-file="entry.json">
+              <span class="step-name" role="cell"><span class="step-mark">02</span>Entry</span>
+              <span role="cell" class="state-cell"><i></i><b>No entry check</b></span>
+              <span role="cell" class="row-detail">Checks completed bars only</span>
+              <span role="cell"><button class="text-action needs-symbol" data-task="entry" type="button">Check ticker <span>↗</span></button></span>
+            </div>
+            <div class="workflow-row" role="row" data-file="plan.json">
+              <span class="step-name" role="cell"><span class="step-mark">03</span>Exit plan</span>
+              <span role="cell" class="state-cell"><i></i><b>No plan</b></span>
+              <span role="cell" class="row-detail">Stop and target before any order</span>
+              <span role="cell"><button class="text-action" data-task="exit-plan" type="button">Build plan <span>↗</span></button></span>
+            </div>
+            <div class="workflow-row" role="row" data-file="timemachine.json">
+              <span class="step-name" role="cell"><span class="step-mark">04</span>Replay</span>
+              <span role="cell" class="state-cell"><i></i><b>No replay</b></span>
+              <span role="cell" class="row-detail">Simulation, not a prediction</span>
+              <span role="cell"><button class="text-action" data-task="timemachine" type="button">Run replay <span>↗</span></button></span>
+            </div>
+            <div class="workflow-row" role="row" data-file="orders.json">
+              <span class="step-name" role="cell"><span class="step-mark">05</span>Risk &amp; size</span>
+              <span role="cell" class="state-cell"><i></i><b>No order proposal</b></span>
+              <span role="cell" class="row-detail">Rule check only; no order is placed</span>
+              <span role="cell"><button class="text-action" data-task="risk" type="button">Check risk <span>↗</span></button></span>
+            </div>
+          </div>
+
+          <div class="desk-lower">
+            <section id="saved" class="saved-section">
+              <div class="section-heading compact">
+                <div><h2>Watchlist</h2><p id="watchlist-caption">No saved scan results</p></div>
+                <button class="subtle-button" data-task="scanner-orb" type="button">Run opening-range scan <span>↗</span></button>
+              </div>
+              <div class="watchlist-table" role="table" aria-label="Saved watchlist">
+                <div class="watchlist-head" role="row"><span role="columnheader">SYMBOL</span><span role="columnheader">SETUP</span><span role="columnheader">AS OF</span><span role="columnheader">STATUS</span></div>
+                <div id="watchlist-rows" class="empty-row" role="row">Run a scan to populate this table. A match is a chart rule, not a recommendation.</div>
+              </div>
+            </section>
+
+            <aside class="task-dock" aria-labelledby="task-dock-title">
+              <div class="dock-heading"><h2 id="task-dock-title">Tool dock</h2><span>RUN ANALYSIS</span></div>
+              <label class="symbol-field" for="symbol-input">TICKER FOR NEWS, ENTRY &amp; EARNINGS
+                <span><b>$</b><input id="symbol-input" name="symbol" type="text" maxlength="10" autocomplete="off" placeholder="TSLA" aria-describedby="symbol-hint"></span>
+              </label>
+              <small id="symbol-hint" class="field-hint">Use a ticker symbol; no order actions are available.</small>
+              <div class="dock-list">
+                <button data-task="news" class="dock-action needs-symbol" type="button"><span class="dock-code">N</span><span><b>News monitor</b><small>Headlines and filings</small></span><i>↗</i></button>
+                <button data-task="analyst" class="dock-action needs-symbol" type="button"><span class="dock-code">E</span><span><b>Earnings analyst</b><small>SEC company facts</small></span><i>↗</i></button>
+                <button data-task="budget" class="dock-action" type="button"><span class="dock-code">B</span><span><b>Position budget</b><small>Size the saved plan</small></span><i>↗</i></button>
+                <button data-task="tickets" class="dock-action" type="button"><span class="dock-code">T</span><span><b>Broker tickets</b><small>View only, no submission</small></span><i>↗</i></button>
+                <button data-task="alerts-clock" class="dock-action" type="button"><span class="dock-code">H</span><span><b>NYSE hours</b><small>Market calendar status</small></span><i>↗</i></button>
+                <button data-task="alerts-check" class="dock-action" type="button"><span class="dock-code">A</span><span><b>Check alerts</b><small>Reads configured rules</small></span><i>↗</i></button>
+                <button data-task="alerts-list" class="dock-action" type="button"><span class="dock-code">R</span><span><b>Alert rules</b><small>View saved alert setup</small></span><i>↗</i></button>
+                <button data-task="pelosi" class="dock-action" type="button"><span class="dock-code">P</span><span><b>Public filings</b><small>House disclosure tracker</small></span><i>↗</i></button>
+              </div>
+              <p class="dock-footnote">Commands run locally with the existing Python tools. Results may use delayed public data.</p>
+            </aside>
+          </div>
+        </section>
+      </div>
+
+      <section class="activity-section" aria-labelledby="activity-title">
+        <div class="activity-head"><div><h2 id="activity-title">Run activity</h2><p>Tool output is shown as returned; a failed task includes its error.</p></div><span id="activity-status" class="activity-state">READY</span></div>
+        <div id="activity-list" class="activity-list" aria-live="polite">
+          <div class="activity-empty"><span class="empty-glyph">—</span><span>No tasks run in this dashboard session.</span></div>
+        </div>
+      </section>
+
+      <footer class="footer-note">
+        <span>DAY TRADER · LOCAL DASHBOARD</span>
+        <span>Not financial advice · Data can lag · Broker actions stay manual</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
