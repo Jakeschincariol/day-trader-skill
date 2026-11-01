@@ -755,6 +755,226 @@ def fundamentals(symbol):
     }
 
 
+# ---------------------------------------------------------------- AI multibagger radar
+
+RADAR_WINNERS = ["NVDA", "MU", "SNDK", "ASML", "WDC", "PLTR", "APP", "AVGO"]
+RADAR_THEMES = {
+    "Memory & storage": ["MU", "SNDK", "WDC", "STX"],
+    "Chip equipment": ["ASML", "AMAT", "LRCX", "KLAC", "TER", "ONTO", "ACMR"],
+    "AI chips": ["NVDA", "AMD", "AVGO", "MRVL", "ARM", "ALAB", "CRDO", "INTC"],
+    "Networking & optics": ["ANET", "CIEN", "COHR", "LITE", "AAOI", "FN", "CLS"],
+    "Power & data centers": ["VRT", "VST", "CEG", "OKLO", "NBIS", "CRWV", "IREN", "BE"],
+    "Quantum & space": ["IONQ", "RGTI", "QBTS", "RKLB", "ASTS"],
+    "AI software": ["PLTR", "APP", "SNOW", "CRWD", "NET", "DDOG"],
+}
+FEATURES = [  # (key, label, scale used to compare)
+    ("r3", "3-month return", 0.30), ("r6", "6-month return", 0.50), ("r12", "12-month return", 0.80),
+    ("rs6", "Beat S&P (6m)", 0.40), ("fromHigh", "Near 52-week high", 0.15), ("d200", "Above 200-day avg", 0.30),
+    ("slope50", "50-day trend slope", 0.08), ("volr", "Rising volume", 0.40), ("vola", "Volatility", 0.30),
+]
+
+
+def _features(c, v, i, spy_at):
+    """Price-pattern features at bar i (needs ~260 bars of history)."""
+    if i < 260:
+        return None
+    s50 = sum(c[i - 49:i + 1]) / 50
+    s50p = sum(c[i - 69:i - 19]) / 50
+    s200 = sum(c[i - 199:i + 1]) / 200
+    rets = [math.log(c[k] / c[k - 1]) for k in range(i - 62, i + 1) if c[k - 1] > 0]
+    mu = sum(rets) / len(rets)
+    vol50 = sum(v[i - 49:i + 1]) / 50
+    vol200 = sum(v[i - 199:i + 1]) / 200
+    r6 = c[i] / c[i - 126] - 1
+    spy6 = spy_at(i, 126)
+    return {
+        "r3": c[i] / c[i - 63] - 1, "r6": r6, "r12": c[i] / c[i - 252] - 1,
+        "rs6": r6 - spy6 if spy6 is not None else 0.0,
+        "fromHigh": c[i] / max(c[i - 251:i + 1]) - 1, "d200": c[i] / s200 - 1,
+        "slope50": s50 / s50p - 1, "volr": (vol50 / vol200 - 1) if vol200 else 0.0,
+        "vola": math.sqrt(sum((x - mu) ** 2 for x in rets) / (len(rets) - 1) * 252),
+    }
+
+
+def _series(sym, rng):
+    rows = _rows(_chart(sym, "range=%s&interval=1d" % rng, 3600))
+    return [x[0] for x in rows], [x[4] for x in rows], [x[5] for x in rows]
+
+
+def _spy_lookup(rng):
+    t, c, _ = _series("SPY", rng)
+
+    def at(ts, back):
+        # index of the last SPY bar at or before ts
+        lo, hi = 0, len(t) - 1
+        if not t or ts < t[0]:
+            return None
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if t[mid] <= ts:
+                lo = mid
+            else:
+                hi = mid - 1
+        return c[lo] / c[lo - back] - 1 if lo >= back else None
+    return at
+
+
+def _launch(t, c, v, spy):
+    """The first confirmed-uptrend day of the stock's best 12-month run.
+
+    Confirmed uptrend: close above a rising 50-day average that is above the
+    200-day. Among those days, take the one with the biggest gain over the next
+    12 months, then walk back to the start of that uptrend stretch."""
+    n = len(c)
+    s50 = sma(c, 50)
+    s200 = sma(c, 200)
+    ok = [i >= 260 and s50[i] and s200[i] and c[i] > s50[i] > s200[i] and s50[i] > (s50[i - 10] or 0) for i in range(n)]
+    best, bi = 0, None
+    for i in range(260, n - 20):
+        if not ok[i]:
+            continue
+        fwd = max(c[i + 1:i + 253]) / c[i]
+        if fwd > best:
+            best, bi = fwd, i
+    if bi is None:
+        return None
+    while bi > 260 and ok[bi - 1]:
+        bi -= 1
+    spy_at = lambda i, back: spy(t[i], back)
+    end = min(n - 1, bi + 252)
+    path = [round(c[k] / c[bi], 4) for k in range(bi, end + 1, 5)]
+    peak = max(c[bi:end + 1]) / c[bi] - 1
+    return {"i": bi, "date": time.strftime("%Y-%m-%d", time.gmtime(t[bi])), "price": r(c[bi]),
+            "gain12": r(100 * (c[end] / c[bi] - 1), 0), "peak12": r(100 * peak, 0),
+            "features": _features(c, v, bi, spy_at), "path": path}
+
+
+def radar_winners():
+    def load():
+        spy = _spy_lookup("10y")
+        out = []
+        for sym in RADAR_WINNERS:
+            try:
+                t, c, v = _series(sym, "10y")
+                L = _launch(t, c, v, spy)
+                if L and L["features"]:
+                    L.update(symbol=sym, now=r(c[-1]), sinceLaunch=r(100 * (c[-1] / c[L["i"]] - 1), 0))
+                    L.pop("i")
+                    out.append(L)
+            except Exception:
+                continue
+        return out
+    return cached(("radar-winners",), 12 * 3600, load)
+
+
+def _growth(fa):
+    """0-100 growth score from reported and forecast earnings, plus the reasons."""
+    if not fa or not fa.get("available"):
+        return None, []
+    pts, why = [], []
+    q = fa.get("earnings") or []
+    last = q[-1] if q else {}
+    prev = q[-2] if len(q) > 1 else {}
+    rev = last.get("revYoY")
+    if rev is not None:
+        pts.append(min(1.0, max(0.0, rev / 80.0)))
+        why.append(("Revenue %+.0f%% vs a year ago" % rev, rev >= 20))
+    eps = last.get("epsYoY")
+    if eps is not None:
+        pts.append(min(1.0, max(0.0, eps / 150.0)))
+        why.append(("EPS %+.0f%% vs a year ago" % eps, eps >= 25))
+    if rev is not None and prev.get("revYoY") is not None:
+        acc = rev > prev["revYoY"]
+        pts.append(1.0 if acc else 0.2)
+        why.append(("Revenue growth %s (%.0f%% then %.0f%%)" % ("accelerating" if acc else "slowing", prev["revYoY"], rev), acc))
+    v, h = fa.get("valuation") or {}, fa.get("highlights") or {}
+    fc = fa.get("forecasts") or []
+    if h.get("epsTTM") and len(fc) >= 4 and all(isinstance(x.get("eps"), (int, float)) for x in fc[:4]) and h["epsTTM"] > 0:
+        fg = 100 * (sum(x["eps"] for x in fc[:4]) / h["epsTTM"] - 1)
+        pts.append(min(1.0, max(0.0, fg / 100.0)))
+        why.append(("Analysts expect EPS %+.0f%% next 4 quarters" % fg, fg >= 25))
+    if h.get("operatingMargin") is not None:
+        pts.append(min(1.0, max(0.0, h["operatingMargin"] / 35.0)))
+        why.append(("Operating margin %.0f%%" % h["operatingMargin"], h["operatingMargin"] >= 15))
+    up = (fa.get("analyst") or {}).get("upside")
+    if up is not None:
+        pts.append(min(1.0, max(0.0, up / 60.0)))
+        why.append(("Analyst target %+.0f%% from here" % up, up >= 15))
+    if len(pts) < 3:  # too little data to judge growth fairly
+        return None, why + [("Not enough earnings data for a growth score", False)]
+    return round(100 * sum(pts) / len(pts)), why
+
+
+def radar():
+    def load():
+        winners = radar_winners()
+        if not winners:
+            raise ValueError("could not load the reference winners")
+        def median(xs):
+            xs = sorted(xs)
+            m = len(xs) // 2
+            return xs[m] if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+        # median, so one extreme run (a fresh spin-off up 1,000%) can't drag the profile
+        prof = {k: median([w["features"][k] for w in winners]) for k, _, _ in FEATURES}
+        spy = _spy_lookup("2y")
+        theme_of = {}
+        for th, syms in RADAR_THEMES.items():
+            for s in syms:
+                theme_of.setdefault(s, th)
+        syms = list(theme_of)
+
+        def one(sym):
+            try:
+                t, c, v = _series(sym, "2y")
+                f = _features(c, v, len(c) - 1, lambda i, back: spy(t[i], back))
+                if not f:
+                    return None
+                d2 = sum(((f[k] - prof[k]) / sc) ** 2 for k, _, sc in FEATURES) / len(FEATURES)
+                sim = round(100 * math.exp(-d2 / 3))
+                try:
+                    fa = fundamentals(sym)
+                except Exception:
+                    fa = None
+                g, gwhy = _growth(fa)
+                score = round(0.55 * sim + 0.45 * (g if g is not None else 35))  # missing growth data counts as below average
+                stage = ("Late: already ran" if f["r12"] > 2.5 else "Extended" if f["fromHigh"] > -0.03 and f["d200"] > 0.6
+                         else "Launch pattern" if sim >= 55 and f["r12"] < 1.0 else "Building" if sim >= 40 else "Not yet")
+                close = sorted(FEATURES, key=lambda x: abs((f[x[0]] - prof[x[0]]) / x[2]))
+                match = [lab for k, lab, sc in close[:3]]
+                miss = [lab for k, lab, sc in close[-2:]]
+                meta = {}
+                try:
+                    meta = get_bars(sym)["meta"]
+                except Exception:
+                    pass
+                return {
+                    "symbol": sym, "name": meta.get("name") or sym, "theme": theme_of[sym], "price": r(c[-1]),
+                    "currency": meta.get("currency"), "changePct": r(100 * (c[-1] / c[-2] - 1)),
+                    "features": {k: r(x, 4) for k, x in f.items()}, "similarity": sim, "growth": g, "score": score,
+                    "growthWhy": [{"text": a, "ok": b} for a, b in gwhy], "stage": stage,
+                    "matches": match, "differs": miss,
+                    "upside": (fa or {}).get("analyst", {}).get("upside") if fa and fa.get("available") else None,
+                    "targetHigh": (fa or {}).get("analyst", {}).get("high") if fa and fa.get("available") else None,
+                    "isPastWinner": sym in RADAR_WINNERS,
+                    "spark": [r(x) for x in c[-126::3]],
+                }
+            except Exception:
+                return None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as outer:  # own pool: one() uses POOL inside
+            rows = [x for x in outer.map(one, syms) if x]
+        rows.sort(key=lambda x: -x["score"])
+        themes = {}
+        for x in rows:
+            themes.setdefault(x["theme"], []).append(x["score"])
+        return {
+            "asOf": int(time.time()), "profile": {k: r(x, 4) for k, x in prof.items()},
+            "features": [{"key": k, "label": lab, "scale": sc} for k, lab, sc in FEATURES],
+            "winners": winners, "candidates": rows,
+            "themes": sorted([{"theme": k, "avg": round(sum(v) / len(v)), "n": len(v), "top": max(v)} for k, v in themes.items()], key=lambda x: -x["avg"]),
+        }
+    return cached(("radar",), 1800, load)
+
+
 # ---------------------------------------------------------------- Trading 212 (read-only)
 
 T212 = {"key": None, "secret": None, "env": "demo"}
@@ -1186,6 +1406,8 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "bars")
             elif path == "/api/news":
                 purge(lambda k: k[0] == "news")
+            elif path == "/api/radar":
+                purge(lambda k: k[0] in ("radar", "bars") or (k[0] == "chart" and "range=2y&interval=1d" == k[2]))
             elif path == "/api/t212/portfolio":
                 purge(lambda k: k[0] == "t212")
         if path == "/api/universe":
@@ -1219,6 +1441,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(performance(q.get("symbol", "SPY").upper()))
         if path == "/api/fundamentals":
             return self.send_json(fundamentals(q.get("symbol", "SPY").upper()))
+        if path == "/api/radar":
+            return self.send_json(radar())
         if path == "/api/t212/status":
             return self.send_json({"linked": bool(T212["key"]), "env": T212["env"],
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})

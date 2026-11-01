@@ -248,5 +248,35 @@ class Refresh(unittest.TestCase):
         self.assertIn(("bars", "MSFT", "2y"), srv._cache)
 
 
+class Radar(unittest.TestCase):
+    def test_features_on_a_steady_uptrend(self):
+        c = [100 * 1.003 ** i for i in range(300)]
+        f = srv._features(c, [1e6] * 300, 299, lambda i, back: 0.0)
+        self.assertGreater(f["r12"], 0.5)
+        self.assertAlmostEqual(f["fromHigh"], 0.0, places=6)
+        self.assertGreater(f["d200"], 0)
+        self.assertAlmostEqual(f["volr"], 0.0)
+        self.assertIsNone(srv._features(c, [1] * 300, 100, lambda i, back: 0.0))
+
+    def test_launch_is_start_of_the_best_confirmed_run(self):
+        flat = [100.0 + (i % 3) for i in range(300)]
+        run = [101.0 * 1.01 ** k for k in range(1, 260)]
+        c = flat + run
+        t = [1600000000 + i * 86400 for i in range(len(c))]
+        L = srv._launch(t, c, [1e6] * len(c), lambda ts, back: 0.0)
+        self.assertIsNotNone(L)
+        self.assertGreater(L["peak12"], 200)
+        self.assertEqual(L["path"][0], 1.0)
+
+    def test_growth_needs_three_data_points(self):
+        g, why = srv._growth({"available": True, "earnings": [], "analyst": {"upside": 50}})
+        self.assertIsNone(g)
+        fa = {"available": True, "earnings": [{"revYoY": 20, "epsYoY": 30}, {"revYoY": 40, "epsYoY": 75}],
+              "highlights": {"operatingMargin": 30, "epsTTM": 4}, "forecasts": [{"eps": 1.5}] * 4, "analyst": {"upside": 30}}
+        g, why = srv._growth(fa)
+        self.assertTrue(0 < g <= 100)
+        self.assertTrue(any("accelerating" in w[0] for w in why))
+
+
 if __name__ == "__main__":
     unittest.main()

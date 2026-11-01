@@ -739,6 +739,113 @@
     });
   }
 
+
+  // ------------------------------------------------------------ AI multibagger radar
+  pages.radar = async function () {
+    const f = Object.assign({ theme: "", stage: "", sort: "score" }, store.get("rfilter", {}));
+    view.innerHTML = `
+      <section class="ai-hero">
+        <div class="ai-hero-text">
+          <span class="ai-kicker">✦ AI pattern scanner</span>
+          <h1>Find the next NVIDIA</h1>
+          <p>The radar learned what <b>NVIDIA, Micron, SanDisk, ASML, Western Digital, Palantir, AppLovin and Broadcom</b> looked like on the day their 100% to 1,000% runs began. Every day it scans ${"<span id='nScan'>45</span>"} AI-economy stocks for the same fingerprint, then checks the earnings growth behind them.</p>
+          <div class="ai-stats" id="aiStats">${skeleton(2)}</div>
+          <p class="ai-warn">⚠ Pattern matching, not a promise. Most stocks that look like past winners don't become one, and these stocks can fall 50% or more. Size positions small.</p>
+        </div>
+        <div class="ai-scope" id="scope"><div class="scope-loading"><div class="pulse"></div><p>Scanning the AI economy…<br><span class="muted">first scan takes about 2 minutes</span></p></div></div>
+      </section>
+      <div class="card-head" style="margin:22px 0 10px"><h2 style="margin:0">The legends: what they did after the launch signal</h2>${rf("radar")}</div>
+      <div class="legends" id="legends">${[1, 2, 3, 4].map(() => `<div class="card">${skeleton(4)}</div>`).join("")}</div>
+      <h2 style="margin:22px 0 10px">Theme heat</h2>
+      <div class="heat" id="heat">${skeleton(2)}</div>
+      <div class="toolbar" style="margin-top:22px">
+        <h2 style="margin:0 12px 0 0">Candidates</h2>
+        <select id="rTheme" aria-label="Theme"><option value="">All themes</option></select>
+        <select id="rStage" aria-label="Stage"><option value="">All stages</option><option>Launch pattern</option><option>Building</option><option>Not yet</option><option>Extended</option><option>Late: already ran</option></select>
+        <div class="seg" id="rSort"><button data-s="score">Radar score</button><button data-s="similarity">Pattern match</button><button data-s="growth">Growth</button><button data-s="upside">Analyst upside</button></div>
+      </div>
+      <div class="cand-grid" id="cands">${[1, 2, 3].map(() => `<div class="card">${skeleton(8)}</div>`).join("")}</div>
+      <div class="card" style="margin-top:22px"><h2>How the radar works</h2>
+        <ol class="steps" style="font-size:14px;gap:8px">
+          <li><b>Learn the launch fingerprint.</b> For each legend it finds the first day of a confirmed uptrend (price above a rising 50-day average, which is above the 200-day) before its best 12 months, and measures 9 price-pattern traits that day: 3, 6 and 12-month returns, strength vs the S&amp;P 500, distance from the 52-week high and the 200-day average, the 50-day slope, volume trend and volatility. The fingerprint is the median of the legends.</li>
+          <li><b>Pattern match (0 to 100).</b> How close each stock's traits are today, each trait scaled by how much it normally varies.</li>
+          <li><b>Growth (0 to 100).</b> Revenue and EPS growth vs a year ago, whether growth is accelerating, analysts' EPS forecast for the next 4 quarters, operating margin and the analyst price target (Nasdaq.com data).</li>
+          <li><b>Radar score</b> = 55% pattern match + 45% growth (a stock without enough earnings data counts as 35 for growth). Stages: <i>Launch pattern</i> = strong match and not already up 100%; <i>Late: already ran</i> = up more than 250% in a year.</li>
+        </ol>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">The legends were picked because they won, so the fingerprint describes winners after the fact. It has not been tested on stocks that looked the same and failed. Treat it as a shortlist to research, not a buy list.</p></div>`;
+    let data;
+    const load = async () => {
+      data = await api("/api/radar");
+      if (!$("#cands")) return;
+      paint();
+    };
+    RF.radar = load;
+    const paint = () => {
+      const C = data.candidates, W = data.winners;
+      $("#nScan").textContent = C.length;
+      const launch = C.filter((x) => x.stage === "Launch pattern");
+      $("#aiStats").innerHTML = `<div><b>${C.length}</b><span>stocks scanned</span></div><div><b>${W.length}</b><span>legends learned</span></div>
+        <div><b>${launch.length}</b><span>show the launch pattern</span></div><div><b>${esc(C[0].symbol)}</b><span>top score (${C[0].score})</span></div>`;
+      $("#scope").innerHTML = TChart.radarScope(C.slice(0, 24)) + `<p class="muted scope-cap">Closer to the centre = higher score · green = 75+</p>`;
+      $("#legends").innerHTML = W.map((w) => `<a class="card legend" href="#/stock/${encodeURIComponent(w.symbol)}">
+        <div class="card-head" style="margin-bottom:4px"><span class="sym" style="font-size:17px">${esc(w.symbol)}</span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
+        <div class="muted" style="font-size:12px">Launch signal ${new Date(w.date + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", year: "numeric" })} at ${fmt(w.price, 2)}</div>
+        ${TChart.legendPath(w.path)}
+        <div style="display:flex;justify-content:space-between;font-size:12px"><span class="sec">12 months later <b class="${cls(w.gain12)}">${w.gain12 >= 0 ? "+" : ""}${w.gain12}%</b></span><span class="sec">Today <b class="up">+${w.sinceLaunch}%</b></span></div></a>`).join("");
+      const blue = (v) => `rgba(57,135,229,${(0.12 + 0.75 * Math.max(0, v - 20) / 70).toFixed(2)})`;
+      $("#heat").innerHTML = data.themes.map((t) => `<button class="heat-tile" data-theme="${esc(t.theme)}" style="background:${blue(t.avg)}"><span>${esc(t.theme)}</span><b>${t.avg}</b><small>avg of ${t.n} · best ${t.top}</small></button>`).join("");
+      $$("#heat .heat-tile").forEach((b) => b.addEventListener("click", () => { f.theme = f.theme === b.dataset.theme ? "" : b.dataset.theme; cards(); }));
+      $("#rTheme").innerHTML = `<option value="">All themes</option>` + data.themes.map((t) => `<option ${t.theme === f.theme ? "selected" : ""}>${esc(t.theme)}</option>`).join("");
+      cards();
+    };
+    const cards = () => {
+      store.set("rfilter", f);
+      $("#rTheme").value = f.theme; $("#rStage").value = f.stage;
+      $$("#rSort button").forEach((b) => b.classList.toggle("on", b.dataset.s === f.sort));
+      $$("#heat .heat-tile").forEach((b) => b.classList.toggle("on", b.dataset.theme === f.theme));
+      const rows = data.candidates.filter((x) => (!f.theme || x.theme === f.theme) && (!f.stage || x.stage === f.stage))
+        .sort((a, b) => (b[f.sort] ?? -999) - (a[f.sort] ?? -999));
+      $("#cands").innerHTML = rows.map((x, i) => candCard(x, i + 1)).join("") || `<div class="card empty">No stocks match these filters.</div>`;
+      $$("#cands [data-open]").forEach((b) => b.addEventListener("click", () => openDetail(b.dataset.open, b)));
+    };
+    const stageCls = (s) => s === "Launch pattern" ? "e-now" : s === "Building" ? "e-watch" : s.startsWith("Late") || s === "Extended" ? "e-wait" : "e-none";
+    const bar = (label, v) => `<div class="mbar"><span>${label}</span><i><b style="width:${v ?? 0}%"></b></i><em class="num">${v ?? "–"}</em></div>`;
+    const candCard = (x, rank) => `<div class="card cand" id="c-${esc(x.symbol)}">
+      <div class="cand-top">
+        <div class="rank">#${rank}</div>
+        <div style="flex:1;min-width:0"><a href="#/stock/${encodeURIComponent(x.symbol)}" class="sym" style="font-size:18px">${esc(x.symbol)}</a>${x.isPastWinner ? ` <span class="pill" title="One of the legends the radar learned from">legend</span>` : ""}
+          <span class="nm">${esc(x.name)}</span><span class="tag" style="margin-top:4px;display:inline-block">${esc(x.theme)}</span></div>
+        ${TChart.ring(x.score, 66, "Radar score")}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:end;gap:8px;margin:8px 0">
+        <div><div class="num" style="font-size:18px;font-weight:600">${priceStr(x.price, x.currency)}</div><div class="num ${cls(x.changePct)}" style="font-size:12px">${pct(x.changePct)} today · ${pct(100 * x.features.r12, 0)} 1y</div></div>
+        <div style="width:110px">${sparkline(x.spark, 110, 34)}</div>
+      </div>
+      ${bar("Pattern match", x.similarity)}${x.growth == null ? `<div class="mbar"><span>Growth</span><i></i><em class="muted" title="Not enough earnings data">n/a</em></div>` : bar("Growth", x.growth)}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 6px"><span class="badge ${stageCls(x.stage)}">${esc(x.stage)}</span>${x.upside != null ? `<span class="badge ${x.upside >= 0 ? "b-buy" : "b-sell"}">Analysts ${pct(x.upside, 0)}</span>` : ""}</div>
+      <p class="sec" style="font-size:12.5px;margin:4px 0">Matches the legends on: ${x.matches.map(esc).join(", ")}</p>
+      <button class="btn sm" data-open="${esc(x.symbol)}" style="width:100%;margin-top:6px">Compare with the legends ▾</button>
+      <div class="cand-detail" hidden></div></div>`;
+    const openDetail = (sym, btn) => {
+      const x = data.candidates.find((c) => c.symbol === sym);
+      const box = btn.nextElementSibling;
+      const card = btn.closest(".cand");
+      if (!box.hidden) { box.hidden = true; card.classList.remove("open"); btn.textContent = "Compare with the legends ▾"; return; }
+      const ap = TChart.analogPaths(x.price, data.winners);
+      box.innerHTML = `<div class="detail-grid"><div><h3 class="h3" style="margin-top:12px">Fingerprint vs the legends at launch</h3>${TChart.spider(data.features, x.features, data.profile, 300)}
+        <div class="legend"><span><i style="background:var(--series-1)"></i>${esc(x.symbol)} today</span><span style="color:var(--series-2)"><i class="dash"></i>Legends at launch</span></div>
+        <p class="muted" style="font-size:12px">Furthest from the legends: ${x.differs.map(esc).join(", ")}.</p>
+        ${x.growthWhy.length ? `<h3 class="h3" style="margin-top:12px">Growth check</h3><ul class="reasons">${x.growthWhy.map((g) => `<li class="${g.ok ? "" : "no"}">${esc(g.text)}</li>`).join("")}</ul>` : ""}</div>
+        <div><h3 class="h3" style="margin-top:12px">What if ${esc(x.symbol)} repeated a legend's next 12 months?</h3>${ap.svg}
+        <p class="muted" style="font-size:12px">Each line takes today's price along one legend's actual 12 months after its launch signal. The median legend path ends at ${pct(100 * (ap.median - 1), 0)}. Hypothetical: it shows what the legends did, not what ${esc(x.symbol)} will do.</p></div></div>`;
+      box.hidden = false; card.classList.add("open"); card.scrollIntoView({ behavior: "smooth", block: "nearest" }); btn.textContent = "Hide comparison ▴";
+    };
+    $("#rTheme").addEventListener("change", (e) => { f.theme = e.target.value; cards(); });
+    $("#rStage").addEventListener("change", (e) => { f.stage = e.target.value; cards(); });
+    $$("#rSort button").forEach((b) => b.addEventListener("click", () => { f.sort = b.dataset.s; cards(); }));
+    try { await load(); stamp("radar"); }
+    catch (e) { $("#scope") && ($("#scope").innerHTML = `<p class="error">${esc(e.message)}</p>`); }
+  };
   // ------------------------------------------------------------ news
   function newsHtml(items, compact) {
     if (!items.length) return `<p class="empty">No headlines right now.</p>`;

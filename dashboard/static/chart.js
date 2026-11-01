@@ -471,5 +471,97 @@
     return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Revenue and net income by period">${g}</svg>`;
   }
 
-  window.TChart = { PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
+  // ---------------------------------------------------------------- AI radar graphics
+
+  /** Radar scope: animated sweep with one blip per stock. Closer to the centre = higher score. */
+  function radarScope(items, size) {
+    size = size || 340;
+    const c = size / 2, R = c - 18;
+    const themes = [...new Set(items.map((x) => x.theme))];
+    const rings = [25, 50, 75, 100].map((p) => `<circle cx="${c}" cy="${c}" r="${R * p / 100}" fill="none" stroke="rgba(57,135,229,.22)" stroke-width="1"/>`).join("");
+    const spokes = themes.map((t, i) => {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / themes.length;
+      const lx = c + (R + 4) * Math.cos(a), ly = c + (R + 4) * Math.sin(a);
+      return `<line x1="${c}" y1="${c}" x2="${c + R * Math.cos(a)}" y2="${c + R * Math.sin(a)}" stroke="rgba(57,135,229,.15)"/>`;
+    }).join("");
+    const blips = items.map((x, k) => {
+      const a = -Math.PI / 2 + k * 2.39996; // golden angle: neighbours in the ranking never stack
+      const rr = R * (0.2 + 0.78 * Math.max(0, Math.min(1, (95 - x.score) / 70)));
+      const bx = c + rr * Math.cos(a), by = c + rr * Math.sin(a);
+      const hot = x.score >= 75;
+      const delay = ((a + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 4;
+      return `<g class="blip" style="animation-delay:${delay.toFixed(2)}s"><circle cx="${bx}" cy="${by}" r="${hot ? 6 : 4}" fill="${hot ? "#3fcf3f" : "#3987e5"}" stroke="var(--surface-1)" stroke-width="1.5"><title>${x.symbol}: score ${x.score}</title></circle>` +
+        (k < 4 ? `<text x="${bx + 8}" y="${by + 4}" font-size="10.5" font-weight="600" fill="var(--text-primary)">${x.symbol}</text>` : "") + `</g>`;
+    }).join("");
+    return `<svg viewBox="0 0 ${size} ${size}" width="100%" style="max-width:${size}px" role="img" aria-label="Radar of AI stocks: closer to the centre means a higher score">
+      <defs><radialGradient id="rg" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="rgba(57,135,229,.20)"/><stop offset="1" stop-color="rgba(57,135,229,0)"/></radialGradient>
+      <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="rgba(63,207,63,0)"/><stop offset="1" stop-color="rgba(63,207,63,.35)"/></linearGradient></defs>
+      <circle cx="${c}" cy="${c}" r="${R}" fill="url(#rg)"/>${rings}${spokes}
+      <g class="sweep" style="transform-origin:${c}px ${c}px"><path d="M${c},${c} L${c + R},${c} A${R},${R} 0 0 0 ${c + R * Math.cos(-0.6)},${c + R * Math.sin(-0.6)} Z" fill="url(#sweep)"/></g>
+      ${blips}<circle cx="${c}" cy="${c}" r="3" fill="#3fcf3f"/></svg>`;
+  }
+
+  /** Spider chart: the stock's pattern (blue) vs the legends' launch pattern (orange). Each axis is centred on the legends. */
+  function spider(features, values, profile, size) {
+    size = size || 260;
+    const c = size / 2, R = c - 46, n = features.length;
+    const norm = (f, v) => Math.max(0.04, Math.min(1, 0.5 + (v - profile[f.key]) / (4 * f.scale)));
+    const pt = (i, t) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [c + R * t * Math.cos(a), c + R * t * Math.sin(a)]; };
+    const poly = (vals) => vals.map((t, i) => pt(i, t).map((z) => z.toFixed(1)).join(",")).join(" ");
+    let g = [0.25, 0.5, 0.75, 1].map((t) => `<polygon points="${poly(features.map(() => t))}" fill="none" stroke="var(--grid)"/>`).join("");
+    g += features.map((f, i) => { const [x, y] = pt(i, 1); const [lx, ly] = pt(i, 1.2);
+      return `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="var(--grid)"/><text x="${lx}" y="${ly}" font-size="9.5" text-anchor="middle" dominant-baseline="middle" fill="var(--text-muted)">${f.label.replace("Above 200-day avg", "vs 200-day").replace("50-day trend slope", "50d slope").replace("Near 52-week high", "Near high").replace("-month return", "m return")}</text>`; }).join("");
+    g += `<polygon points="${poly(features.map(() => 0.5))}" fill="rgba(217,89,38,.14)" stroke="var(--series-2)" stroke-width="2" stroke-dasharray="5 3"/>`;
+    g += `<polygon points="${poly(features.map((f) => norm(f, values[f.key])))}" fill="rgba(57,135,229,.25)" stroke="var(--series-1)" stroke-width="2"/>`;
+    g += features.map((f, i) => { const [x, y] = pt(i, norm(f, values[f.key])); return `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1.5"><title>${f.label}: ${(values[f.key] * 100).toFixed(1)}% (legends at launch: ${(profile[f.key] * 100).toFixed(1)}%)</title></circle>`; }).join("");
+    return `<svg viewBox="0 0 ${size} ${size}" width="100%" style="max-width:${size}px" role="img" aria-label="Pattern compared with the legends at launch">${g}</svg>`;
+  }
+
+  /** Score ring gauge. */
+  function ring(score, size, label) {
+    size = size || 64;
+    const r = size / 2 - 5, C = 2 * Math.PI * r, col = score >= 75 ? "var(--good)" : score >= 55 ? "var(--accent)" : score >= 40 ? "var(--warning)" : "var(--text-muted)";
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${label || "Score"} ${score} of 100">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="6"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${(C * score / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+      <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" font-size="${size / 3.6}" font-weight="700" fill="var(--text-primary)">${score}</text></svg>`;
+  }
+
+  /** Legend card chart: the 12 months after launch, as % gain. */
+  function legendPath(path, w, h) {
+    w = w || 220; h = h || 70;
+    const hi = Math.max(...path), lo = Math.min(1, ...path);
+    const x = (i) => i / (path.length - 1) * w, y = (v) => h - 4 - (v - lo) / (hi - lo || 1) * (h - 8);
+    const pts = path.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="none" aria-hidden="true">
+      <polygon points="0,${h} ${pts} ${w},${h}" fill="rgba(63,207,63,.16)"/><polyline points="${pts}" fill="none" stroke="var(--good)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <line x1="0" x2="${w}" y1="${y(1)}" y2="${y(1)}" stroke="var(--text-muted)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+
+  /** "What if" chart: today's price carried along each legend's next 12 months. Hypothetical, not a forecast. */
+  function analogPaths(price, winners, w, h) {
+    w = w || 640; h = h || 300;
+    const left = 8, right = 104, top = 10, bottom = 24, pw = w - left - right, ph = h - top - bottom;
+    const n = Math.max(...winners.map((x) => x.path.length));
+    const med = []; for (let k = 0; k < n; k++) { const v = winners.map((x) => x.path[Math.min(k, x.path.length - 1)]).sort((a, b) => a - b); med.push(v[Math.floor(v.length / 2)]); }
+    const all = winners.flatMap((x) => x.path).concat([1]);
+    const lo = Math.min(...all), hi = Math.max(...all);
+    const ly = (v) => Math.log(v);
+    const x = (k) => left + k / (n - 1) * pw, y = (v) => top + (ly(hi) - ly(v)) / (ly(hi) - ly(lo) || 1) * ph;
+    let g = "";
+    for (const m of [0.5, 1, 2, 3, 5, 10]) if (m >= lo && m <= hi) g += `<line x1="${left}" x2="${left + pw}" y1="${y(m)}" y2="${y(m)}" stroke="var(--grid)"/><text x="${left + pw + 6}" y="${y(m) + 4}" font-size="10.5" fill="var(--text-muted)">${fmt(price * m, price < 10 ? 2 : 0)} (${m >= 1 ? "+" : ""}${Math.round((m - 1) * 100)}%)</text>`;
+    const cols = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)", "var(--series-6)", "var(--series-7)", "var(--series-8)"];
+    winners.forEach((wi, j) => {
+      const pts = wi.path.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+      const last = wi.path[wi.path.length - 1];
+      g += `<polyline points="${pts}" fill="none" stroke="${cols[j % 8]}" stroke-width="1.5" opacity=".55"><title>${wi.symbol} after ${wi.date}: ${last >= 1 ? "+" : ""}${Math.round((last - 1) * 100)}% in 12 months</title></polyline>`;
+      g += `<text x="${x(wi.path.length - 1) - 2}" y="${y(last) - 4}" font-size="10" text-anchor="end" fill="${cols[j % 8]}">${wi.symbol}</text>`;
+    });
+    g += `<polyline points="${med.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--text-primary)" stroke-width="2.5" stroke-dasharray="6 4"><title>Median legend path: ${Math.round((med[n - 1] - 1) * 100)}%</title></polyline>`;
+    g += `<circle cx="${x(0)}" cy="${y(1)}" r="4" fill="var(--text-primary)"/>`;
+    g += ["Today", "+3 months", "+6 months", "+9 months", "+12 months"].map((t, i) => `<text x="${left + i / 4 * pw}" y="${h - 6}" font-size="10.5" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}" fill="var(--text-muted)">${t}</text>`).join("");
+    return { svg: `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:760px" role="img" aria-label="Hypothetical paths if the stock repeated each legend's 12 months">${g}</svg>`, median: med[n - 1] };
+  }
+
+  window.TChart = { radarScope, spider, ring, legendPath, analogPaths, PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
 })();

@@ -19,6 +19,7 @@ to install, no signup.
 | **Markets** | 100+ US stocks by sector and ETFs (US plus UCITS ETFs sold on Trading 212 such as VUSA, CSPX, VWRL, EQQQ). Sort by any column, filter by sector or rating, ★ to watch. Use the search box for any other ticker in the world |
 | **Strong Buys** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |
 | **Stock page** | Charts for 1D (5-minute bars), 7D (hourly bars) and 3M to 2Y (daily, with 20/50/200-day averages, volume, RSI, your entry/stop/target lines, and a forecast cone plus the analysts' average target). 1D and 7D add tables of hourly levels and the last 7 days. "Best moment to buy" verdict with the reason, position size calculator, the checklist behind the rating, performance (1W, 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, Max) against the S&P 500, statistics (P/E TTM, forward P/E, PEG, price/sales, price/book, EV/EBITDA, margins, ROE, cash, debt, free cash flow), analyst price targets and buy/hold/sell counts, earnings trends (EPS per quarter with year-over-year growth and the next quarters' forecasts, revenue vs net income by quarter or year), and news |
+| **✦ AI Radar** | Scans 45 AI-economy stocks (memory, chip equipment, AI chips, networking, power and data centers, quantum and space, AI software) for the price "fingerprint" NVIDIA, Micron, SanDisk, ASML, Western Digital, Palantir, AppLovin and Broadcom showed on the day their big runs began, then checks the earnings growth behind them. Animated radar, the legends' runs, theme heat map, and for each stock a score ring, a spider chart vs the legends and a "what if it repeated a legend's 12 months" chart |
 | **Portfolio** | Trading 212 cash, value, open and realised P/L; gain or loss in % and money for today, 1 week, 1 month, this year, 1 year, 5 years and all time; a graph of money invested vs portfolio value over time; every position with its live rating and an exit check; allocation chart; add holdings by hand with their buy date |
 | **News** | Headlines for your holdings and watchlist or the whole market, tagged #earnings, #analyst, #deal, #legal, #macro |
 
@@ -87,6 +88,25 @@ size = (account × risk %) ÷ (entry − stop).
   reported quarters. Forward P/E uses the analysts' EPS forecast for the next 4
   quarters. Free data doesn't include past EPS estimates, so earnings show
   reported EPS with year-over-year growth instead of "beat/miss".
+
+## AI Radar
+
+1. **Launch fingerprint.** For each legend: the first day of a confirmed uptrend
+   (price above a rising 50-day average that is above the 200-day) before its best
+   12 months. On that day it measures 9 traits: 3, 6 and 12-month returns, strength
+   vs the S&P 500, distance from the 52-week high and the 200-day average, the
+   50-day slope, the volume trend and volatility. The fingerprint is the median
+   across the legends.
+2. **Pattern match (0 to 100)**: how close a stock's traits are today.
+3. **Growth (0 to 100)**: revenue and EPS growth, acceleration, forecast EPS growth,
+   operating margin and analyst upside (needs at least 3 of these; otherwise
+   counted as 35).
+4. **Radar score** = 55% pattern + 45% growth.
+
+The first scan takes about 2 minutes, then it is cached for 30 minutes. The
+legends were chosen because they won, and the method has not been tested on
+look-alikes that failed: use it as a research shortlist, not a buy list. These
+stocks can fall 50% or more.
 
 ## Portfolio history
 
