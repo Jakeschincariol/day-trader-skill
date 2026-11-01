@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0d">
+<title>Trader Dashboard</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/">
+    <img src="/icon.svg" alt="" width="26" height="26">
+    <span>Trader<b>Dash</b></span>
+  </a>
+  <nav class="tabs" id="tabs">
+    <a href="#/" data-tab="home">Dashboard</a>
+    <a href="#/markets" data-tab="markets">Markets</a>
+    <a href="#/signals" data-tab="signals">Strong Buys</a>
+    <a href="#/portfolio" data-tab="portfolio">Portfolio</a>
+    <a href="#/news" data-tab="news">News</a>
+  </nav>
+  <form class="search" id="search" autocomplete="off" role="search">
+    <input id="searchInput" type="search" placeholder="Search any stock or ETF…" aria-label="Search stocks and ETFs">
+    <ul id="searchResults" class="dropdown" hidden></ul>
+  </form>
+</header>
+
+<div class="ticker-strip" id="strip" aria-label="Market indices"></div>
+
+<main id="view" tabindex="-1"></main>
+
+<footer class="foot">
+  <p>Market data: Yahoo Finance (unofficial, can be delayed). Ratings and entry levels are computed from price, trend, momentum and volume rules shown on each stock page. They are not financial advice. This site reads your Trading 212 account and never places orders.</p>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="/chart.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
