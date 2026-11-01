@@ -32,6 +32,7 @@ Origin is not this machine, so other websites cannot read your portfolio.
 
 import argparse
 import base64
+import calendar
 import email.utils
 import concurrent.futures
 import json
@@ -71,6 +72,20 @@ def cached(key, ttl, fn):
     with _cache_lock:
         _cache[key] = (time.time(), val)
     return val
+
+
+def purge(test):
+    """Drop cached entries whose key matches test(key), so the next read fetches fresh data."""
+    with _cache_lock:
+        for k in [k for k in _cache if test(k)]:
+            del _cache[k]
+
+
+def purge_symbols(symbols):
+    up = {x.upper() for x in symbols}
+    nas = {x.replace("-", ".") for x in up}
+    purge(lambda k: (k[0] in ("bars", "chart") and str(k[1]).upper() in up)
+          or (k[0] == "nasdaq" and any("/%s/" % n in k[1].upper() for n in nas)))
 
 
 def http_get(url, headers=None, timeout=20):
@@ -345,6 +360,41 @@ def analyse(symbol, with_series=False):
             "rsi": [r(x, 1) for x in rs], "macd": [r(x, 3) for x in ml], "signal": [r(x, 3) for x in ms],
             "hist": [r(x, 3) for x in mh],
         }
+        out["forecast"] = forecast(c)
+    return out
+
+
+def forecast(closes, days=63, lookback=126, shrink=0.5):
+    """Statistical projection, not a prediction.
+
+    Centre: the last 6 months' log-linear trend, halved (trends fade).
+    Bands: +/-1 and +/-2 standard deviations of daily log returns, widening
+    with the square root of time (about 68% and 95% of outcomes if the
+    recent volatility holds)."""
+    xs = [math.log(x) for x in closes[-lookback:] if x and x > 0]
+    n = len(xs)
+    if n < 30:
+        return None
+    mx = (n - 1) / 2.0
+    my = sum(xs) / n
+    slope = sum((i - mx) * (y - my) for i, y in enumerate(xs)) / sum((i - mx) ** 2 for i in range(n))
+    rets = [xs[i] - xs[i - 1] for i in range(1, n)]
+    mu = sum(rets) / len(rets)
+    sd = math.sqrt(sum((x - mu) ** 2 for x in rets) / (len(rets) - 1))
+    drift = slope * shrink
+    p0 = closes[-1]
+    out = {"days": days, "mid": [], "lo1": [], "hi1": [], "lo2": [], "hi2": [],
+           "drift": r(100 * (math.exp(drift * 252) - 1), 1), "vol": r(100 * sd * math.sqrt(252), 1)}
+    for t in range(1, days + 1):
+        m = math.log(p0) + drift * t
+        w = sd * math.sqrt(t)
+        out["mid"].append(r(math.exp(m), 4))
+        out["lo1"].append(r(math.exp(m - w), 4))
+        out["hi1"].append(r(math.exp(m + w), 4))
+        out["lo2"].append(r(math.exp(m - 2 * w), 4))
+        out["hi2"].append(r(math.exp(m + 2 * w), 4))
+    for k in ("mid", "lo1", "hi1", "lo2", "hi2"):
+        out[k + "End"] = out[k][-1]
     return out
 
 
@@ -421,6 +471,288 @@ def get_news(symbols):
             })
     items.sort(key=lambda x: x.get("time") or 0, reverse=True)
     return items[:100]
+
+
+# ---------------------------------------------------------------- intraday, performance
+
+def _chart(symbol, query, ttl):
+    def load():
+        d = yahoo("/v8/finance/chart/%s?%s" % (urllib.parse.quote(symbol), query))
+        res = ((d.get("chart") or {}).get("result") or [None])[0]
+        if not res:
+            raise ValueError("no data for %s" % symbol)
+        return res
+    return cached(("chart", symbol, query), ttl, load)
+
+
+def _rows(res):
+    ts = res.get("timestamp") or []
+    q = (res.get("indicators", {}).get("quote") or [{}])[0]
+    out = []
+    for i, t in enumerate(ts):
+        o, h, l, c, v = (q.get(k, [None] * len(ts))[i] for k in ("open", "high", "low", "close", "volume"))
+        if None in (o, h, l, c):
+            continue
+        out.append((t, o, h, l, c, v or 0))
+    return out
+
+
+def intraday(symbol):
+    """Today in 5-minute bars, the last 7 days in hourly bars, and hourly levels for the last session."""
+    now = int(time.time())
+    d1 = _chart(symbol, "range=1d&interval=5m&includePrePost=false", 60)
+    d7 = _chart(symbol, "period1=%d&period2=%d&interval=1h&includePrePost=false" % (now - 8 * 86400, now), 120)
+    meta = d1.get("meta", {})
+    gmt = meta.get("gmtoffset") or 0
+    pack = lambda rows: {"t": [x[0] for x in rows], "o": [r(x[1], 4) for x in rows], "h": [r(x[2], 4) for x in rows],
+                         "l": [r(x[3], 4) for x in rows], "c": [r(x[4], 4) for x in rows], "v": [x[5] for x in rows]}
+    r1, r7 = _rows(d1), _rows(d7)
+    # keep 7 calendar days of hourly bars
+    if r7:
+        cut = r7[-1][0] - 7 * 86400
+        r7 = [x for x in r7 if x[0] > cut]
+    prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+    # hourly levels for the latest session (exchange-local day)
+    hourly = []
+    if r7:
+        last_day = time.gmtime(r7[-1][0] + gmt)[:3]
+        ref = None
+        for x in r7:
+            if time.gmtime(x[0] + gmt)[:3] == last_day:
+                base = ref if ref is not None else prev
+                hourly.append({"t": x[0], "o": r(x[1], 4), "h": r(x[2], 4), "l": r(x[3], 4), "c": r(x[4], 4), "v": x[5],
+                               "chgPct": r(100 * (x[4] / base - 1)) if base else None})
+                ref = x[4]
+    # daily summary of the 7-day window
+    days = {}
+    for x in r7:
+        k = time.strftime("%Y-%m-%d", time.gmtime(x[0] + gmt))
+        dd = days.setdefault(k, {"date": k, "o": x[1], "h": x[2], "l": x[3], "c": x[4], "v": 0, "t": x[0]})
+        dd["h"], dd["l"], dd["c"], dd["v"] = max(dd["h"], x[2]), min(dd["l"], x[3]), x[4], dd["v"] + x[5]
+    daylist = sorted(days.values(), key=lambda z: z["date"])
+    for i, dd in enumerate(daylist):
+        base = daylist[i - 1]["c"] if i else None
+        dd["chgPct"] = r(100 * (dd["c"] / base - 1)) if base else None
+        for k in ("o", "h", "l", "c"):
+            dd[k] = r(dd[k], 4)
+    return {"symbol": meta.get("symbol", symbol), "currency": meta.get("currency"), "gmtoffset": gmt,
+            "tz": meta.get("exchangeTimezoneName"), "prevClose": prev, "day": pack(r1), "week": pack(r7),
+            "hourly": hourly, "days": daylist}
+
+
+def _ret_table(daily, weekly):
+    """Returns over standard windows from daily (2y) and weekly (max) closes [(t, close)]."""
+    if not daily:
+        return {}
+    t_end, last = daily[-1]
+
+    def back(series, seconds):
+        target = t_end - seconds
+        prior = [c for t, c in series if t <= target]
+        return prior[-1] if prior else None
+    d = 86400
+    y_start = time.mktime((time.gmtime(t_end).tm_year, 1, 1, 0, 0, 0, 0, 0, 0))
+    ytd_base = [c for t, c in daily if t < y_start]
+    out = {
+        "1W": back(daily, 7 * d), "1M": back(daily, 30 * d), "3M": back(daily, 91 * d), "6M": back(daily, 182 * d),
+        "YTD": ytd_base[-1] if ytd_base else None, "1Y": back(daily, 365 * d),
+        "2Y": back(weekly or daily, 730 * d), "5Y": back(weekly, 1826 * d) if weekly else None,
+        "Max": weekly[0][1] if weekly else daily[0][1],
+    }
+    return {k: (r(100 * (last / v - 1)) if v else None) for k, v in out.items()}
+
+
+def performance(symbol):
+    def series(sym):
+        dres = _chart(sym, "range=2y&interval=1d", 600)
+        wres = _chart(sym, "range=max&interval=1wk", 3600)
+        daily = [(x[0], x[4]) for x in _rows(dres)]
+        weekly = [(x[0], x[4]) for x in _rows(wres)]
+        if daily and weekly and weekly[-1][0] < daily[-1][0]:
+            weekly.append(daily[-1])
+        return daily, weekly
+    me, spy = POOL.map(lambda s: series(s), [symbol, "SPY"])
+    first = me[1][0][0] if me[1] else None
+    return {"symbol": symbol, "since": first, "returns": _ret_table(*me), "spy": _ret_table(*spy)}
+
+
+# ---------------------------------------------------------------- fundamentals (Nasdaq, US listings)
+
+def nasdaq(path, ttl=6 * 3600):
+    def load():
+        d = http_get("https://api.nasdaq.com/api/" + path, headers={"User-Agent": "Mozilla/5.0 (compatible; day-trader-skill-dashboard/1.0)"}, timeout=25)
+        return d.get("data") or {}
+    return cached(("nasdaq", path), ttl, load)
+
+
+def money_num(s):
+    """'$109,417,000' -> 109417000.0, '-$4,508' -> -4508, '$143,756(m)' -> 143756e6, '--' -> None."""
+    if s is None:
+        return None
+    if isinstance(s, (int, float)):
+        return float(s)
+    s = str(s).strip()
+    mult = 1e6 if s.endswith("(m)") else 1.0
+    m = re.search(r"(-?)\$?(-?)([\d,]+(?:\.\d+)?)", s)
+    if not m:
+        return None
+    v = float(m.group(3).replace(",", ""))
+    return -v * mult if (m.group(1) or m.group(2)) else v * mult
+
+
+def _table(tb):
+    """Nasdaq table -> ({row label: [v2, v3, v4, v5]}, [header dates])."""
+    hdr = tb.get("headers") or {}
+    cols = [k for k in ("value2", "value3", "value4", "value5") if k in hdr]
+    rows = {}
+    for row in tb.get("rows") or []:
+        rows[row.get("value1", "").strip()] = [row.get(k) for k in cols]
+    return rows, [hdr[k] for k in cols]
+
+
+def _fiscal_quarters(data):
+    """Revenue & EPS table -> [{date, label, fy, q, revenue, eps}] oldest first."""
+    tb = (data or {}).get("revenueTable") or {}
+    hdr = tb.get("headers") or {}
+    cols = [k for k in ("value2", "value3", "value4") if k in hdr]
+    years = {k: (re.search(r"(\d{4})", hdr[k]) or [None, None])[1] for k in cols}
+    out, qn, rev = [], 0, {}
+    for row in tb.get("rows") or []:
+        label = (row.get("value1") or "").strip()
+        if label not in ("Revenue", "EPS", "Dividends", "Total"):
+            qn += 1
+            rev = {}
+            continue
+        if label == "Revenue":
+            rev = {k: money_num(row.get(k)) for k in cols}
+        elif label == "EPS":
+            for k in cols:
+                txt = row.get(k) or ""
+                m = re.search(r"(-?\$?-?[\d.]+)\s*\((\d\d)/(\d\d)/(\d{4})\)", txt)
+                if not m or qn > 4:
+                    continue
+                eps = money_num(m.group(1))
+                date = "%s-%s-%s" % (m.group(4), m.group(2), m.group(3))
+                fy = years.get(k)
+                out.append({"date": date, "fy": fy, "q": qn, "label": "Q%d FY%s" % (qn, (fy or "")[-2:]),
+                            "eps": eps, "revenue": rev.get(k)})
+    out.sort(key=lambda x: x["date"])
+    for i, x in enumerate(out):
+        prev = next((y for y in out[:i] if y["q"] == x["q"] and y["fy"] and x["fy"] and int(y["fy"]) == int(x["fy"]) - 1), None)
+        x["epsYoY"] = r(100 * (x["eps"] / prev["eps"] - 1), 1) if prev and prev["eps"] and prev["eps"] > 0 and x["eps"] is not None else None
+        x["revYoY"] = r(100 * (x["revenue"] / prev["revenue"] - 1), 1) if prev and prev.get("revenue") and x.get("revenue") else None
+    return out
+
+
+def fundamentals(symbol):
+    sym = symbol.upper()
+    if not re.match(r"^[A-Z]{1,5}(-[A-Z])?$", sym):
+        return {"symbol": symbol, "available": False, "why": "Fundamentals cover US-listed stocks only."}
+    nsym = sym.replace("-", ".")
+    paths = {
+        "summary": "quote/%s/summary?assetclass=stocks" % nsym,
+        "revenue": "company/%s/revenue?limit=1" % nsym,
+        "finq": "company/%s/financials?frequency=2" % nsym,
+        "fina": "company/%s/financials?frequency=1" % nsym,
+        "forecast": "analyst/%s/earnings-forecast" % nsym,
+        "target": "analyst/%s/targetprice" % nsym,
+        "peg": "analyst/%s/peg-ratio" % nsym,
+        "edate": "analyst/%s/earnings-date" % nsym,
+    }
+
+    def get(item):
+        k, p = item
+        try:
+            return k, nasdaq(p)
+        except Exception:
+            return k, {}
+    D = dict(POOL.map(get, paths.items()))
+    summ = (D["summary"].get("summaryData") or {})
+    sv = lambda k: (summ.get(k) or {}).get("value")
+    if not summ and not D["finq"]:
+        return {"symbol": sym, "available": False, "why": "No fundamentals found for %s (ETFs and funds have none)." % sym}
+    try:
+        price = analyse(sym)["price"]
+    except Exception:
+        price = money_num(sv("PreviousClose"))
+
+    quarters = _fiscal_quarters(D["revenue"])
+    eps_ttm = sum(x["eps"] for x in quarters[-4:]) if len(quarters) >= 4 and all(x["eps"] is not None for x in quarters[-4:]) else None
+
+    inc, qdates = _table(D["finq"].get("incomeStatementTable") or {})
+    bal, _ = _table(D["finq"].get("balanceSheetTable") or {})
+    cfa, _ = _table(D["fina"].get("cashFlowTable") or {})
+    inca, adates = _table(D["fina"].get("incomeStatementTable") or {})
+    K = 1000.0  # Nasdaq statements are in thousands
+
+    def col(rows, name, i=0):
+        v = rows.get(name)
+        return money_num(v[i]) * K if v and i < len(v) and money_num(v[i]) is not None else None
+
+    def ttm(rows, name):
+        v = [col(rows, name, i) for i in range(4)]
+        return sum(v) if all(x is not None for x in v) else None
+    rev_ttm, ni_ttm = ttm(inc, "Total Revenue"), ttm(inc, "Net Income")
+    op_ttm = ttm(inc, "Operating Income")
+    equity, assets = col(bal, "Total Equity"), col(bal, "Total Assets")
+    debt = sum(x for x in (col(bal, "Short-Term Debt / Current Portion of Long-Term Debt"), col(bal, "Long-Term Debt")) if x)
+    cash = sum(x for x in (col(bal, "Cash and Cash Equivalents"), col(bal, "Short-Term Investments")) if x)
+    dep = col(cfa, "Depreciation")
+    ocf, capex = col(cfa, "Net Cash Flow-Operating"), col(cfa, "Capital Expenditures")
+    mcap = money_num(sv("MarketCap"))
+    ev = mcap + debt - cash if mcap else None
+    ebitda = (op_ttm + dep) if op_ttm is not None and dep is not None else None
+
+    fc_rows = ((D["forecast"].get("quarterlyForecast") or {}).get("rows") or [])
+    forecasts = [{"fiscalEnd": x.get("fiscalEnd"), "eps": x.get("consensusEPSForecast"), "high": x.get("highEPSForecast"),
+                  "low": x.get("lowEPSForecast"), "n": x.get("noOfEstimates")} for x in fc_rows]
+    fwd_eps = sum(x["eps"] for x in forecasts[:4]) if len(forecasts) >= 4 and all(isinstance(x["eps"], (int, float)) for x in forecasts[:4]) else None
+    co = D["target"].get("consensusOverview") or {}
+    peg = (D["peg"].get("pegr") or {}).get("pegValue")
+    edate = D["edate"].get("announcement") or ""
+    m = re.search(r":\s*(.+)$", edate)
+
+    def ratio(a, b):
+        return r(a / b) if a is not None and b not in (None, 0) else None
+
+    def pct_(a, b):
+        return r(100 * a / b) if a is not None and b not in (None, 0) else None
+
+    def rev_vs_earn(rows, dates, n):
+        out = []
+        for i in range(min(n, len(dates))):
+            rv, ni = col(rows, "Total Revenue", i), col(rows, "Net Income", i)
+            out.append({"period": dates[i], "revenue": rv, "netIncome": ni, "margin": pct_(ni, rv)})
+        return list(reversed(out))
+
+    return {
+        "symbol": sym, "available": True, "price": price,
+        "sector": sv("Sector"), "industry": sv("Industry"),
+        "valuation": {
+            "marketCap": mcap, "enterpriseValue": ev,
+            "peTTM": ratio(price, eps_ttm) if eps_ttm and 0 < eps_ttm < price else None,  # EPS above price = share-class mismatch
+            "forwardPE": ratio(price, fwd_eps) if fwd_eps and fwd_eps > 0 else None,
+            "peg": peg or None, "priceSales": ratio(mcap, rev_ttm), "priceBook": ratio(mcap, equity),
+            "evRevenue": ratio(ev, rev_ttm), "evEbitda": ratio(ev, ebitda),
+        },
+        "highlights": {
+            "profitMargin": pct_(ni_ttm, rev_ttm), "operatingMargin": pct_(op_ttm, rev_ttm),
+            "roa": pct_(ni_ttm, assets), "roe": pct_(ni_ttm, equity),
+            "revenueTTM": rev_ttm, "netIncomeTTM": ni_ttm, "epsTTM": r(eps_ttm) if eps_ttm is not None else None,
+            "totalCash": cash or None, "totalDebt": debt or None, "debtEquity": pct_(debt, equity),
+            "freeCashFlow": (ocf + capex) if ocf is not None and capex is not None else None,
+            "fcfPeriod": adates[0] if adates else None,
+            "dividendYield": sv("Yield"), "dividend": sv("AnnualizedDividend"), "exDividend": sv("ExDividendDate"),
+        },
+        "analyst": {"low": co.get("lowPriceTarget"), "avg": co.get("priceTarget"), "high": co.get("highPriceTarget"),
+                    "buy": co.get("buy"), "hold": co.get("hold"), "sell": co.get("sell"),
+                    "upside": pct_((co.get("priceTarget") or 0) - price, price) if co.get("priceTarget") and price else None},
+        "nextEarnings": m.group(1).strip() if m else None,
+        "earnings": quarters[-8:] if not (eps_ttm and price and eps_ttm > price) else [],
+        "forecasts": forecasts[:4],
+        "revVsEarnings": {"quarterly": rev_vs_earn(inc, qdates, 4), "annual": rev_vs_earn(inca, adates, 4)},
+        "source": "Nasdaq.com (Zacks estimates)",
+    }
 
 
 # ---------------------------------------------------------------- Trading 212 (read-only)
@@ -524,6 +856,271 @@ def t212_portfolio():
     return cached(("t212", T212["key"], T212["env"]), 15, load)
 
 
+# ---------------------------------------------------------------- portfolio history
+
+_orders = {"key": None, "items": [], "next": "/equity/history/orders?limit=50", "done": False, "at": 0}
+
+
+def _iso_ts(s):
+    if not s:
+        return None
+    try:
+        s = re.sub(r"(\.\d+)?(Z|[+-]\d\d:?\d\d)?$", "", str(s))
+        return int(calendar.timegm(time.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        try:
+            return int(calendar.timegm(time.strptime(s[:10], "%Y-%m-%d")))
+        except ValueError:
+            return None
+
+
+def t212_orders(max_pages=5):
+    """Filled orders from Trading 212's history, loaded a few pages per call (the API allows 6 calls a minute)."""
+    key = (T212["key"], T212["env"])
+    with _t212_lock:
+        if _orders["key"] != key:
+            _orders.update(key=key, items=[], next="/equity/history/orders?limit=50", done=False, at=0)
+        if _orders["done"] and time.time() - _orders["at"] < 1800:
+            return _orders["items"], True
+        if _orders["done"]:  # refresh newest page only
+            _orders.update(next="/equity/history/orders?limit=50", done=False)
+            refresh = True
+        else:
+            refresh = False
+        seen = {x["id"] for x in _orders["items"]}
+        for _ in range(max_pages):
+            path = _orders["next"]
+            if not path:
+                _orders["done"] = True
+                break
+            try:
+                page = t212_get(path.replace("/api/v0", ""))
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    break
+                raise
+            new = 0
+            for it in page.get("items", []):
+                o = _norm_order(it)
+                if o and o["id"] not in seen:
+                    seen.add(o["id"])
+                    _orders["items"].append(o)
+                    new += 1
+            _orders["next"] = page.get("nextPagePath")
+            if not _orders["next"] or (refresh and new == 0):
+                _orders["done"] = True
+                break
+        _orders["at"] = time.time()
+        return list(_orders["items"]), _orders["done"]
+
+
+def _norm_order(it):
+    order = it.get("order") or it
+    fill = it.get("fill") or {}
+    status = (order.get("status") or "FILLED").upper()
+    if status not in ("FILLED", "PARTIALLY_FILLED"):
+        return None
+    ticker = order.get("ticker") or (order.get("instrument") or {}).get("ticker")
+    qty = num(fill.get("quantity"), order.get("filledQuantity"))
+    price = num(fill.get("price"), order.get("fillPrice"))
+    if not ticker or not qty or not price:
+        return None
+    side = (order.get("side") or "").upper()
+    if not side:
+        sign_src = num(order.get("orderedQuantity"), order.get("filledQuantity"), order.get("orderedValue"), order.get("filledValue")) or 0
+        side = "SELL" if sign_src < 0 else "BUY"
+    ts = _iso_ts(fill.get("filledAt") or order.get("dateExecuted") or order.get("dateModified") or order.get("createdAt") or order.get("dateCreated"))
+    if not ts:
+        return None
+    q = abs(qty)
+    return {"id": str(fill.get("id") or order.get("fillId") or order.get("id")) + side, "symbol": t212_to_yahoo(ticker),
+            "ts": ts, "qty": q if side == "BUY" else -q, "price": abs(price)}
+
+
+def _daily_closes(symbol, start_ts):
+    now = int(time.time())
+    start = (start_ts - 10 * 86400) // 86400 * 86400
+    res = _chart(symbol, "period1=%d&period2=%d&interval=1d" % (start, now), 1800)
+    rows = _rows(res)
+    ccy = res.get("meta", {}).get("currency")
+    return {time.strftime("%Y-%m-%d", time.gmtime(x[0])): x[4] for x in rows}, ccy
+
+
+def portfolio_history(lots, base="USD"):
+    """lots: [{symbol, ts, qty (+buy/-sell), price (instrument currency)}] -> daily value vs invested."""
+    lots = sorted([x for x in lots if x.get("symbol") and x.get("ts") and x.get("qty")], key=lambda x: x["ts"])
+    if not lots:
+        return {"dates": [], "value": [], "invested": [], "realized": [], "returns": {}, "warnings": []}
+    first = lots[0]["ts"]
+    syms = sorted({x["symbol"] for x in lots})
+    warnings = []
+
+    def load(sym):
+        try:
+            return sym, _daily_closes(sym, first)
+        except Exception as e:
+            return sym, (None, str(e))
+    prices, ccys = {}, {}
+    for sym, (series, ccy) in POOL.map(load, syms):
+        if series:
+            prices[sym], ccys[sym] = series, ccy
+        else:
+            warnings.append("No price history for %s" % sym)
+
+    fx = {}
+    for c in {c for c in ccys.values() if c}:
+        unit, scale = (c, 1.0)
+        if c in ("GBp", "GBX"):
+            unit, scale = "GBP", 0.01
+        if c in ("ZAc", "ILA"):
+            unit, scale = ("ZAR" if c == "ZAc" else "ILS"), 0.01
+        if unit == base:
+            fx[c] = ({}, scale, 1.0)
+            continue
+        try:
+            series, _ = _daily_closes("%s%s=X" % (unit, base), first)
+            fx[c] = (series, scale, None)
+        except Exception:
+            fx[c] = ({}, scale, 1.0)
+            warnings.append("No %s to %s exchange rate: %s shown unconverted" % (unit, base, unit))
+
+    dates = sorted(set(d for s in prices.values() for d in s))
+    by_day = {}
+    for x in lots:
+        d = time.strftime("%Y-%m-%d", time.gmtime(x["ts"]))
+        nd = next((dd for dd in dates if dd >= d), None)
+        if nd and x["symbol"] in prices:
+            # London prices come in pence or pounds depending on the source: fix a x100 mismatch
+            mkt = prices[x["symbol"]].get(nd) or next((v for k, v in sorted(prices[x["symbol"]].items()) if k >= nd and v), None)
+            if mkt and x["price"]:
+                ratio = x["price"] / mkt
+                if 60 < ratio < 170:
+                    x = dict(x, price=x["price"] / 100.0)
+                elif 1 / 170.0 < ratio < 1 / 60.0:
+                    x = dict(x, price=x["price"] * 100.0)
+            by_day.setdefault(nd, []).append(x)
+
+    last_px, last_fx = {}, {}
+    hold, cost = {}, {}
+    out = {"dates": [], "value": [], "invested": [], "realized": [], "flow": []}
+    realized = 0.0
+    for d in dates:
+        for sym, s in prices.items():
+            if d in s and s[d] is not None:
+                last_px[sym] = s[d]
+        for c, (series, scale, fixed) in fx.items():
+            if fixed is not None:
+                last_fx[c] = fixed * scale
+            elif d in series and series[d]:
+                last_fx[c] = series[d] * scale
+            elif c not in last_fx and series:
+                last_fx[c] = next(iter(series.values())) * scale
+        flow = 0.0
+        for x in by_day.get(d, []):
+            sym = x["symbol"]
+            rate = last_fx.get(ccys.get(sym), 1.0)
+            amt = abs(x["qty"]) * x["price"] * rate
+            h = hold.get(sym, 0.0)
+            if x["qty"] > 0:
+                hold[sym] = h + x["qty"]
+                cost[sym] = cost.get(sym, 0.0) + amt
+                flow += amt
+            else:
+                q = min(abs(x["qty"]), h) if h > 0 else 0.0
+                avg = cost.get(sym, 0.0) / h if h > 0 else 0.0
+                realized += q * x["price"] * rate - q * avg
+                hold[sym] = h - q
+                cost[sym] = cost.get(sym, 0.0) - q * avg
+                flow -= q * x["price"] * rate
+        value = sum(q * last_px.get(sym, 0) * last_fx.get(ccys.get(sym), 1.0) for sym, q in hold.items() if q > 1e-9)
+        out["dates"].append(d)
+        out["value"].append(round(value, 2))
+        out["invested"].append(round(sum(v for k, v in cost.items() if hold.get(k, 0) > 1e-9), 2))
+        out["realized"].append(round(realized, 2))
+        out["flow"].append(round(flow, 2))
+    out["returns"] = period_returns(out)
+    out["warnings"] = warnings
+    out["base"] = base
+    return out
+
+
+def period_returns(h):
+    """Gain in money and percent over standard windows (Modified Dietz, so buys and sells don't count as gains)."""
+    dates, V, F = h["dates"], h["value"], h["flow"]
+    n = len(dates)
+    if n < 2:
+        return {}
+    end = dates[-1]
+    ey, em, ed = (int(x) for x in end.split("-"))
+
+    def shift(days=0, months=0, years=0):
+        y, m = ey - years, em - months
+        while m < 1:
+            m += 12
+            y -= 1
+        t = calendar.timegm((y, m, min(ed, 28) if (months or years) else ed, 0, 0, 0)) - days * 86400
+        return time.strftime("%Y-%m-%d", time.gmtime(t))
+    starts = {"1D": dates[-2], "1W": shift(days=7), "1M": shift(months=1), "3M": shift(months=3),
+              "YTD": "%04d-01-01" % ey, "1Y": shift(years=1), "5Y": shift(years=5)}
+    out = {}
+    for k, s in starts.items():
+        prior = [i for i, d in enumerate(dates) if d <= s]
+        i0 = prior[-1] if prior else None
+        partial = False
+        if i0 is None and k in ("1Y", "5Y", "YTD") and n > 1:
+            i0, partial = 0, True  # history is shorter than the window: measure since the first buy
+        if i0 is None or i0 >= n - 1:
+            out[k] = None
+            continue
+        v0 = V[i0]
+        flows = F[i0 + 1:]
+        cf = sum(flows)
+        weighted = sum(f * (len(flows) - j) / len(flows) for j, f in enumerate(flows)) if flows else 0.0
+        gain = V[-1] - v0 - cf  # sells count as cash out, so realized gains are included
+        denom = v0 + weighted
+        if partial and V[0] == 0:
+            bought = sum(f for f in F if f > 0)
+            out[k] = {"gain": round(V[-1] - sum(F), 2), "pct": round(100 * (V[-1] - sum(F)) / bought, 2) if bought > 0 else None, "partial": True}
+            continue
+        out[k] = {"gain": round(gain, 2), "pct": round(100 * gain / denom, 2) if denom > 0 else None, "partial": partial}
+    bought = sum(f for f in F if f > 0)
+    total_gain = V[-1] - sum(F)
+    out["Max"] = {"gain": round(total_gain, 2), "pct": round(100 * total_gain / bought, 2) if bought > 0 else None}
+    return out
+
+
+def build_lots(manual, include_t212=True):
+    lots, notes = [], []
+    for m in manual or []:
+        try:
+            ts = _iso_ts(m.get("date")) or int(time.time()) - 86400
+            lots.append({"symbol": str(m["symbol"]).upper(), "ts": ts, "qty": float(m["qty"]), "price": float(m["avgPrice"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    base = None
+    if include_t212 and T212["key"]:
+        pf = t212_portfolio()
+        base = pf.get("currency")
+        try:
+            orders, complete = t212_orders()
+        except Exception as e:
+            orders, complete = [], True
+            notes.append("Trading 212 order history unavailable (%s): using each position's average price and first buy date" % str(e)[:80])
+        if not complete:
+            notes.append("Older Trading 212 orders are still loading (the API allows a few pages a minute). Refresh in a minute for the full history.")
+        held = {}
+        for o in orders:
+            held[o["symbol"]] = held.get(o["symbol"], 0.0) + o["qty"]
+        lots += orders
+        for p in pf["positions"]:
+            sym, qty = p["symbol"], p.get("qty") or 0
+            gap = qty - held.get(sym, 0.0)
+            if abs(gap) > 1e-6 and p.get("avgPrice"):
+                first = min([o["ts"] for o in orders if o["symbol"] == sym] or [_iso_ts(p.get("opened")) or int(time.time()) - 365 * 86400])
+                lots.append({"symbol": sym, "ts": first, "qty": gap, "price": p["avgPrice"]})
+    return lots, base, notes
+
+
 # ---------------------------------------------------------------- HTTP
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -581,6 +1178,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def api(self, path, q):
         syms = lambda s: [x.strip().upper() for x in (s or "").split(",") if x.strip()][:150]
+        if q.get("fresh"):  # the refresh buttons: skip the short-term cache for this request
+            one = [q.get("symbol", "").upper()] if q.get("symbol") else []
+            if path in ("/api/quotes", "/api/analysis", "/api/intraday", "/api/performance", "/api/fundamentals"):
+                purge_symbols(syms(q.get("symbols")) + one + ["SPY"])
+            elif path == "/api/screener":
+                purge(lambda k: k[0] == "bars")
+            elif path == "/api/news":
+                purge(lambda k: k[0] == "news")
+            elif path == "/api/t212/portfolio":
+                purge(lambda k: k[0] == "t212")
         if path == "/api/universe":
             return self.send_json(UNIVERSE)
         if path == "/api/quotes":
@@ -606,6 +1213,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/news":
             s = syms(q.get("symbols")) or ["stock market news", "SPY", "QQQ"]
             return self.send_json(get_news(s[:25]))
+        if path == "/api/intraday":
+            return self.send_json(intraday(q.get("symbol", "SPY").upper()))
+        if path == "/api/performance":
+            return self.send_json(performance(q.get("symbol", "SPY").upper()))
+        if path == "/api/fundamentals":
+            return self.send_json(fundamentals(q.get("symbol", "SPY").upper()))
         if path == "/api/t212/status":
             return self.send_json({"linked": bool(T212["key"]), "env": T212["env"],
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})
@@ -647,6 +1260,15 @@ class Handler(BaseHTTPRequestHandler):
                 with os.fdopen(fd, "w") as f:
                     json.dump({"key": key, "secret": secret, "env": env}, f)
             return self.send_json({"linked": True, "env": env})
+        if path == "/api/portfolio/history":
+            if body.get("fresh"):
+                purge(lambda k: k[0] == "t212" or (k[0] == "chart" and "period1=" in str(k[2]) and "interval=1d" in str(k[2])))
+                _orders["at"] = 0
+            lots, base, notes = build_lots(body.get("manual") or [], include_t212=bool(body.get("t212", True)))
+            base = base or (body.get("base") or "USD").upper()[:3]
+            out = portfolio_history(lots, base)
+            out["warnings"] = notes + out["warnings"]
+            return self.send_json(out)
         if path == "/api/t212/disconnect":
             T212.update(key=None, secret=None)
             if os.path.exists(CRED_FILE):

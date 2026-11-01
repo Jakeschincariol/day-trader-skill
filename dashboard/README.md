@@ -18,9 +18,13 @@ to install, no signup.
 | **Dashboard** | Indices strip (S&P 500, Nasdaq, Dow, Russell, VIX, gold, bitcoin, EUR/USD), market breadth, top Strong Buys, stocks in a buy zone right now, your watchlist, latest headlines |
 | **Markets** | 100+ US stocks by sector and ETFs (US plus UCITS ETFs sold on Trading 212 such as VUSA, CSPX, VWRL, EQQQ). Sort by any column, filter by sector or rating, ★ to watch. Use the search box for any other ticker in the world |
 | **Strong Buys** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |
-| **Stock page** | Candlestick chart (3M to 2Y) with 20/50/200-day averages, volume, RSI, and your entry/stop/target lines; "Best moment to buy" verdict with the reason; position size calculator; the checklist behind the rating; key stats; news for that ticker |
-| **Portfolio** | Trading 212 cash, value, open and realised P/L, every position with its live rating and an exit check ("Rating turned Sell", "Below trailing stop", "Overbought: consider taking profit"); allocation chart; add holdings by hand |
+| **Stock page** | Charts for 1D (5-minute bars), 7D (hourly bars) and 3M to 2Y (daily, with 20/50/200-day averages, volume, RSI, your entry/stop/target lines, and a forecast cone plus the analysts' average target). 1D and 7D add tables of hourly levels and the last 7 days. "Best moment to buy" verdict with the reason, position size calculator, the checklist behind the rating, performance (1W, 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, Max) against the S&P 500, statistics (P/E TTM, forward P/E, PEG, price/sales, price/book, EV/EBITDA, margins, ROE, cash, debt, free cash flow), analyst price targets and buy/hold/sell counts, earnings trends (EPS per quarter with year-over-year growth and the next quarters' forecasts, revenue vs net income by quarter or year), and news |
+| **Portfolio** | Trading 212 cash, value, open and realised P/L; gain or loss in % and money for today, 1 week, 1 month, this year, 1 year, 5 years and all time; a graph of money invested vs portfolio value over time; every position with its live rating and an exit check; allocation chart; add holdings by hand with their buy date |
 | **News** | Headlines for your holdings and watchlist or the whole market, tagged #earnings, #analyst, #deal, #legal, #macro |
+
+Every section has a **↻ refresh** button with the time it last updated. Refresh skips
+the server's short-term cache (quotes 2 minutes, news 5, fundamentals 6 hours) and
+fetches the newest data.
 
 ## Link Trading 212
 
@@ -71,6 +75,26 @@ Each stock page lists every check it passed and failed, so nothing is hidden.
 Stops sit 2 ATR (average daily range) below entry or under the 10-day low,
 never more than 3 ATR or 15% away. Targets are 2x and 3x the risk. Position
 size = (account × risk %) ÷ (entry − stop).
+
+## Forecast, P/E and earnings
+
+- **Forecast cone**: the last 6 months' price trend (halved, since trends fade)
+  projected 3 months ahead, with ranges from recent volatility: the darker band
+  holds about 68% of outcomes, the lighter one 95%. It is a statistical range,
+  not a prediction.
+- **P/E, statistics, earnings, analyst targets**: Nasdaq.com's free data (estimates
+  from Zacks), US-listed stocks only. P/E (TTM) = price / EPS of the last 4
+  reported quarters. Forward P/E uses the analysts' EPS forecast for the next 4
+  quarters. Free data doesn't include past EPS estimates, so earnings show
+  reported EPS with year-over-year growth instead of "beat/miss".
+
+## Portfolio history
+
+Built from your Trading 212 order history (loaded a few pages a minute, as the
+API allows) and the buy dates of manual holdings, valued each day at the
+closing price and converted to your account currency. "Money invested" is the
+cost of the shares you hold. Period gains leave out money you add or withdraw,
+so a deposit never shows up as profit.
 
 ## Notes
 

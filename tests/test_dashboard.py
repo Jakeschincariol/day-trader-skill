@@ -166,5 +166,87 @@ class Http(unittest.TestCase):
         self.assertNotIn(b"def main", body)
 
 
+class Fundamentals(unittest.TestCase):
+    def test_money_num(self):
+        self.assertEqual(srv.money_num("$109,417,000"), 109417000.0)
+        self.assertEqual(srv.money_num("-$4,508,000"), -4508000.0)
+        self.assertEqual(srv.money_num("$143,756(m)"), 143756e6)
+        self.assertIsNone(srv.money_num("--"))
+
+    def test_fiscal_quarters_and_yoy(self):
+        data = {"revenueTable": {"headers": {"value1": "Fiscal Quarter:", "value2": "2026 (Fiscal Year)", "value3": "2025 (Fiscal Year)"},
+                "rows": [{"value1": "December", "value2": "", "value3": ""},
+                         {"value1": "Revenue", "value2": "$120(m)", "value3": "$100(m)"},
+                         {"value1": "EPS", "value2": "$2.20 (12/27/2025)", "value3": "$2.00 (12/28/2024)"},
+                         {"value1": "March", "value2": "", "value3": ""},
+                         {"value1": "Revenue", "value2": "", "value3": "$90(m)"},
+                         {"value1": "EPS", "value2": "", "value3": "$1.50 (03/29/2025)"}]}}
+        q = srv._fiscal_quarters(data)
+        self.assertEqual([x["label"] for x in q], ["Q1 FY25", "Q2 FY25", "Q1 FY26"])
+        self.assertEqual(q[-1]["epsYoY"], 10.0)
+        self.assertEqual(q[-1]["revYoY"], 20.0)
+
+    def test_non_us_symbols_skip_nasdaq(self):
+        self.assertFalse(srv.fundamentals("VUSA.L")["available"])
+
+
+class Forecast(unittest.TestCase):
+    def test_bands_are_ordered_and_widen(self):
+        f = srv.forecast([100 * 1.001 ** i * (1 + 0.01 * ((i % 5) - 2)) for i in range(200)])
+        for k in range(f["days"]):
+            self.assertLess(f["lo2"][k], f["lo1"][k])
+            self.assertLess(f["lo1"][k], f["mid"][k])
+            self.assertLess(f["mid"][k], f["hi1"][k])
+            self.assertLess(f["hi1"][k], f["hi2"][k])
+        self.assertGreater(f["hi1"][-1] - f["lo1"][-1], f["hi1"][0] - f["lo1"][0])
+
+
+class PortfolioHistory(unittest.TestCase):
+    def setUp(self):
+        self._dc = srv._daily_closes
+        days = ["2026-01-%02d" % d for d in range(2, 31)]
+        self.days = days
+
+        def fake(sym, start):
+            if sym == "AAA":
+                return {d: 10.0 + i for i, d in enumerate(days)}, "USD"
+            raise ValueError("no fx needed")
+        srv._daily_closes = fake
+
+    def tearDown(self):
+        srv._daily_closes = self._dc
+
+    def ts(self, d):
+        import calendar, time
+        return calendar.timegm(time.strptime(d, "%Y-%m-%d"))
+
+    def test_buy_then_sell_tracks_invested_value_and_realized(self):
+        lots = [{"symbol": "AAA", "ts": self.ts("2026-01-02"), "qty": 10, "price": 10.0},
+                {"symbol": "AAA", "ts": self.ts("2026-01-12"), "qty": -5, "price": 20.0}]
+        h = srv.portfolio_history(lots, "USD")
+        self.assertEqual(h["invested"][0], 100.0)
+        self.assertEqual(h["invested"][-1], 50.0)  # cost of the 5 shares still held
+        self.assertEqual(h["realized"][-1], 50.0)  # sold 5 at 20 that cost 10
+        self.assertEqual(h["value"][-1], 5 * (10.0 + len(self.days) - 1))
+        # all-time gain = value now + cash received from the sale - cash spent
+        self.assertAlmostEqual(h["returns"]["Max"]["gain"], h["value"][-1] + 5 * 20.0 - 10 * 10.0, 2)
+
+    def test_pence_fix(self):
+        lots = [{"symbol": "AAA", "ts": self.ts("2026-01-02"), "qty": 1, "price": 1000.0}]
+        h = srv.portfolio_history(lots, "USD")
+        self.assertEqual(h["invested"][0], 10.0)
+
+
+class Refresh(unittest.TestCase):
+    def test_purge_symbols(self):
+        srv._cache[("bars", "AAPL", "2y")] = (0, 1)
+        srv._cache[("bars", "MSFT", "2y")] = (0, 1)
+        srv._cache[("nasdaq", "quote/AAPL/summary?assetclass=stocks")] = (0, 1)
+        srv.purge_symbols(["AAPL"])
+        self.assertNotIn(("bars", "AAPL", "2y"), srv._cache)
+        self.assertNotIn(("nasdaq", "quote/AAPL/summary?assetclass=stocks"), srv._cache)
+        self.assertIn(("bars", "MSFT", "2y"), srv._cache)
+
+
 if __name__ == "__main__":
     unittest.main()
