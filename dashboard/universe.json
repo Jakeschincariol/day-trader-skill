@@ -1,0 +1,18 @@
+{
+  "indices": ["SPY", "QQQ", "DIA", "IWM", "^VIX", "GLD", "BTC-USD", "EURUSD=X"],
+  "stocks": {
+    "Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "AMD", "CRM", "ADBE", "INTC", "QCOM", "MU", "PLTR", "ARM", "SMCI", "ASML", "TSM", "SNOW", "NOW"],
+    "Communication": ["GOOGL", "META", "NFLX", "DIS", "T", "SPOT", "RDDT"],
+    "Consumer": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "COST", "WMT", "KO", "PEP", "PG", "LULU", "UBER", "ABNB"],
+    "Financials": ["JPM", "BAC", "GS", "MS", "V", "MA", "PYPL", "BRK-B", "COIN", "HOOD", "SOFI"],
+    "Healthcare": ["LLY", "UNH", "JNJ", "PFE", "MRK", "ABBV", "NVO", "ISRG"],
+    "Energy & Industrials": ["XOM", "CVX", "BA", "CAT", "GE", "LMT", "RTX", "DE"],
+    "Crypto & Growth": ["MSTR", "MARA", "RIOT", "RKLB", "IONQ", "SHOP", "NET", "CRWD"]
+  },
+  "etfs": {
+    "US Index": ["SPY", "VOO", "QQQ", "DIA", "IWM", "VTI"],
+    "Sectors": ["XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "SMH", "SOXX"],
+    "Themes & Commodities": ["ARKK", "GLD", "SLV", "TLT", "IBIT", "URA"],
+    "UCITS (Trading 212)": ["VUSA.L", "CSPX.L", "VWRL.L", "EQQQ.L", "IWDA.AS", "SGLN.L", "VUAA.L", "SWDA.L"]
+  }
+}

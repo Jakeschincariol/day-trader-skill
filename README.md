@@ -120,6 +120,18 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
 9. **`/trader-alerts`** rings on the stop, the target and at 3:55 PM to
    flatten whatever is still open.
 
+## The web dashboard
+
+A trading website you run locally: every stock and ETF rated Strong Buy to
+Strong Sell, the best moment to buy each one with entry, stop and targets,
+trading news, and your Trading 212 portfolio linked in read-only.
+
+```bash
+python3 dashboard/server.py     # then open http://127.0.0.1:8212
+```
+
+Setup and how the ratings work: [dashboard/README.md](dashboard/README.md).
+
 ## The tools
 
 All standard-library Python. The data tools read public endpoints and are
