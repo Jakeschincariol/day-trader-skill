@@ -2,11 +2,15 @@ import datetime
 import io
 import json
 import os
+import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-from _load import FIX, load
+from _load import FIX, ROOT, load
 
 news = load("trader-news", "news")
 DIR = os.path.join(FIX, "trader-news")
@@ -202,6 +206,30 @@ class Check(unittest.TestCase):
         news.remember([], state, now)
         self.assertNotIn("old", state["seen"])
         self.assertEqual(state["last_check"], now.isoformat())
+
+
+class NonUtf8Stdout(unittest.TestCase):
+    def test_a_headline_outside_the_console_code_page_still_prints(self):
+        # Windows consoles default to the local code page, not UTF-8: one emoji
+        # outside it used to kill the whole run with UnicodeEncodeError. No
+        # StringIO-based test can see that, so run the script as a subprocess
+        # with a cp1252 stdout.
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copytree(DIR, d, dirs_exist_ok=True)
+            path = os.path.join(d, "yahoo-TSLA.xml")
+            text = open(path, encoding="utf-8").read()
+            m = re.compile(r"<title>(.*?)</title>", re.S).search(text, text.find("<item>"))
+            open(path, "w", encoding="utf-8").write(
+                text[:m.start(1)] + "Tesla \U0001f680 to the moon" + text[m.end(1):])
+            env = dict(os.environ, PYTHONIOENCODING="cp1252")
+            proc = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "trader-news", "news.py"),
+                 "--offline", d, "--tickers", "TSLA", "--hours", "99999",
+                 "--all", "--dry-run", "--no-moves",
+                 "--state", os.path.join(d, "state.json")],
+                capture_output=True, env=env)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        self.assertIn("Tesla \U0001f680 to the moon".encode("utf-8"), proc.stdout)
 
 
 if __name__ == "__main__":

@@ -845,6 +845,14 @@ def run_weights(a, cfg):
 
 
 def main(argv=None):
+    # Output as UTF-8 even where the console code page is not (Windows): one
+    # character outside it would otherwise crash the whole run, and in-page
+    # characters would go out as lone bytes. The guard keeps StringIO (the
+    # test suite's redirect_stdout) working, since it has no reconfigure.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description="Size a day trade to your budget and max loss (trader-budget).")
     ap.add_argument("--plan", default="trader/plan.json", help="the trade plan (default trader/plan.json)")
     ap.add_argument("--config", default="trader/config.json", help="rules (default trader/config.json)")
