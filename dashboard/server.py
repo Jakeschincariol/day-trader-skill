@@ -2233,7 +2233,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/t212/portfolio":
                 purge(lambda k: k[0] == "t212")
         if path == "/api/phone":
-            if not self._is_local():
+            # the computer itself, also when opened through its own network address
+            own = self._is_local() or self.client_address[0] in (lan_ip(), "127.0.0.1", "::1")
+            if not own:
                 return self.send_json({"error": "Open this from the computer running the dashboard", "onPhone": True}, 403)
             tok = getattr(self.server, "phone_token", None)
             port = self.server.server_address[1]

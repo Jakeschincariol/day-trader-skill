@@ -342,12 +342,24 @@
   async function openPhone() {
     const td = T(), d = dialog();
     let info;
-    try { info = await td.api("/api/phone"); }
-    catch (e) {
-      d.innerHTML = `<div class="sheet-body"><div class="card-head"><h2 id="sheetTitle">Use on iPhone</h2><button class="rf" data-close aria-label="Close"><i data-lucide="x"></i></button></div>
-        <p>You're already using it on another device. 👍 To add it to your Home Screen: tap <b>Share</b> <i data-lucide="share"></i> → <b>Add to Home Screen</b>.</p></div>`;
+    const head = `<div class="card-head"><h2 id="sheetTitle"><i data-lucide="smartphone"></i>Use on iPhone</h2><button class="rf" data-close aria-label="Close"><i data-lucide="x"></i></button></div>`;
+    const res = await fetch("/api/phone").catch(() => null);
+    if (!res || res.status === 404) {
+      d.innerHTML = `<div class="sheet-body">${head}
+        <p><b>Your dashboard is still running the old version.</b></p>
+        <ol class="steps" style="font-size:14px;gap:6px"><li>Close the black window (the dashboard server).</li>
+          <li>Open the <b>new</b> <code>dashboard</code> folder and double-click <b>start-phone.bat</b> (Mac: <b>start-phone.command</b>).</li>
+          <li>Come back to <b>http://127.0.0.1:8212</b> and click <b>Use on iPhone</b> again.</li></ol></div>`;
       d.showModal(); return;
     }
+    if (!res.ok) {
+      const onPhone = /iPhone|iPad|Android/i.test(navigator.userAgent);
+      d.innerHTML = `<div class="sheet-body">${head}
+        ${onPhone ? `<p>You're already on your phone. 👍 To keep it on your Home Screen: tap <b>Share</b> <i data-lucide="share"></i> → <b>Add to Home Screen</b>.</p>`
+          : `<p>This page was opened through the network link. On the computer running the dashboard, open <b><a href="http://127.0.0.1:${location.port || 8212}/">http://127.0.0.1:${location.port || 8212}</a></b> and click <b>Use on iPhone</b> again.</p>`}</div>`;
+      d.showModal(); return;
+    }
+    info = await res.json();
     let qr = "";
     if (info.url && window.qrcode) {
       const q = window.qrcode(0, "M"); q.addData(info.url); q.make();

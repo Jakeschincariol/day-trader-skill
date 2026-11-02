@@ -493,7 +493,12 @@ class PhoneMode(unittest.TestCase):
     def test_phone_cannot_read_the_key(self):
         if not self.ip or self.ip.startswith("127."):
             self.skipTest("no network address")
-        st, _, body = self.req("/api/phone", {"Cookie": "td_key=" + "t" * 32})
+        old = srv.lan_ip
+        srv.lan_ip = lambda: "203.0.113.9"  # a real phone's address differs from the computer's
+        try:
+            st, _, body = self.req("/api/phone", {"Cookie": "td_key=" + "t" * 32})
+        finally:
+            srv.lan_ip = old
         self.assertEqual(st, 403)
         self.assertNotIn(b"tttt", body)
 
