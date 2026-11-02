@@ -766,6 +766,14 @@ def load_prices(pdoc):
 
 
 def main(argv=None):
+    # Output as UTF-8 even where the console code page is not (Windows): one
+    # character outside it would otherwise crash the whole run, and in-page
+    # characters would go out as lone bytes. The guard keeps StringIO (the
+    # test suite's redirect_stdout) working, since it has no reconfigure.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description="Check proposed orders against your limits (trader-risk).")
     ap.add_argument("--orders", default="trader/orders.json")
     ap.add_argument("--config", default="trader/config.json")
