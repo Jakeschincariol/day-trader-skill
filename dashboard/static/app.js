@@ -208,6 +208,26 @@
   }
   document.addEventListener("click", (e) => { const b = e.target.closest("#modeSeg button"); if (b) setMode(b.dataset.m); });
 
+  // ------------------------------------------------------------ live day-trend rows (quote board)
+  const fmtChg = (x) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, Math.abs(x) < 2 ? 4 : 2));
+  function liveRowsHtml(items, extra) {
+    if (!items.length) return `<p class="empty">Nothing here yet.</p>`;
+    return `<ul class="live-list">${items.map((q) => `<li><a href="#/stock/${encodeURIComponent(q.symbol)}" class="live-row">
+      ${logo(q.symbol, 30)}
+      <span class="lr-name"><b>${esc(q.symbol)}</b><span>${esc(q.name || "")}</span></span>
+      <span class="lr-spark">${TChart.daySpark(q.spark, q.prev, 110, 34)}</span>
+      <span class="lr-px">${q.price == null ? `<span class="muted">…</span>` : `<b class="num">${fmt(q.price, dp(q.price))}</b><span class="num ${cls(q.change)}">${fmtChg(q.change)} (${pct(q.changePct)})</span>`}</span>
+      ${extra ? `<span class="lr-extra">${extra(q)}</span>` : ""}</a></li>`).join("")}</ul>`;
+  }
+  async function liveRows(el, symbols, extra) {
+    if (!el) return;
+    if (!symbols.length) { el.innerHTML = `<p class="empty">Nothing here yet.</p>`; return; }
+    const rows = await api("/api/spark?symbols=" + encodeURIComponent(symbols.join(","))).catch(() => []);
+    if (!el.isConnected) return;
+    const by = Object.fromEntries(rows.map((r) => [r.symbol, r]));
+    el.innerHTML = liveRowsHtml(symbols.map((s) => by[s]).filter(Boolean), extra);
+  }
+
   // ------------------------------------------------------------ pages
   let current = null; // cleanup for the active page
   const stockMode = {}; // chart range picked per symbol
@@ -225,6 +245,9 @@
       </div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Your watchlist</h2><span style="display:flex;gap:10px;align-items:center">${rf("wl")}<a href="#/markets">Add more →</a></span></div><div id="wl">${skeleton(5)}</div></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="trending-up"></i>Trending tickers</h2>${rf("trend")}</div><div id="trend">${skeleton(5)}</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Latest news</h2><span style="display:flex;gap:10px;align-items:center">${rf("hnews")}<a href="#/news">All news →</a></span></div><div id="hn" class="news-list news-compact">${skeleton(6)}</div></div>
       </div>`;
 
@@ -235,8 +258,13 @@
     if (window.Trade) window.Trade.regime($("#moodBanner"));
     RF.market = async () => { await Promise.all([homeMarket(), loadStrip(), window.Trade ? window.Trade.regime($("#moodBanner")) : null]); };
     RF.wl = homeWatch;
+    RF.trend = async () => { const t = await api("/api/trending").catch(() => []); const el = $("#trend"); if (el) el.innerHTML = liveRowsHtml(t); };
+    RF.trend().then(() => stamp("trend"));
+    homeWatch().then(() => stamp("wl"));
     await homeMarket(); stamp("market");
-    await homeWatch(); stamp("wl");
+    // live: prices and day charts refresh every minute while the dashboard is open
+    const live = setInterval(() => { if (document.hidden) return; homeWatch(); RF.trend(); if (isLT()) homeSale(); }, 60000);
+    const prev = current; current = () => { prev && prev(); clearInterval(live); };
   };
   async function homeMarket() {
     const [rows, t212] = await Promise.all([getScreener(), getT212().catch(() => null)]);
@@ -261,8 +289,9 @@
       const sale = prof.filter((p) => p.zone === "Accumulate+").sort((a, b) => b.score - a.score);
       const core = prof.filter((p) => p.score >= 75).sort((a, b) => b.score - a.score);
       $("#qCount").textContent = sale.length;
-      sortableTable($("#top"), sale.slice(0, 8), [COLS.sym, COLS.price, LTC.score, LTC.zone], { sort: "lts" });
-      if (!sale.length) $("#top").innerHTML = `<p class="empty">No quality names on sale right now: keep your monthly plan.</p>`;
+      saleSyms = sale.slice(0, 8).map((p) => p.symbol);
+      if (sale.length) await homeSale();
+      else $("#top").innerHTML = `<p class="empty">No quality names on sale right now: keep your monthly plan.</p>`;
       sortableTable($("#zone"), core.slice(0, 8), [COLS.sym, LTC.score, LTC.c5], { sort: "lts" });
       return;
     }
@@ -271,15 +300,21 @@
   }
   async function homeWatch() {
     const wl = watchlist();
-    const wrows = await api("/api/quotes?symbols=" + encodeURIComponent(wl.join(","))).catch(() => []);
-    if ($("#wl")) wrows.filter((r) => !r.error).length
-      ? sortableTable($("#wl"), wrows.filter((r) => !r.error), isLT() ? [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.y1] : [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.rating, COLS.entry], { sort: "changePct" })
-      : ($("#wl").innerHTML = `<p class="empty">Tap ★ on any stock to watch it here.</p>`);
-  };
+    if (!wl.length) { if ($("#wl")) $("#wl").innerHTML = `<p class="empty">Tap ★ on any stock to watch it here.</p>`; return; }
+    await liveRows($("#wl"), wl, isLT() && window.LT ? (q) => { const p = window.LT.cache[q.symbol]; return p ? window.LT.zoneBadge(p.zone) : ""; } : null);
+  }
+  let saleSyms = [];
+  async function homeSale() {
+    if (!saleSyms.length) return;
+    await liveRows($("#top"), saleSyms, (q) => { const p = window.LT.cache[q.symbol]; return p ? `<span class="lt-chip" title="Long-term score">${p.score}</span>` : ""; });
+  }
 
-  pages.markets = async function () {
-    const f = Object.assign({ group: "stocks", sector: "", rating: "", q: "" }, store.get("mfilter", {}));
-    view.innerHTML = `<h1>Markets</h1><p class="sub">Every tracked stock and ETF, rated and timed. Click a row for the full analysis. Use search (top) to open any other ticker.</p>
+  pages.markets = async function (arg, params) {
+    const f = Object.assign({ group: "stocks", sector: "", rating: "", q: "", view: "rated" }, store.get("mfilter", {}));
+    if (params && params.get("view")) f.view = params.get("view");
+    if (f.view === "all") return marketsAll(f);
+    view.innerHTML = `<h1>Markets</h1><p class="sub">The core list, fully rated and scored. Switch to <b>All stocks &amp; ETFs</b> to browse every listing.</p>
+      ${marketsTabs("rated")}
       <div class="toolbar">
         <a class="btn sm" href="#/map"><i data-lucide="layout-grid"></i> Map view</a>
         <div class="seg" id="grp"><button data-g="stocks">Stocks</button><button data-g="etfs">ETFs</button><button data-g="all">All</button></div>
@@ -322,6 +357,53 @@
     RF.screener = async () => { rows = await getScreener(true); paint(); };
     paint(); stamp("screener");
   };
+
+  const marketsTabs = (on) => `<div class="seg big-seg" id="mTabs" style="margin-bottom:12px"><button data-v="rated" class="${on === "rated" ? "on" : ""}">Rated &amp; scored</button><button data-v="all" class="${on === "all" ? "on" : ""}">All stocks &amp; ETFs</button></div>`;
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("#mTabs button");
+    if (!b) return;
+    store.set("mfilter", Object.assign(store.get("mfilter", {}), { view: b.dataset.v }));
+    pages.markets("", new URLSearchParams());
+  });
+
+  async function marketsAll(f) {
+    const af = Object.assign({ q: "", type: "", region: "", page: 1 }, store.get("allf", {}));
+    view.innerHTML = `<h1>Markets</h1><p class="sub" id="allSub">Every US-listed stock and ETF plus the main stocks and UCITS ETFs of Europe, the UK, Switzerland, the Nordics, Asia, Canada and Australia, with today's live trend. Anything else on any exchange: use the search box at the top.</p>
+      ${marketsTabs("all")}
+      <div class="toolbar">
+        <input type="text" id="aq" placeholder="Symbol or company / fund name" aria-label="Search the list" value="${esc(af.q)}" style="min-width:240px">
+        <select id="atype" aria-label="Type"><option value="">Stocks and ETFs</option><option value="Stock" ${af.type === "Stock" ? "selected" : ""}>Stocks</option><option value="ETF" ${af.type === "ETF" ? "selected" : ""}>ETFs</option></select>
+        <select id="aregion" aria-label="Region"><option value="">All regions</option></select>
+        ${rf("all")}
+      </div>
+      <div class="card" id="allBox">${skeleton(14)}</div>`;
+    let seq = 0;
+    const load = async () => {
+      store.set("allf", af);
+      const my = ++seq;
+      const d = await api(`/api/directory?q=${encodeURIComponent(af.q)}&type=${encodeURIComponent(af.type)}&region=${encodeURIComponent(af.region)}&page=${af.page}`);
+      if (my !== seq || !$("#allBox")) return;
+      const reg = $("#aregion");
+      if (reg.options.length <= 1) reg.innerHTML = `<option value="">All regions (${d.all.toLocaleString()})</option>` + d.regions.map(([r, n]) => `<option value="${esc(r)}" ${r === af.region ? "selected" : ""}>${esc(r)} (${n.toLocaleString()})</option>`).join("");
+      const pages_ = Math.max(1, Math.ceil(d.total / d.size));
+      const pager = `<div class="pager"><button class="btn sm" type="button" data-pg="${af.page - 1}" ${af.page <= 1 ? "disabled" : ""}>← Prev</button>
+        <span class="muted">${d.total.toLocaleString()} found · page ${af.page} of ${pages_.toLocaleString()}</span>
+        <button class="btn sm" type="button" data-pg="${af.page + 1}" ${af.page >= pages_ ? "disabled" : ""}>Next →</button></div>`;
+      const meta = Object.fromEntries(d.rows.map((r) => [r.s, r]));
+      $("#allBox").innerHTML = pager + `<div id="allRows">${liveRowsHtml(d.rows.map((r) => ({ symbol: r.s, name: r.n, spark: [], price: null })), (q) => `<span class="tag">${esc(meta[q.symbol].t)}</span><span class="nm">${esc(meta[q.symbol].x || meta[q.symbol].r)}</span>`)}</div>` + pager;
+      $$("#allBox [data-pg]").forEach((b) => b.addEventListener("click", () => { af.page = +b.dataset.pg; load(); window.scrollTo(0, 0); }));
+      const sp = await api("/api/spark?symbols=" + encodeURIComponent(d.rows.map((r) => r.s).join(","))).catch(() => []);
+      if (my !== seq || !$("#allRows")) return;
+      const by = Object.fromEntries(sp.map((x) => [x.symbol, x]));
+      $("#allRows").innerHTML = liveRowsHtml(d.rows.map((r) => Object.assign({ symbol: r.s, name: r.n, spark: [], price: null }, by[r.s] || {}, { name: r.n })),
+        (q) => `<span class="tag">${esc(meta[q.symbol].t)}</span><span class="nm">${esc(meta[q.symbol].x || meta[q.symbol].r)}</span>`);
+    };
+    $("#aq").addEventListener("input", (e) => { af.q = e.target.value; af.page = 1; clearTimeout(load._t); load._t = setTimeout(load, 250); });
+    $("#atype").addEventListener("change", (e) => { af.type = e.target.value; af.page = 1; load(); });
+    $("#aregion").addEventListener("change", (e) => { af.region = e.target.value; af.page = 1; load(); });
+    RF.all = load;
+    await load(); stamp("all");
+  }
 
   pages.signals = async function () {
     if (isLT() && window.LT) return window.LT.qualityPage(view);

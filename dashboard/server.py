@@ -2098,6 +2098,158 @@ def get_logo(symbol):
     return _monogram(sym), "image/svg+xml"
 
 
+# ---------------------------------------------------------------- live day trend, trending, directory
+
+def spark(symbols):
+    """Today's intraday closes (5-minute) plus price and change, for many symbols (Yahoo, 20 per request)."""
+    out, need = {}, []
+    for s in symbols:
+        with _cache_lock:
+            hit = _cache.get(("spark", s))
+        if hit and time.time() - hit[0] < 60:
+            out[s] = hit[1]
+        else:
+            need.append(s)
+
+    def chunk(group):
+        try:
+            d = yahoo("/v8/finance/spark?symbols=%s&range=1d&interval=5m" % urllib.parse.quote(",".join(group), safe=","))
+        except Exception:
+            return {}
+        res = {}
+        for s in group:
+            x = d.get(s) or {}
+            closes = [c for c in (x.get("close") or []) if c is not None]
+            prev = x.get("chartPreviousClose") or x.get("previousClose")
+            price = x.get("fulldayPrice") or (closes[-1] if closes else None)
+            if price is None:
+                continue
+            step = max(1, len(closes) // 60)
+            res[s] = {"symbol": s, "price": r(price, 4 if price < 2 else 2), "prev": r(prev, 4) if prev else None,
+                      "change": r(x.get("fulldayChange") if x.get("fulldayChange") is not None else (price - prev if prev else None), 4),
+                      "changePct": r(x.get("fulldayChangePercent") if x.get("fulldayChangePercent") is not None else (100 * (price / prev - 1) if prev else None)),
+                      "spark": [r(c, 4) for c in closes[::step]] + ([r(closes[-1], 4)] if closes and (len(closes) - 1) % step else []),
+                      "time": x.get("end")}
+        return res
+    groups = [need[i:i + 20] for i in range(0, len(need), 20)]
+    for res in POOL.map(chunk, groups):
+        for s, v in res.items():
+            with _cache_lock:
+                _cache[("spark", s)] = (time.time(), v)
+            out[s] = v
+    names = directory_names()
+    for s, v in out.items():
+        v.setdefault("name", names.get(s))
+    return [out[s] for s in symbols if s in out]
+
+
+def trending(region="US", count=12):
+    def load():
+        d = yahoo("/v1/finance/trending/%s?count=%d" % (region, count + 6))
+        quotes = (((d.get("finance") or {}).get("result") or [{}])[0]).get("quotes") or []
+        return [q["symbol"] for q in quotes if q.get("symbol") and "=" not in q["symbol"] and not q["symbol"].startswith("^")][:count]
+    syms = cached(("trending", region), 300, load)
+    return spark(syms)
+
+
+DIR_FILE = os.path.join(HERE, ".symbols-cache.json")  # git-ignored, refreshed daily
+with open(os.path.join(HERE, "world.json")) as _f:
+    WORLD = json.load(_f)
+EXCH = {"Q": "Nasdaq", "N": "NYSE", "A": "NYSE American", "P": "NYSE Arca", "Z": "Cboe BZX", "V": "IEX"}
+SKIP_NAME = re.compile(r"\b(warrants?|rights?|units?|notes? due|debentures?|preferred|pfd|%|depositary shares? each representing a fraction)\b", re.I)
+_dir_lock = threading.Lock()
+_dir = {"at": 0, "rows": [], "names": {}}
+
+
+def _load_directory():
+    """Every US-listed stock and ETF (Nasdaq Trader symbol directory) plus the curated world list."""
+    rows = []
+    if os.path.exists(DIR_FILE) and time.time() - os.path.getmtime(DIR_FILE) < 86400:
+        with open(DIR_FILE) as f:
+            rows = json.load(f)
+    else:
+        try:
+            for fname, sym_col, exch in (("nasdaqlisted.txt", "Symbol", None), ("otherlisted.txt", "ACT Symbol", "Exchange")):
+                req = urllib.request.Request("https://www.nasdaqtrader.com/dynamic/SymDir/" + fname, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=40) as resp:
+                    lines = resp.read().decode("utf-8", "replace").splitlines()
+                head = lines[0].split("|")
+                for line in lines[1:]:
+                    rec = dict(zip(head, line.split("|")))
+                    sym, name = rec.get(sym_col, ""), rec.get("Security Name", "")
+                    if not sym or rec.get("Test Issue") == "Y" or "File Creation" in sym or "$" in sym:
+                        continue
+                    if SKIP_NAME.search(name):
+                        continue
+                    if "." in sym:
+                        base, cls_ = sym.split(".", 1)
+                        if len(cls_) != 1:
+                            continue
+                        sym = base + "-" + cls_  # BRK.B -> BRK-B (Yahoo style)
+                    name = re.sub(r"\s*-?\s*(Class [A-Z] )?(Common Stock|Ordinary Shares?|Common Shares|American Depositary Shares|Shares of Beneficial Interest)\b.*$", "", name).strip() or name
+                    rows.append({"s": sym, "n": name[:90], "t": "ETF" if rec.get("ETF") == "Y" else "Stock",
+                                 "x": "Nasdaq" if exch is None else EXCH.get(rec.get(exch), rec.get(exch)), "r": "United States"})
+            tmp = DIR_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(rows, f)
+            os.replace(tmp, DIR_FILE)
+        except Exception:
+            if os.path.exists(DIR_FILE):
+                with open(DIR_FILE) as f:
+                    rows = json.load(f)
+    seen = {x["s"] for x in rows}
+    for region, items in WORLD["regions"].items():
+        for it in items:
+            if it["s"] not in seen:
+                rows.append({"s": it["s"], "n": it["n"], "t": it.get("t", "Stock"), "x": it.get("x", ""), "r": region})
+                seen.add(it["s"])
+    return rows
+
+
+def directory():
+    with _dir_lock:
+        if not _dir["rows"] or time.time() - _dir["at"] > 86400:
+            rows = _load_directory()
+            _dir.update(at=time.time(), rows=rows, names={x["s"]: x["n"] for x in rows})
+        return _dir["rows"]
+
+
+def directory_names():
+    if not _dir["names"]:
+        try:
+            directory()
+        except Exception:
+            return {}
+    return _dir["names"]
+
+
+def directory_page(q="", kind="", region="", page=1, size=50):
+    rows = directory()
+    ql = q.strip().lower()
+    def match(x):
+        if kind and x["t"] != kind:
+            return False
+        if region and x["r"] != region:
+            return False
+        if ql and not (x["s"].lower().startswith(ql) or ql in x["n"].lower()):
+            return False
+        return True
+    hits = [x for x in rows if match(x)]
+    core = {sym for grp in ("stocks", "etfs") for lst in UNIVERSE[grp].values() for sym in lst}
+    rank = lambda x: 0 if x["s"] in core else 1 if x["r"] != "United States" else 2  # well-known names first
+    if ql:  # exact symbol first, then symbol prefix, then well-known, then name
+        hits.sort(key=lambda x: (x["s"].lower() != ql, not x["s"].lower().startswith(ql), rank(x), len(x["s"])))
+    else:
+        hits.sort(key=lambda x: (rank(x), x["s"]))
+    total = len(hits)
+    start = max(0, (page - 1) * size)
+    regions = {}
+    for x in rows:
+        regions[x["r"]] = regions.get(x["r"], 0) + 1
+    return {"total": total, "page": page, "size": size, "rows": hits[start:start + size],
+            "regions": sorted(regions.items(), key=lambda kv: -kv[1]), "all": len(rows)}
+
+
 # ---------------------------------------------------------------- HTTP
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -2217,6 +2369,11 @@ class Handler(BaseHTTPRequestHandler):
                 purge_symbols(syms(q.get("symbols")) + one + ["SPY"])
             elif path == "/api/screener":
                 purge(lambda k: k[0] == "bars")
+            elif path == "/api/spark":
+                ss = syms(q.get("symbols"))
+                purge(lambda k: k[0] == "spark" and k[1] in ss)
+            elif path == "/api/trending":
+                purge(lambda k: k[0] in ("trending", "spark"))
             elif path == "/api/news":
                 purge(lambda k: k[0] == "news")
             elif path == "/api/lt":
@@ -2244,6 +2401,16 @@ class Handler(BaseHTTPRequestHandler):
                                    "url": "http://%s:%d/?key=%s" % (ip, port, tok) if tok and ip else None})
         if path == "/api/universe":
             return self.send_json(UNIVERSE)
+        if path == "/api/spark":
+            return self.send_json(spark(syms(q.get("symbols"))[:100]))
+        if path == "/api/trending":
+            return self.send_json(trending(q.get("region", "US").upper()[:2]))
+        if path == "/api/directory":
+            try:
+                page = max(1, int(q.get("page", "1")))
+            except ValueError:
+                page = 1
+            return self.send_json(directory_page(q.get("q", ""), q.get("type", ""), q.get("region", ""), page))
         if path == "/api/lookthrough":
             return self.send_json(LOOKTHROUGH)
         if path == "/api/quotes":

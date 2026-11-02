@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 
@@ -501,6 +502,38 @@ class PhoneMode(unittest.TestCase):
             srv.lan_ip = old
         self.assertEqual(st, 403)
         self.assertNotIn(b"tttt", body)
+
+
+class Directory(unittest.TestCase):
+    def setUp(self):
+        self._dir = dict(srv._dir)
+        srv._dir.update(at=time.time(), rows=[
+            {"s": "AAAP", "n": "Obscure Fund", "t": "ETF", "x": "Nasdaq", "r": "United States"},
+            {"s": "AAPL", "n": "Apple Inc.", "t": "Stock", "x": "Nasdaq", "r": "United States"},
+            {"s": "NESN.SW", "n": "Nestle", "t": "Stock", "x": "", "r": "Switzerland"},
+            {"s": "SPY", "n": "SPDR S&P 500 ETF Trust", "t": "ETF", "x": "NYSE Arca", "r": "United States"}], names={})
+
+    def tearDown(self):
+        srv._dir.clear()
+        srv._dir.update(self._dir)
+
+    def test_well_known_first_and_filters(self):
+        d = srv.directory_page()
+        self.assertEqual([r["s"] for r in d["rows"]][:2], ["AAPL", "SPY"])
+        self.assertEqual(d["rows"][-1]["s"], "AAAP")
+        self.assertEqual([r["s"] for r in srv.directory_page(kind="ETF")["rows"]], ["SPY", "AAAP"])
+        self.assertEqual([r["s"] for r in srv.directory_page(q="nestle")["rows"]], ["NESN.SW"])
+        self.assertEqual(srv.directory_page(q="aapl")["rows"][0]["s"], "AAPL")
+        self.assertEqual(srv.directory_page(region="Switzerland")["total"], 1)
+
+    def test_world_list_is_valid(self):
+        with open(os.path.join(ROOT, "dashboard", "world.json")) as fh:
+            w = json.load(fh)
+        n = sum(len(v) for v in w["regions"].values())
+        self.assertGreater(n, 150)
+        for v in w["regions"].values():
+            for it in v:
+                self.assertTrue(it["s"] and it["n"])
 
 
 if __name__ == "__main__":

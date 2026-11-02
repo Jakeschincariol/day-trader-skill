@@ -2,3 +2,5 @@ dashboard/.t212.json
 __pycache__/
 dashboard/.access.json
 dashboard/.logo-cache/
+dashboard/.symbols-cache.json
+dashboard/.symbols-cache.json.tmp

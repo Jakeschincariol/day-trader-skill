@@ -59,6 +59,8 @@ their owners; the footer credits the sources.
 | Page | What you get |
 | --- | --- |
 | **Dashboard** | Indices strip (S&P 500, Nasdaq, Dow, Russell, VIX, gold, bitcoin, EUR/USD), market breadth, top Strong Buys, stocks in a buy zone right now, your watchlist, latest headlines |
+| **Dashboard (live)** | Quality on sale, your watchlist and **Trending tickers** as live rows: logo, today's intraday chart (with yesterday's close dotted), price and change, refreshed every minute |
+| **Markets → All stocks & ETFs** | Every US-listed stock and ETF (Nasdaq Trader directory, ~11,700, refreshed daily) plus about 175 major stocks and UCITS ETFs from Europe, the UK, Switzerland, the Nordics, Japan, Hong Kong, Korea, Taiwan, India, Australia and Canada (`dashboard/world.json`). Search by symbol or name, filter by type and region, each with its live day trend. Any other ticker on any exchange opens from the search box |
 | **Market Map** | A heat map of every tracked stock or ETF grouped by sector: tile size = money traded per day, colour = today, 1 month, 3 months or signal score. Click a tile to open the stock |
 | **Markets** | 100+ US stocks by sector and ETFs (US plus UCITS ETFs sold on Trading 212 such as VUSA, CSPX, VWRL, EQQQ). Sort by any column, filter by sector or rating, ★ to watch. Use the search box for any other ticker in the world |
 | **Strong Buys / Quality** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |

@@ -569,5 +569,25 @@
     return { svg: `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:760px" role="img" aria-label="Hypothetical paths if the stock repeated each legend's 12 months">${g}</svg>`, median: med[n - 1] };
   }
 
-  window.TChart = { radarScope, spider, ring, legendPath, analogPaths, PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
+  /** Intraday area sparkline like a quote board: red/green fill, dotted previous close. SVG string. */
+  function daySpark(values, prev, w, h) {
+    w = w || 120; h = h || 36;
+    const v = (values || []).filter((x) => x != null);
+    if (v.length < 2) return `<svg width="${w}" height="${h}" aria-hidden="true"></svg>`;
+    const lo = Math.min(...v, prev ?? Infinity), hi = Math.max(...v, prev ?? -Infinity);
+    const y = (x) => (h - 3 - (x - lo) / (hi - lo || 1) * (h - 6)).toFixed(1);
+    const x = (i) => (i / (v.length - 1) * w).toFixed(1);
+    const up = v[v.length - 1] >= (prev ?? v[0]);
+    const col = up ? "#3fcf3f" : "#ff6b6b", fill = up ? "rgba(12,163,12,.28)" : "rgba(208,59,59,.30)";
+    const pts = v.map((c, i) => `${x(i)},${y(c)}`).join(" ");
+    const gid = "g" + Math.random().toString(36).slice(2, 8);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true" class="dayspark">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${fill}"/><stop offset="1" stop-color="rgba(0,0,0,0)"/></linearGradient></defs>
+      <polygon points="0,${h} ${pts} ${w},${h}" fill="url(#${gid})"/>
+      ${prev != null ? `<line x1="0" x2="${w}" y1="${y(prev)}" y2="${y(prev)}" stroke="rgba(240,239,236,.35)" stroke-dasharray="2 3"/>` : ""}
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="2.6" fill="${col}"/></svg>`;
+  }
+
+  window.TChart = { daySpark, radarScope, spider, ring, legendPath, analogPaths, PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
 })();
