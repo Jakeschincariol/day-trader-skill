@@ -278,5 +278,25 @@ class Radar(unittest.TestCase):
         self.assertTrue(any("accelerating" in w[0] for w in why))
 
 
+class Vendor(unittest.TestCase):
+    def test_every_local_script_and_font_exists(self):
+        import re
+        static = os.path.join(ROOT, "dashboard", "static")
+        with open(os.path.join(static, "index.html")) as fh:
+            html = fh.read()
+        with open(os.path.join(static, "style.css")) as fh:
+            css = fh.read()
+        refs = re.findall(r'src="/([^"]+)"', html) + re.findall(r'url\("/([^"]+)"\)', css)
+        self.assertTrue(any("lightweight-charts" in x for x in refs))
+        for ref in refs:
+            self.assertTrue(os.path.isfile(os.path.join(static, ref)), ref)
+
+    def test_licenses_ship_with_the_libraries(self):
+        with open(os.path.join(ROOT, "dashboard", "static", "vendor", "THIRD_PARTY_LICENSES.txt")) as fh:
+            text = fh.read()
+        for name in ("Lightweight Charts", "ECharts", "CountUp", "Lucide", "Inter", "JetBrains Mono"):
+            self.assertIn(name, text)
+
+
 if __name__ == "__main__":
     unittest.main()

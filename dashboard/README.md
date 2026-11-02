@@ -16,6 +16,7 @@ to install, no signup.
 | Page | What you get |
 | --- | --- |
 | **Dashboard** | Indices strip (S&P 500, Nasdaq, Dow, Russell, VIX, gold, bitcoin, EUR/USD), market breadth, top Strong Buys, stocks in a buy zone right now, your watchlist, latest headlines |
+| **Market Map** | A heat map of every tracked stock or ETF grouped by sector: tile size = money traded per day, colour = today, 1 month, 3 months or signal score. Click a tile to open the stock |
 | **Markets** | 100+ US stocks by sector and ETFs (US plus UCITS ETFs sold on Trading 212 such as VUSA, CSPX, VWRL, EQQQ). Sort by any column, filter by sector or rating, ★ to watch. Use the search box for any other ticker in the world |
 | **Strong Buys** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |
 | **Stock page** | Charts for 1D (5-minute bars), 7D (hourly bars) and 3M to 2Y (daily, with 20/50/200-day averages, volume, RSI, your entry/stop/target lines, and a forecast cone plus the analysts' average target). 1D and 7D add tables of hourly levels and the last 7 days. "Best moment to buy" verdict with the reason, position size calculator, the checklist behind the rating, performance (1W, 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, Max) against the S&P 500, statistics (P/E TTM, forward P/E, PEG, price/sales, price/book, EV/EBITDA, margins, ROE, cash, debt, free cash flow), analyst price targets and buy/hold/sell counts, earnings trends (EPS per quarter with year-over-year growth and the next quarters' forecasts, revenue vs net income by quarter or year), and news |
@@ -115,6 +116,21 @@ API allows) and the buy dates of manual holdings, valued each day at the
 closing price and converted to your account currency. "Money invested" is the
 cost of the shares you hold. Period gains leave out money you add or withdraw,
 so a deposit never shows up as profit.
+
+## Libraries
+
+Bundled in `dashboard/static/vendor` (no internet needed, nothing to install):
+
+| Library | Used for | Licence |
+| --- | --- | --- |
+| [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts) 4.2.3 | price charts (zoom, scroll, crosshair) | Apache 2.0, TradingView credit on the chart |
+| [Apache ECharts](https://github.com/apache/echarts) 5.5.1 | market map, allocation donut | Apache 2.0 |
+| [Lucide](https://github.com/lucide-icons/lucide) 0.460.0 | icons | ISC |
+| [CountUp.js](https://github.com/inorganik/countUp.js) 2.8.0 | numbers that count up | MIT |
+| [Inter](https://github.com/rsms/inter), [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | fonts | SIL Open Font License |
+
+Full licence texts: `dashboard/static/vendor/THIRD_PARTY_LICENSES.txt`. If a
+library file is missing, the dashboard falls back to its built-in charts.
 
 ## Notes
 

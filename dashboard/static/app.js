@@ -5,6 +5,8 @@
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
   const view = $("#view");
   const { fmt, fmtVol, sparkline, donut, PriceChart } = window.TChart;
+  const PRO = window.ProCharts || null;
+  const Price = PRO ? PRO.ProChart : PriceChart; // TradingView Lightweight Charts when available
 
   // ------------------------------------------------------------ helpers
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -48,7 +50,7 @@
 
   // Refresh buttons: rf("key") renders "Updated hh:mm:ss  ↻"; RF[key] reloads that section with fresh data.
   let RF = {};
-  const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh this section">↻</button></span>`;
+  const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh this section"><i data-lucide="rotate-cw"></i></button></span>`;
   const stamp = (key) => $$(`[data-upd="${key}"]`).forEach((el) => (el.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })));
   async function runRefresh(key, btn) {
     if (!RF[key]) return;
@@ -211,10 +213,10 @@
     const breadth = Math.round(100 * stocks.filter((r) => r.sma50 && r.price > r.sma50).length / (stocks.length || 1));
     const pf = portfolioSummary(t212, rows);
     $("#stats").innerHTML = `
-      <div class="card stat"><div class="label">S&P 500 (SPY)</div><div class="value num">${fmt(spy.price, 2)}</div><div class="delta">${ratingBadge(spy.rating)} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
-      <div class="card stat"><div class="label">Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
-      <div class="card stat"><div class="label">Strong Buy signals</div><div class="value num">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
-      <div class="card stat"><div class="label">My portfolio</div>${pf ? `<div class="value num">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 →</a></div>`}</div>`;
+      <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${ratingBadge(spy.rating)} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
+      <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 →</a></div>`}</div>`;
     sortableTable($("#top"), strong.slice(0, 8), [COLS.sym, COLS.price, COLS.chg, COLS.score, COLS.entry], { sort: "score" });
     sortableTable($("#zone"), zone.slice(0, 8), [COLS.sym, COLS.price, COLS.score], { sort: "score" });
   }
@@ -390,7 +392,7 @@
         catch (e) { $("#chart").innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
         const ser = m === "1D" ? ui.intra.day : ui.intra.week;
         if (!ser.t.length) { $("#chart").innerHTML = `<p class="empty">No intraday data yet for this session.</p>`; return; }
-        ui.chart = PriceChart($("#chart"), ser, { bars: ser.t.length, intraday: m === "1D" ? "day" : "week", prevClose: ui.intra.prevClose });
+        ui.chart = Price($("#chart"), ser, { bars: ser.t.length, intraday: m === "1D" ? "day" : "week", prevClose: ui.intra.prevClose });
         renderHourly(ui.intra, m);
         return;
       }
@@ -399,7 +401,7 @@
       $("#legend").innerHTML = legendDaily + (fcOn && a.forecast ? legendFc : "");
       const tgt = ui.fund && ui.fund.analyst ? ui.fund.analyst.avg : null;
       $("#fcNote").textContent = fcOn && a.forecast ? "Forecast: the last 6 months' trend (halved, since trends fade) with ranges from recent volatility. A statistical range, not a prediction." : "";
-      ui.chart = PriceChart($("#chart"), a.series, { bars: +m, plan: p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null });
+      ui.chart = Price($("#chart"), a.series, { bars: +m, plan: p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null });
     }
     function renderHourly(d, m) {
       const card = $("#hourlyCard"); card.hidden = false;
@@ -432,7 +434,7 @@
       $("#perf").innerHTML = `<div class="perf-grid">${keys.map((k) => {
         const v = pf.returns[k], b = pf.spy[k];
         return `<div class="perf-tile"><div class="k">${k === "Max" ? "Max" + (pf.since ? " (since " + new Date(pf.since * 1000).getFullYear() + ")" : "") : k}</div>
-          <div class="v num ${cls(v)}">${pct(v, 1)}</div><div class="b num">S&amp;P ${pct(b, 1)}</div>
+          <div class="v num ${cls(v)}" ${v != null ? `data-count="${v}" data-fmt="pct:1"` : ""}>${pct(v, 1)}</div><div class="b num">S&amp;P ${pct(b, 1)}</div>
           ${v != null && b != null ? `<div class="vs ${v >= b ? "up" : "down"}">${v >= b ? "▲ beat" : "▼ lagged"} by ${Math.abs(v - b).toFixed(1)} pts</div>` : ""}</div>`;
       }).join("")}</div>`;
     }).catch((e) => { $("#perf") && ($("#perf").innerHTML = `<p class="muted">${esc(e.message)}</p>`); });
@@ -627,10 +629,10 @@
       positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
     $("#pstats").innerHTML = `
-      <div class="card stat"><div class="label">Total value</div><div class="value num">${money(total, ccy)}</div><div class="delta sec">${t ? "Trading 212 " + esc(t.env) + (manual().length ? " + manual" : "") : "manual holdings"}</div></div>
-      <div class="card stat"><div class="label">Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
-      <div class="card stat"><div class="label">Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
-      <div class="card stat"><div class="label">Positions needing attention</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${t ? "Trading 212 " + esc(t.env) + (manual().length ? " + manual" : "") : "manual holdings"}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>Positions needing attention</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
     stamp("pos");
 
     if (!positions.length) {
@@ -661,9 +663,11 @@
     if (t && t.cash.free > 0) items.push({ label: "Cash", value: t.cash.free, color: "var(--text-muted)" });
     const tot = items.reduce((a, b) => a + b.value, 0);
     const mixed = new Set(positions.map((p) => p.currency || p.q.currency).filter(Boolean)).size > 1;
-    $("#alloc").innerHTML = `<div class="donut-wrap">${donut(items, 180, items.length + " slices", "by value")}
+    $("#alloc").innerHTML = `<div class="donut-wrap"><div id="allocPie" style="width:200px;height:200px;flex:0 0 auto"></div>
       <ul class="donut-legend">${items.map((it) => `<li><span><i style="background:${it.color}"></i>${esc(it.label)}</span><span class="num">${(100 * it.value / tot).toFixed(1)}%</span></li>`).join("")}</ul></div>
       ${mixed ? `<p class="muted" style="font-size:12px">Holdings trade in different currencies, so weights are approximate.</p>` : ""}`;
+    const pie = PRO ? PRO.AllocPie($("#allocPie"), items, items.length + " slices", "by value") : (($("#allocPie").innerHTML = donut(items, 200, items.length + " slices", "by value")), null);
+    if (pie) { const prev = current; current = () => { prev && prev(); pie.destroy(); }; }
   };
 
   async function loadHistory(t212) {
@@ -682,7 +686,7 @@
     const label = { "1D": "Today", "1W": "1 week", "1M": "1 month", "3M": "3 months", YTD: "This year", "1Y": "1 year", "5Y": "5 years", Max: "All time" };
     $("#pret").innerHTML = ["1D", "1W", "1M", "YTD", "1Y", "5Y", "Max"].map((k) => {
       const r = h.returns[k];
-      return `<div class="perf-tile"><div class="k">${label[k]}</div>${r ? `<div class="v num ${cls(r.gain)}">${pct(r.pct)}</div><div class="b num ${cls(r.gain)}">${r.gain >= 0 ? "+" : ""}${m(r.gain)}</div>`
+      return `<div class="perf-tile"><div class="k">${label[k]}</div>${r ? `<div class="v num ${cls(r.gain)}" ${r.pct != null ? `data-count="${r.pct}" data-fmt="pct"` : ""}>${pct(r.pct)}</div><div class="b num ${cls(r.gain)}">${r.gain >= 0 ? "+" : ""}${m(r.gain)}</div>`
         : `<div class="v muted">–</div><div class="b">history too short</div>`}${r && r.partial ? `<div class="b">since your first buy</div>` : ""}</div>`;
     }).join("");
     $("#phNote").textContent = "Gains exclude money you added or withdrew. Values in " + ccy + ".";
@@ -740,6 +744,40 @@
   }
 
 
+
+  // ------------------------------------------------------------ market map (ECharts treemap)
+  pages.map = async function () {
+    const f = Object.assign({ group: "stocks", metric: "changePct" }, store.get("mapf", {}));
+    view.innerHTML = `<div class="card-head" style="margin-bottom:4px"><h1 style="margin:0"><i data-lucide="layout-grid" class="ico"></i> Market Map</h1>${rf("map")}</div>
+      <p class="sub">Every tracked stock and ETF at a glance, grouped by sector. Bigger tiles trade more money each day; colour shows the move. Click a tile for the full analysis.</p>
+      <div class="toolbar">
+        <div class="seg" id="mGrp"><button data-g="stocks">Stocks</button><button data-g="etfs">ETFs</button><button data-g="all">All</button></div>
+        <div class="seg" id="mMet"><button data-m="changePct">Today</button><button data-m="ret1m">1 month</button><button data-m="ret3m">3 months</button><button data-m="score">Signal score</button></div>
+        <span class="scale-bar"><span id="scaleLo"></span><i></i><span id="scaleHi"></span></span>
+      </div>
+      <div class="card" style="padding:8px"><div class="map-box" id="mapBox">${skeleton(14)}</div></div>`;
+    let rows = await getScreener();
+    if (!$("#mapBox")) return;
+    let mm = null;
+    const spans = { changePct: ["−3%", "+3%"], ret1m: ["−15%", "+15%"], ret3m: ["−30%", "+30%"], score: ["0 weak", "100 strong"] };
+    const paint = () => {
+      store.set("mapf", f);
+      $$("#mGrp button").forEach((b) => b.classList.toggle("on", b.dataset.g === f.group));
+      $$("#mMet button").forEach((b) => b.classList.toggle("on", b.dataset.m === f.metric));
+      $("#scaleLo").textContent = spans[f.metric][0]; $("#scaleHi").textContent = spans[f.metric][1];
+      let data = rows.filter((r) => f.group === "all" || r.group === f.group);
+      if (f.group === "all") { const seen = new Set(); data = data.filter((r) => !seen.has(r.symbol) && seen.add(r.symbol)); }
+      if (mm) mm.destroy();
+      $("#mapBox").innerHTML = "";
+      mm = PRO ? PRO.MarketMap($("#mapBox"), data, f.metric, (sym) => (location.hash = "#/stock/" + encodeURIComponent(sym)))
+        : (($("#mapBox").innerHTML = `<p class="empty">Map needs the ECharts library (dashboard/static/vendor).</p>`), null);
+    };
+    $$("#mGrp button").forEach((b) => b.addEventListener("click", () => { f.group = b.dataset.g; paint(); }));
+    $$("#mMet button").forEach((b) => b.addEventListener("click", () => { f.metric = b.dataset.m; paint(); }));
+    RF.map = async () => { rows = await getScreener(true); paint(); };
+    current = () => mm && mm.destroy();
+    paint(); stamp("map");
+  };
   // ------------------------------------------------------------ AI multibagger radar
   pages.radar = async function () {
     const f = Object.assign({ theme: "", stage: "", sort: "score" }, store.get("rfilter", {}));
@@ -784,8 +822,8 @@
       const C = data.candidates, W = data.winners;
       $("#nScan").textContent = C.length;
       const launch = C.filter((x) => x.stage === "Launch pattern");
-      $("#aiStats").innerHTML = `<div><b>${C.length}</b><span>stocks scanned</span></div><div><b>${W.length}</b><span>legends learned</span></div>
-        <div><b>${launch.length}</b><span>show the launch pattern</span></div><div><b>${esc(C[0].symbol)}</b><span>top score (${C[0].score})</span></div>`;
+      $("#aiStats").innerHTML = `<div><b data-count="${C.length}" data-fmt="int">${C.length}</b><span>stocks scanned</span></div><div><b>${W.length}</b><span>legends learned</span></div>
+        <div><b data-count="${launch.length}" data-fmt="int">${launch.length}</b><span>show the launch pattern</span></div><div><b>${esc(C[0].symbol)}</b><span>top score (${C[0].score})</span></div>`;
       $("#scope").innerHTML = TChart.radarScope(C.slice(0, 24)) + `<p class="muted scope-cap">Closer to the centre = higher score · green = 75+</p>`;
       $("#legends").innerHTML = W.map((w) => `<a class="card legend" href="#/stock/${encodeURIComponent(w.symbol)}">
         <div class="card-head" style="margin-bottom:4px"><span class="sym" style="font-size:17px">${esc(w.symbol)}</span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
