@@ -60,6 +60,8 @@
     const intra = opts.intraday;
     const showRsi = !intra && s.rsi;
     box.classList.add("pro");
+    box.setAttribute("role", "img");
+    const narrow = box.clientWidth < 520;
     box.innerHTML = `<div class="lw-main"><div class="lw-legend"></div></div>${showRsi ? `<div class="lw-rsi"><span class="lw-tag">RSI 14</span></div>` : ""}`;
     const mainEl = box.querySelector(".lw-main"), legend = box.querySelector(".lw-legend");
     const off = new Date().getTimezoneOffset() * 60; // show intraday times in the viewer's time zone
@@ -70,7 +72,7 @@
       autoSize: true,
       layout: { background: { type: "solid", color: "transparent" }, textColor: C.muted, fontFamily: css("--mono") || "monospace", fontSize: 11 },
       grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-      rightPriceScale: { borderColor: C.axis },
+      rightPriceScale: { borderColor: C.axis, minimumWidth: narrow ? 56 : 84 },
       timeScale: { borderColor: C.axis, timeVisible: !!intra, secondsVisible: false, rightOffset: 4 },
       crosshair: { mode: 0, vertLine: { color: "rgba(240,239,236,.35)", labelBackgroundColor: "#2c2c2a" }, horzLine: { color: "rgba(240,239,236,.35)", labelBackgroundColor: "#2c2c2a" } },
       localization: { priceFormatter: (p) => fmt(p, dec) },
@@ -98,7 +100,7 @@
     const p = !intra && opts.plan;
     if (p) {
       [["Entry", p.entry, C.accent], ["Stop", p.stop, C.down], ["Target 1", p.target1, C.up], ["Target 2", p.target2, C.up]].forEach(([title, price, color]) => {
-        if (price != null) candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title });
+        if (price != null) candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: !narrow, title: narrow ? "" : title });
       });
     }
 
@@ -112,9 +114,10 @@
       while (days.length < F) { d = new Date(d.getTime() + 86400000); if (d.getUTCDay() % 6) days.push(d.toISOString().slice(0, 10)); }
       const start = { time: dayStr(s.t[n - 1]), value: s.c[n - 1] };
       const seq = (arr) => [start].concat(days.map((t, k) => ({ time: t, value: arr[k] })));
-      const fill = chart.addAreaSeries({ lineColor: "rgba(57,135,229,.35)", topColor: "rgba(57,135,229,.16)", bottomColor: "rgba(57,135,229,.16)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      const noScale = { autoscaleInfoProvider: () => null }; // the 95% band shouldn't squash the candles
+      const fill = chart.addAreaSeries({ ...noScale, lineColor: "rgba(57,135,229,.35)", topColor: "rgba(57,135,229,.16)", bottomColor: "rgba(57,135,229,.16)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       fill.setData(seq(fc.hi2));
-      const mask = chart.addAreaSeries({ lineColor: "rgba(57,135,229,.35)", topColor: C.surface, bottomColor: C.surface, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      const mask = chart.addAreaSeries({ ...noScale, lineColor: "rgba(57,135,229,.35)", topColor: C.surface, bottomColor: C.surface, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       mask.setData(seq(fc.lo2));
       chart.addLineSeries(lineOpts("rgba(57,135,229,.7)", { lineWidth: 1, lineStyle: 1 })).setData(seq(fc.hi1));
       chart.addLineSeries(lineOpts("rgba(57,135,229,.7)", { lineWidth: 1, lineStyle: 1 })).setData(seq(fc.lo1));
@@ -127,8 +130,9 @@
 
     // keep the forecast extremes and the analyst target inside the price scale
     const extra = [];
-    if (fc) extra.push(...fc.hi2.slice(0, F), ...fc.lo2.slice(0, F));
-    if (fc && opts.target) extra.push(opts.target);
+    if (fc) extra.push(...fc.hi1.slice(0, F), ...fc.lo1.slice(0, F));
+    if (intra === "day" && opts.prevClose) extra.push(opts.prevClose);
+    if (fc && opts.target && Math.abs(opts.target / s.c[n - 1] - 1) < 0.35) extra.push(opts.target);
     if (extra.length) {
       const lo = Math.min(...extra), hi = Math.max(...extra);
       candles.applyOptions({ autoscaleInfoProvider: (orig) => {
@@ -142,7 +146,7 @@
     let rsiChart = null;
     if (showRsi) {
       const rEl = box.querySelector(".lw-rsi");
-      rsiChart = LW.createChart(rEl, Object.assign({}, base, { layout: Object.assign({}, base.layout, { attributionLogo: false }), timeScale: Object.assign({}, base.timeScale, { visible: false }), localization: { priceFormatter: (v) => v.toFixed(0) }, handleScroll: false, handleScale: false }));
+      rsiChart = LW.createChart(rEl, Object.assign({}, base, { layout: Object.assign({}, base.layout, { attributionLogo: false }), rightPriceScale: Object.assign({}, base.rightPriceScale), timeScale: Object.assign({}, base.timeScale, { visible: false }), localization: { priceFormatter: (v) => v.toFixed(0) }, handleScroll: false, handleScale: false }));
       const rs = rsiChart.addLineSeries(lineOpts(C.rsi, { lastValueVisible: true }));
       rs.setData(lineData(s.rsi));
       [30, 70].forEach((lv) => rs.createPriceLine({ price: lv, color: C.axis, lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
@@ -150,8 +154,12 @@
     }
 
     // OHLC legend that follows the crosshair (TradingView style)
+    let lastReal = n - 1;
+    while (intra && lastReal > 0 && !s.v[lastReal]) lastReal--; // skip the zero-volume closing print
+    box.setAttribute("aria-label", `${intra ? (intra === "day" ? "Latest session" : "Last 7 days") : "Daily"} price chart, close ${fmt(s.c[n - 1], dec)}` +
+      (p ? `, entry ${fmt(p.entry, dec)}, stop ${fmt(p.stop, dec)}, target ${fmt(p.target1, dec)}` : ""));
     const showLegend = (i) => {
-      if (i == null || i < 0 || i >= n) i = n - 1;
+      if (i == null || i < 0 || i >= n) i = lastReal;
       const prev = intra === "day" && opts.prevClose ? opts.prevClose : i > 0 ? s.c[i - 1] : s.c[i];
       const ch = (s.c[i] / prev - 1) * 100;
       const when = intra ? new Date(s.t[i] * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : new Date(s.t[i] * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
@@ -160,10 +168,10 @@
         (s.rsi && !intra && s.rsi[i] != null ? `<span>RSI <b>${s.rsi[i].toFixed(1)}</b></span>` : "");
     };
     chart.subscribeCrosshairMove((param) => {
-      if (!param || param.logical == null || !param.time) return showLegend(n - 1);
+      if (!param || param.logical == null || !param.time) return showLegend(lastReal);
       showLegend(Math.round(param.logical));
     });
-    showLegend(n - 1);
+    showLegend(lastReal);
 
     const bars = Math.min(opts.bars || 126, n);
     chart.timeScale().setVisibleLogicalRange({ from: n - bars - 0.5, to: n - 1 + F + 2 });
@@ -175,10 +183,10 @@
   const EC = window.echarts;
   const diverge = (v, span) => {
     // red (#d03b3b) - neutral (#3a3a37) - green (#0ca30c), clamped at +/- span
-    const t = Math.max(-1, Math.min(1, (v || 0) / span));
+    const t = Math.max(-1, Math.min(1, (v || 0) / span)); // ends dark enough for white labels (AA)
     const mix = (a, b, k) => Math.round(a + (b - a) * k);
     const [r0, g0, b0] = [0x3a, 0x3a, 0x37];
-    const [r1, g1, b1] = t >= 0 ? [0x0c, 0xa3, 0x0c] : [0xd0, 0x3b, 0x3b];
+    const [r1, g1, b1] = t >= 0 ? [0x08, 0x7a, 0x08] : [0xc0, 0x34, 0x34];
     const k = Math.abs(t);
     return `rgb(${mix(r0, r1, k)},${mix(g0, g1, k)},${mix(b0, b1, k)})`;
   };
@@ -201,11 +209,14 @@
       });
     });
     const data = Object.entries(groups).map(([name, children]) => ({ name, children }));
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", `Market map of ${rows.length} stocks by sector, coloured by ${M.label.toLowerCase()}. Use the List button for a table.`);
     const chart = EC.init(el, null, { renderer: "canvas" });
     const txt = (r) => metric === "score" ? String(r.score) : (M.val(r) >= 0 ? "+" : "") + (M.val(r) == null ? "–" : M.val(r).toFixed(metric === "changePct" ? 2 : 1) + "%");
     chart.setOption({
       backgroundColor: "transparent",
-      animationDurationUpdate: 600,
+      animation: !reduce, animationDurationUpdate: 600, aria: { enabled: true },
       tooltip: {
         backgroundColor: "#2c2c2a", borderColor: "rgba(255,255,255,.1)", textStyle: { color: "#f0efec", fontFamily: "Inter" },
         formatter: (p) => {
@@ -243,12 +254,15 @@
     if (!EC) { el.innerHTML = window.TChart.donut(items, 180, centerTop, centerBottom); return { destroy() {} }; }
     const resolve = (c) => (c.startsWith("var(") ? css(c.slice(4, -1)) : c);
     const chart = EC.init(el, null, { renderer: "svg" });
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", "Allocation: " + items.map((it) => it.label).join(", "));
     chart.setOption({
       backgroundColor: "transparent",
+      animation: !matchMedia("(prefers-reduced-motion: reduce)").matches,
       tooltip: { trigger: "item", backgroundColor: "#2c2c2a", borderColor: "rgba(255,255,255,.1)", textStyle: { color: "#f0efec", fontFamily: "Inter" }, formatter: "{b}: {d}%" },
       title: { text: centerTop, subtext: centerBottom, left: "center", top: "40%", textStyle: { color: "#f0efec", fontSize: 16, fontFamily: "Inter", fontWeight: 600 }, subtextStyle: { color: "#898781", fontSize: 11 } },
       series: [{
-        type: "pie", radius: ["62%", "92%"], avoidLabelOverlap: true, label: { show: false },
+        type: "pie", radius: ["62%", "92%"], top: 0, avoidLabelOverlap: true, label: { show: false },
         itemStyle: { borderColor: css("--surface-1"), borderWidth: 2 },
         emphasis: { scale: true, scaleSize: 6 },
         animationType: "scale", animationEasing: "cubicOut", animationDuration: 900,

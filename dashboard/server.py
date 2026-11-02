@@ -207,10 +207,23 @@ def get_bars(symbol, rng="2y"):
                 "high52": meta.get("fiftyTwoWeekHigh"),
                 "low52": meta.get("fiftyTwoWeekLow"),
                 "marketTime": meta.get("regularMarketTime"),
+                "tradingPeriod": (meta.get("currentTradingPeriod") or {}).get("regular"),
             },
             "bars": bars,
         }
     return cached(("bars", symbol, rng), 120, load)
+
+
+BENCH = {".L": "^FTSE", ".DE": "^GDAXI", ".PA": "^FCHI", ".AS": "^AEX", ".MI": "FTSEMIB.MI", ".SW": "^SSMI", ".MC": "^IBEX"}
+
+
+def benchmark_for(symbol):
+    """The index a stock is compared with: its home market, else the S&P 500."""
+    s = symbol.upper()
+    for suf, idx in BENCH.items():
+        if s.endswith(suf.upper()):
+            return idx
+    return "SPY"
 
 
 def spy_return_63():
@@ -221,37 +234,56 @@ def spy_return_63():
         return None
 
 
-def analyse(symbol, with_series=False):
-    data = get_bars(symbol)
-    bars = data["bars"]
+def _day(ts):
+    return time.strftime("%Y-%m-%d", time.gmtime(ts))
+
+
+def bench_by_day(symbol, rng="2y"):
+    """{YYYY-MM-DD: close} for the stock's benchmark index."""
+    b = benchmark_for(symbol)
+    try:
+        return b, {_day(x["t"]): x["c"] for x in get_bars(b, rng)["bars"]}
+    except Exception:
+        return b, {}
+
+
+def indicators(bars):
     c = [b["c"] for b in bars]
     h = [b["h"] for b in bars]
     l = [b["l"] for b in bars]
     v = [b["v"] for b in bars]
-    s20, s50, s200 = sma(c, 20), sma(c, 50), sma(c, 200)
-    rs = rsi(c)
     ml, ms, mh = macd(c)
-    at = atr(h, l, c)
-    vavg = sma(v, 20)
-    i = len(c) - 1
-    price, prev = c[i], c[i - 1]
-    last = lambda xs, k=0: xs[i - k] if i - k >= 0 else None
+    vprev = [None] * len(v)  # 20-day average volume of the days BEFORE i (today's partial volume left out)
+    s = 0.0
+    for i in range(len(v)):
+        if i >= 20:
+            vprev[i] = s / 20
+            s -= v[i - 20]
+        s += v[i]
+    return {"t": [b["t"] for b in bars], "o": [b["o"] for b in bars], "c": c, "h": h, "l": l, "v": v,
+            "s20": sma(c, 20), "s50": sma(c, 50), "s200": sma(c, 200), "rsi": rsi(c),
+            "macd": ml, "signal": ms, "hist": mh, "atr": atr(h, l, c), "vprev": vprev}
 
-    # ---- rating: each signal adds or removes points, shown to the user
+
+def rule(ind, i, bench63=None, vol_frac=1.0):
+    """The rating and entry verdict at bar i. Used live (last bar) and by the backtest (every bar)."""
+    c, h, l, v = ind["c"], ind["h"], ind["l"], ind["v"]
+    price, prev = c[i], c[i - 1]
+    at = lambda key, k=0: ind[key][i - k] if i - k >= 0 else None
     reasons, score, maxpts = [], 0.0, 0.0
 
     def sig(points, ok, good, bad):
         nonlocal score, maxpts
-        maxpts += abs(points)
-        if ok is None:
+        if ok is None:  # not enough history: the check neither earns nor costs points
             return
+        maxpts += abs(points)
         if ok:
             score += points
             reasons.append({"ok": True, "text": good, "pts": points})
         else:
             reasons.append({"ok": False, "text": bad, "pts": 0})
 
-    a20, a50, a200 = last(s20), last(s50), last(s200)
+    a20, a50, a200 = at("s20"), at("s50"), at("s200")
     sig(2, None if a50 is None else price > a50, "Price above its 50-day average", "Price below its 50-day average")
     sig(2, None if a200 is None else price > a200, "Price above its 200-day average (long-term uptrend)",
         "Price below its 200-day average (long-term downtrend)")
@@ -259,57 +291,47 @@ def analyse(symbol, with_series=False):
         "50-day below 200-day average (death cross zone)")
     sig(1, None if a20 is None else price > a20, "Price above its 20-day average (short-term strength)",
         "Price below its 20-day average (short-term weakness)")
-    rv = last(rs)
+    rv = at("rsi")
     if rv is not None:
         sig(1.5, 45 <= rv <= 68, "RSI %.0f: healthy momentum" % rv,
             "RSI %.0f: %s" % (rv, "overbought, stretched" if rv > 68 else "weak momentum"))
-    hv, hp = last(mh), last(mh, 1)
+    hv, hp = at("hist"), at("hist", 1)
     sig(1, None if hv is None else hv > 0, "MACD above its signal line", "MACD below its signal line")
     sig(0.5, None if hv is None or hp is None else hv > hp, "MACD momentum rising", "MACD momentum fading")
     r63 = c[i] / c[i - 63] - 1 if i >= 63 else None
     sig(1, None if r63 is None else r63 > 0, "Up %.1f%% over 3 months" % (100 * (r63 or 0)),
         "Down %.1f%% over 3 months" % (-100 * (r63 or 0)))
-    spy = spy_return_63() if symbol != "SPY" else None
-    if r63 is not None and spy is not None:
-        sig(1, r63 > spy, "Beating the S&P 500 over 3 months", "Lagging the S&P 500 over 3 months")
-    va = last(vavg)
-    if va:
-        up_vol = price > prev and v[i] > 1.2 * va
-        sig(0.5, up_vol, "Buyers stepping in: up day on above-average volume", "No volume confirmation today")
+    if r63 is not None and bench63 is not None:
+        sig(1, r63 > bench63, "Beating its market index over 3 months", "Lagging its market index over 3 months")
+    va = ind["vprev"][i]
+    rvol = (v[i] / (va * max(0.1, vol_frac))) if va else None  # relative volume, scaled to the time of day
+    if rvol is not None:
+        sig(0.5, price > prev and rvol > 1.2, "Buyers stepping in: up day on above-average volume", "No volume confirmation today")
     pct = 100 * score / maxpts if maxpts else 50
-    if pct >= 78:
-        rating = "Strong Buy"
-    elif pct >= 60:
-        rating = "Buy"
-    elif pct >= 40:
-        rating = "Hold"
-    elif pct >= 22:
-        rating = "Sell"
-    else:
-        rating = "Strong Sell"
+    rating = ("Strong Buy" if pct >= 78 else "Buy" if pct >= 60 else "Hold" if pct >= 40 else "Sell" if pct >= 22 else "Strong Sell")
 
-    # ---- entry timing
-    av = last(at) or price * 0.02
+    av = at("atr") or price * 0.02
     hi20 = max(h[max(0, i - 20):i]) if i > 1 else price
     lo10 = min(l[max(0, i - 10):i + 1])
     downtrend = a50 is not None and a200 is not None and price < a50 and a50 < a200
-    breakout = price > hi20 and va and v[i] > 1.3 * va
-    near20 = a20 is not None and abs(price - a20) <= 0.75 * av
     extended = (a20 is not None and price > a20 + 2 * av) or (rv is not None and rv > 72)
+    breakout = price > hi20 and rvol is not None and rvol > 1.3 and pct >= 55 and not extended
+    near20 = a20 is not None and abs(price - a20) <= 0.75 * av
     if downtrend:
-        status, entry = "Avoid", None
+        status, entry, trigger = "Avoid", None, a50
         why = "Downtrend: price is below the 50-day and the 50-day is below the 200-day. Wait for a close back above the 50-day average at %.2f." % a50
-        trigger = a50
+    elif extended:
+        target = (a20 + 0.5 * av) if a20 else price - av
+        entry, trigger = min(target, price - 0.5 * av), a20  # a limit always below the market
+        status = "Wait: extended"
+        why = "Price is stretched (%s). Chasing means a wide stop; a limit near %.2f is the better spot." % (
+            ("%.1f ATRs above the 20-day average" % ((price - a20) / av)) if a20 and price > a20 + 2 * av else "RSI %.0f" % rv, entry)
     elif breakout:
         status, entry, trigger = "Buy now: breakout", price, hi20
-        why = "Broke above the 20-day high (%.2f) on %.1fx normal volume. Breakouts work best bought the same day, not chased days later." % (hi20, v[i] / va)
+        why = "Broke above the 20-day high (%.2f) on %.1fx normal volume. Breakouts work best bought the same day, not chased days later." % (hi20, rvol)
     elif near20 and pct >= 55 and (rv is None or rv < 65):
         status, entry, trigger = "Buy zone: pullback", price, a20
         why = "Uptrend pulled back to its 20-day average (%.2f). Buying the dip near support keeps the stop close." % a20
-    elif extended:
-        status, entry, trigger = "Wait: extended", a20 + 0.5 * av if a20 else None, a20
-        why = "Price has run %.1f ATRs above the 20-day average%s. Chasing here means a wide stop; a limit near %.2f is the better spot." % (
-            (price - a20) / av if a20 else 0, " and RSI is %.0f" % rv if rv and rv > 70 else "", (a20 + 0.5 * av) if a20 else price)
     elif pct >= 55:
         status, entry, trigger = "Watch", None, hi20
         why = "Trend is fine but price is between levels. Buy a pullback to %.2f or a breakout above %.2f on strong volume." % (a20 or price, hi20)
@@ -324,7 +346,134 @@ def analyse(symbol, with_series=False):
         risk = plan_px - stop
         plan = {"entry": r(plan_px), "stop": r(stop), "target1": r(plan_px + 2 * risk), "target2": r(plan_px + 3 * risk),
                 "riskPct": r(100 * risk / plan_px, 1)}
+        hi52 = max(h[max(0, i - 251):i + 1])
+        if plan["target1"] and hi52 > plan_px and hi52 < plan["target1"]:
+            plan["resistance"] = r(hi52)  # 52-week high sits between entry and target 1
+    return {"pct": pct, "rating": rating, "reasons": reasons, "status": status, "why": why, "plan": plan,
+            "atr": av, "rvol": rvol, "r63": r63, "rsi": rv, "a20": a20, "a50": a50, "a200": a200}
 
+
+def _session_fraction(meta_period):
+    """Share of today's regular session that has passed (1.0 when closed)."""
+    try:
+        start, end = meta_period["start"], meta_period["end"]
+        now = time.time()
+        if start < now < end:
+            return max(0.05, (now - start) / float(end - start))
+    except (TypeError, KeyError):
+        pass
+    return 1.0
+
+
+EARN_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+_earn_pending = set()
+
+
+def next_earnings(symbol, wait=True):
+    """{'date': 'YYYY-MM-DD', 'days': n} for the next report (US listings, Nasdaq.com), else None.
+
+    wait=False never blocks: if the date isn't cached yet it is fetched in the
+    background and shows up on the next refresh (keeps big lists fast)."""
+    sym = symbol.upper()
+    if not re.match(r"^[A-Z]{1,5}(-[A-Z])?$", sym):
+        return None
+    if not wait:
+        with _cache_lock:
+            hit = _cache.get(("earnings", sym))
+        if not hit or time.time() - hit[0] > 6 * 3600:
+            if sym not in _earn_pending:
+                _earn_pending.add(sym)
+
+                def bg():
+                    try:
+                        next_earnings(sym, True)
+                    finally:
+                        _earn_pending.discard(sym)
+                EARN_POOL.submit(bg)
+            return None
+
+    def load():
+        try:
+            d = nasdaq("analyst/%s/earnings-date" % sym.replace("-", "."), timeout=8)
+        except Exception:
+            return None
+        m = re.search(r":\s*([A-Z][a-z]{2}) (\d{1,2}), (\d{4})", d.get("announcement") or "")
+        if not m:
+            return None
+        try:
+            ts = calendar.timegm(time.strptime("%s %s %s" % m.groups(), "%b %d %Y"))
+        except ValueError:
+            return None
+        return {"date": _day(ts), "ts": ts}
+    e = cached(("earnings", sym), 6 * 3600, load)
+    if not e:
+        return None
+    days = int((e["ts"] - calendar.timegm(time.gmtime()[:3] + (0, 0, 0, 0, 0, 0))) // 86400)
+    return {"date": e["date"], "days": days} if days >= 0 else None
+
+
+def market_regime():
+    """Green / amber / red from the S&P 500 and Nasdaq 100 trends and the VIX."""
+    def load():
+        notes, pts = [], 0
+        for sym, name in (("SPY", "S&P 500"), ("QQQ", "Nasdaq 100")):
+            c = [b["c"] for b in get_bars(sym)["bars"]]
+            a50, a200 = sum(c[-50:]) / 50, sum(c[-200:]) / 200
+            ok50, ok200 = c[-1] > a50, c[-1] > a200
+            pts += ok50 + ok200
+            notes.append({"ok": ok50, "text": "%s %s its 50-day average" % (name, "above" if ok50 else "below")})
+            notes.append({"ok": ok200, "text": "%s %s its 200-day average" % (name, "above" if ok200 else "below")})
+        vc = [b["c"] for b in get_bars("^VIX")["bars"]]
+        vix, vix20 = vc[-1], sum(vc[-20:]) / 20
+        if vix < 20:
+            pts += 1
+            notes.append({"ok": True, "text": "VIX %.1f: calm market" % vix})
+        elif vix > 28:
+            pts -= 2
+            notes.append({"ok": False, "text": "VIX %.1f: fear is high" % vix})
+        else:
+            notes.append({"ok": False, "text": "VIX %.1f: nervous market" % vix})
+        if vix > 1.25 * vix20:
+            pts -= 1
+            notes.append({"ok": False, "text": "VIX jumped %.0f%% above its 20-day average" % (100 * (vix / vix20 - 1))})
+        level = "green" if pts >= 4 else "amber" if pts >= 2 else "red"
+        label = {"green": "Market healthy: trade normal size",
+                 "amber": "Market mixed: be selective, consider half size",
+                 "red": "Market weak: protect capital, new buys on hold"}[level]
+        return {"level": level, "label": label, "score": pts, "max": 5, "notes": notes, "vix": r(vix)}
+    try:
+        return cached(("regime",), 300, load)
+    except Exception:
+        return {"level": "unknown", "label": "Market data unavailable", "notes": [], "score": None, "max": 5}
+
+
+def analyse(symbol, with_series=False):
+    data = get_bars(symbol)
+    bars = data["bars"]
+    ind = indicators(bars)
+    c, h, l, v = ind["c"], ind["h"], ind["l"], ind["v"]
+    i = len(c) - 1
+    bname, bmap = bench_by_day(symbol)
+    bench63 = None
+    if bmap and symbol.upper() not in ("SPY", bname):
+        bc = [bmap[k] for k in sorted(bmap)]
+        bench63 = bc[-1] / bc[-64] - 1 if len(bc) > 64 else None
+    frac = _session_fraction(data["meta"].get("tradingPeriod"))
+    res = rule(ind, i, bench63, frac)
+    status, why, plan = res["status"], res["why"], res["plan"]
+
+    earn = next_earnings(symbol, wait=with_series)
+    regime = market_regime() if symbol.upper() not in ("SPY", "QQQ", "^VIX") else None
+    if earn and earn["days"] <= 7 and status.startswith("Buy"):
+        status = "Wait: earnings"
+        why = "Earnings %s (%s). A 2-ATR stop can't protect you from an overnight earnings gap: wait for the report, or size it small. Setup was: %s" % (
+            "today" if earn["days"] == 0 else "in %d day%s" % (earn["days"], "s" if earn["days"] > 1 else ""), earn["date"], why)
+    if regime and regime["level"] == "red" and status.startswith("Buy"):
+        status = "Watch: market weak"
+        why = "The setup is there, but the overall market is weak (%s). Most stocks fall with the market: wait for it to steady. Setup was: %s" % (
+            "; ".join(n["text"] for n in regime["notes"] if not n["ok"])[:160], why)
+    price, prev = c[i], c[i - 1]
+    av = res["atr"]
     out = {
         "symbol": data["meta"]["symbol"],
         "name": data["meta"]["name"],
@@ -335,39 +484,108 @@ def analyse(symbol, with_series=False):
         "change": r(price - prev, 4 if price < 2 else 2),
         "changePct": r(100 * (price / prev - 1)),
         "volume": v[i],
-        "avgVolume": r(va, 0),
+        "avgVolume": r(ind["vprev"][i], 0),
+        "rvol": r(res["rvol"], 2),
         "high52": r(max(h[-252:])),
         "low52": r(min(l[-252:])),
         "ret1m": r(100 * (c[i] / c[i - 21] - 1)) if i >= 21 else None,
-        "ret3m": r(100 * r63) if r63 is not None else None,
+        "ret3m": r(100 * res["r63"]) if res["r63"] is not None else None,
         "ret1y": r(100 * (c[i] / c[max(0, i - 252)] - 1)),
-        "rsi": r(rv, 1),
+        "rsi": r(res["rsi"], 1),
         "atr": r(av),
-        "sma20": r(a20), "sma50": r(a50), "sma200": r(a200),
-        "score": round(pct),
-        "rating": rating,
-        "reasons": reasons,
+        "sma20": r(res["a20"]), "sma50": r(res["a50"]), "sma200": r(res["a200"]),
+        "chandelier": r(max(c[-22:]) - 3 * av),
+        "score": round(res["pct"]),
+        "rating": res["rating"],
+        "reasons": res["reasons"],
         "entryStatus": status,
         "entryWhy": why,
         "plan": plan,
+        "earnings": earn,
+        "regime": {"level": regime["level"], "label": regime["label"]} if regime else None,
+        "benchmark": bname,
         "asOf": bars[-1]["t"],
     }
     if with_series:
+        r2 = lambda xs, d=2: [r(x, d) for x in xs]
         out["series"] = {
-            "t": [b["t"] for b in bars], "o": [r(b["o"], 4) for b in bars], "h": [r(x, 4) for x in h],
-            "l": [r(x, 4) for x in l], "c": [r(x, 4) for x in c], "v": v,
-            "sma20": [r(x) for x in s20], "sma50": [r(x) for x in s50], "sma200": [r(x) for x in s200],
-            "rsi": [r(x, 1) for x in rs], "macd": [r(x, 3) for x in ml], "signal": [r(x, 3) for x in ms],
-            "hist": [r(x, 3) for x in mh],
+            "t": ind["t"], "o": r2(ind["o"], 4), "h": r2(h, 4), "l": r2(l, 4), "c": r2(c, 4), "v": v,
+            "sma20": r2(ind["s20"]), "sma50": r2(ind["s50"]), "sma200": r2(ind["s200"]),
+            "rsi": r2(ind["rsi"], 1), "macd": r2(ind["macd"], 3), "signal": r2(ind["signal"], 3), "hist": r2(ind["hist"], 3),
         }
         out["forecast"] = forecast(c)
     return out
 
 
+def backtest(symbol, hold=40):
+    """Replay the same rules over 5 years: buy the next open after a 'Buy' verdict, exit at the stop,
+    at 2R, or after `hold` days. One trade at a time; no costs, earnings or market filter."""
+    def load():
+        bars = get_bars(symbol, "5y")["bars"]
+        ind = indicators(bars)
+        _, bmap = bench_by_day(symbol, "5y")
+        bdays = sorted(bmap)
+        bidx = {d: k for k, d in enumerate(bdays)}
+        o, c, h, l = ind["o"], ind["c"], ind["h"], ind["l"]
+        n = len(c)
+        trades, i = [], 260
+        while i < n - 2:
+            d = _day(ind["t"][i])
+            k = bidx.get(d)
+            b63 = bmap[bdays[k]] / bmap[bdays[k - 63]] - 1 if k is not None and k >= 63 else None
+            res = rule(ind, i, b63)
+            if not (res["status"].startswith("Buy") and res["plan"]):
+                i += 1
+                continue
+            e, stop = o[i + 1], res["plan"]["stop"]
+            if e <= stop:
+                i += 1
+                continue
+            risk = e - stop
+            tgt = e + 2 * risk
+            exit_px, outcome, j = None, None, i + 1
+            while j < n:
+                if j > i + 1 and o[j] <= stop:
+                    exit_px, outcome = o[j], "stop (gap)"
+                elif l[j] <= stop:
+                    exit_px, outcome = stop, "stop"
+                elif h[j] >= tgt:
+                    exit_px, outcome = (o[j] if o[j] > tgt and j > i + 1 else tgt), "target"
+                elif j - i >= hold:
+                    exit_px, outcome = c[j], "time"
+                if exit_px is not None:
+                    break
+                j += 1
+            if exit_px is None:  # still open at the end of the data
+                break
+            trades.append({"date": d, "setup": res["status"].split(": ")[-1], "entry": r(e), "exit": r(exit_px),
+                           "R": round((exit_px - e) / risk, 2), "days": j - i, "outcome": outcome})
+            i = j + 1
+        Rs = [t["R"] for t in trades]
+        pos, neg = sum(x for x in Rs if x > 0), -sum(x for x in Rs if x < 0)
+        eq, run = [], 0.0
+        for x in Rs:
+            run += x
+            eq.append(round(run, 2))
+        days = sorted(t["days"] for t in trades)
+        return {
+            "symbol": symbol, "years": round((ind["t"][-1] - ind["t"][0]) / 31557600.0, 1), "n": len(trades),
+            "hitTarget": round(100.0 * sum(1 for t in trades if t["outcome"] == "target") / len(trades), 1) if trades else None,
+            "winRate": round(100.0 * sum(1 for x in Rs if x > 0) / len(Rs), 1) if Rs else None,
+            "expectancy": round(sum(Rs) / len(Rs), 2) if Rs else None,
+            "profitFactor": round(pos / neg, 2) if neg else None,
+            "medianDays": days[len(days) // 2] if days else None,
+            "equity": eq, "trades": trades[-12:][::-1],
+            "note": "Next-day open entry, stop or 2R target, %d-day time exit. Ignores costs, earnings and the market filter." % hold,
+        }
+    return cached(("backtest", symbol, hold), 6 * 3600, load)
+
+
 def forecast(closes, days=63, lookback=126, shrink=0.5):
     """Statistical projection, not a prediction.
 
-    Centre: the last 6 months' log-linear trend, halved (trends fade).
+    Centre: the last 6 months' log-linear trend, halved and capped at about
+    +/-10% a year (trends fade).
     Bands: +/-1 and +/-2 standard deviations of daily log returns, widening
     with the square root of time (about 68% and 95% of outcomes if the
     recent volatility holds)."""
@@ -381,7 +599,7 @@ def forecast(closes, days=63, lookback=126, shrink=0.5):
     rets = [xs[i] - xs[i - 1] for i in range(1, n)]
     mu = sum(rets) / len(rets)
     sd = math.sqrt(sum((x - mu) ** 2 for x in rets) / (len(rets) - 1))
-    drift = slope * shrink
+    drift = max(-0.0004, min(0.0004, slope * shrink))  # at most about +/-10% a year: trends fade
     p0 = closes[-1]
     out = {"days": days, "mid": [], "lo1": [], "hi1": [], "lo2": [], "hi2": [],
            "drift": r(100 * (math.exp(drift * 252) - 1), 1), "vol": r(100 * sd * math.sqrt(252), 1)}
@@ -578,9 +796,9 @@ def performance(symbol):
 
 # ---------------------------------------------------------------- fundamentals (Nasdaq, US listings)
 
-def nasdaq(path, ttl=6 * 3600):
+def nasdaq(path, ttl=6 * 3600, timeout=25):
     def load():
-        d = http_get("https://api.nasdaq.com/api/" + path, headers={"User-Agent": "Mozilla/5.0 (compatible; day-trader-skill-dashboard/1.0)"}, timeout=25)
+        d = http_get("https://api.nasdaq.com/api/" + path, headers={"User-Agent": "Mozilla/5.0 (compatible; day-trader-skill-dashboard/1.0)"}, timeout=timeout)
         return d.get("data") or {}
     return cached(("nasdaq", path), ttl, load)
 
@@ -1071,8 +1289,12 @@ def t212_portfolio():
             "ppl": num(cash.get("ppl"), (cash.get("investments") or {}).get("unrealizedProfitLoss")),
             "result": num(cash.get("result"), (cash.get("investments") or {}).get("realizedProfitLoss")),
         }
+        try:
+            pending = t212_pending()
+        except Exception:
+            pending = None  # older keys may lack the orders permission
         return {"env": T212["env"], "currency": info.get("currencyCode") or cash.get("currency"),
-                "cash": cash_out, "positions": positions, "fetched": int(time.time())}
+                "cash": cash_out, "positions": positions, "pending": pending, "fetched": int(time.time())}
     return cached(("t212", T212["key"], T212["env"]), 15, load)
 
 
@@ -1298,14 +1520,13 @@ def period_returns(h):
         weighted = sum(f * (len(flows) - j) / len(flows) for j, f in enumerate(flows)) if flows else 0.0
         gain = V[-1] - v0 - cf  # sells count as cash out, so realized gains are included
         denom = v0 + weighted
-        if partial and V[0] == 0:
-            bought = sum(f for f in F if f > 0)
-            out[k] = {"gain": round(V[-1] - sum(F), 2), "pct": round(100 * (V[-1] - sum(F)) / bought, 2) if bought > 0 else None, "partial": True}
-            continue
         out[k] = {"gain": round(gain, 2), "pct": round(100 * gain / denom, 2) if denom > 0 else None, "partial": partial}
-    bought = sum(f for f in F if f > 0)
-    total_gain = V[-1] - sum(F)
-    out["Max"] = {"gain": round(total_gain, 2), "pct": round(100 * total_gain / bought, 2) if bought > 0 else None}
+    # all time: the same method from the first day, so every tile is comparable
+    flows = F[1:]
+    weighted = sum(f * (len(flows) - j) / len(flows) for j, f in enumerate(flows)) if flows else 0.0
+    gain = V[-1] - V[0] - sum(flows)
+    denom = V[0] + weighted
+    out["Max"] = {"gain": round(gain, 2), "pct": round(100 * gain / denom, 2) if denom > 0 else None}
     return out
 
 
@@ -1339,6 +1560,96 @@ def build_lots(manual, include_t212=True):
                 first = min([o["ts"] for o in orders if o["symbol"] == sym] or [_iso_ts(p.get("opened")) or int(time.time()) - 365 * 86400])
                 lots.append({"symbol": sym, "ts": first, "qty": gap, "price": p["avgPrice"]})
     return lots, base, notes
+
+
+# ---------------------------------------------------------------- pending orders, journal, FX
+
+def t212_pending():
+    """Open (unfilled) orders, read-only: used to check every position has a protective stop."""
+    def load():
+        raw = t212_get("/equity/orders")
+        out = []
+        for o in raw if isinstance(raw, list) else raw.get("items", []):
+            o = o.get("order") or o
+            ticker = o.get("ticker") or (o.get("instrument") or {}).get("ticker") or ""
+            qty = num(o.get("quantity"), o.get("orderedQuantity")) or 0
+            side = (o.get("side") or ("SELL" if qty < 0 else "BUY")).upper()
+            out.append({"symbol": t212_to_yahoo(ticker), "t212": ticker, "type": (o.get("type") or "").upper(),
+                        "side": side, "qty": abs(qty), "stopPrice": num(o.get("stopPrice")),
+                        "limitPrice": num(o.get("limitPrice")), "status": o.get("status")})
+        return out
+    return cached(("t212", "pending", T212["key"], T212["env"]), 15, load)
+
+
+def trade_journal():
+    """Closed trades from Trading 212 fills, matched first-in first-out, with summary stats."""
+    orders, complete = t212_orders()
+    lots, trades = {}, []
+    for o in sorted(orders, key=lambda x: x["ts"]):
+        q = lots.setdefault(o["symbol"], [])
+        if o["qty"] > 0:
+            q.append([o["qty"], o["price"], o["ts"]])
+            continue
+        left, cost, qty, first = -o["qty"], 0.0, 0.0, None
+        while left > 1e-9 and q:
+            lot = q[0]
+            take = min(left, lot[0])
+            cost += take * lot[1]
+            qty += take
+            first = first or lot[2]
+            lot[0] -= take
+            left -= take
+            if lot[0] <= 1e-9:
+                q.pop(0)
+        if qty <= 0:
+            continue  # sold shares bought before the loaded history
+        entry = cost / qty
+        pnl = qty * (o["price"] - entry)
+        trades.append({"symbol": o["symbol"], "opened": _day(first), "closed": _day(o["ts"]), "qty": round(qty, 6),
+                       "entry": round(entry, 4), "exit": round(o["price"], 4), "pnl": round(pnl, 2),
+                       "pct": round(100 * (o["price"] / entry - 1), 2), "days": max(0, int((o["ts"] - first) // 86400))})
+    pcts = [t["pct"] for t in trades]
+    wins = [x for x in pcts if x > 0]
+    losses = [x for x in pcts if x <= 0]
+    months = {}
+    for t in trades:
+        m = months.setdefault(t["closed"][:7], {"month": t["closed"][:7], "n": 0, "wins": 0, "sumPct": 0.0})
+        m["n"] += 1
+        m["wins"] += t["pct"] > 0
+        m["sumPct"] += t["pct"]
+    open_lots = [{"symbol": s, "qty": round(sum(l[0] for l in q), 6)} for s, q in lots.items() if sum(l[0] for l in q) > 1e-6]
+    return {
+        "complete": complete, "trades": trades[::-1],
+        "stats": {
+            "n": len(trades), "winRate": round(100.0 * len(wins) / len(pcts), 1) if pcts else None,
+            "avgWin": round(sum(wins) / len(wins), 2) if wins else None,
+            "avgLoss": round(sum(losses) / len(losses), 2) if losses else None,
+            "expectancy": round(sum(pcts) / len(pcts), 2) if pcts else None,
+            "profitFactor": round(sum(wins) / -sum(losses), 2) if losses and sum(losses) < 0 else None,
+            "best": max(trades, key=lambda t: t["pct"]) if trades else None,
+            "worst": min(trades, key=lambda t: t["pct"]) if trades else None,
+            "avgDays": round(sum(t["days"] for t in trades) / len(trades), 1) if trades else None,
+        },
+        "months": sorted(months.values(), key=lambda m: m["month"]),
+        "openLots": open_lots,
+        "note": "Matched first-in first-out from your Trading 212 order history. P/L is in each stock's own currency; % figures are comparable across currencies.",
+    }
+
+
+def fx_rate(src, dst):
+    """How many units of dst one unit of src buys (GBp and other minor units handled)."""
+    scale = 1.0
+    if src in ("GBp", "GBX"):
+        src, scale = "GBP", 0.01
+    if dst in ("GBp", "GBX"):
+        dst, scale = "GBP", scale * 100
+    src, dst = (src or "USD").upper(), (dst or "USD").upper()
+    if src == dst:
+        return scale
+    try:
+        return scale * get_bars("%s%s=X" % (src, dst))["bars"][-1]["c"]
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------- HTTP
@@ -1406,6 +1717,10 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "bars")
             elif path == "/api/news":
                 purge(lambda k: k[0] == "news")
+            elif path == "/api/regime":
+                purge(lambda k: k[0] == "regime" or (k[0] == "bars" and k[1] in ("SPY", "QQQ", "^VIX")))
+            elif path == "/api/t212/journal":
+                _orders["at"] = 0
             elif path == "/api/radar":
                 purge(lambda k: k[0] in ("radar", "bars") or (k[0] == "chart" and "range=2y&interval=1d" == k[2]))
             elif path == "/api/t212/portfolio":
@@ -1443,6 +1758,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(fundamentals(q.get("symbol", "SPY").upper()))
         if path == "/api/radar":
             return self.send_json(radar())
+        if path == "/api/backtest":
+            return self.send_json(backtest(q.get("symbol", "SPY").upper()))
+        if path == "/api/regime":
+            return self.send_json(market_regime())
+        if path == "/api/fx":
+            return self.send_json({"from": q.get("from"), "to": q.get("to"), "rate": fx_rate(q.get("from"), q.get("to"))})
+        if path == "/api/t212/journal":
+            return self.send_json(trade_journal())
         if path == "/api/t212/status":
             return self.send_json({"linked": bool(T212["key"]), "env": T212["env"],
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})

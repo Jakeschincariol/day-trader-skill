@@ -19,7 +19,7 @@
   };
   const priceStr = (x, ccy) => (ccy === "GBp" || ccy === "GBX" ? fmt(x, 2) + "p" : money(x, ccy));
   const shares = (q) => (q == null ? "–" : Number(q).toLocaleString(undefined, { maximumFractionDigits: 4 }));
-  const pct = (x, d) => (x == null ? "–" : (x > 0 ? "+" : "") + Number(x).toFixed(d == null ? 2 : d) + "%");
+  const pct = (x, d) => (x == null ? "–" : x >= 1000 ? "×" + Math.round(1 + x / 100).toLocaleString() : (x > 0 ? "+" : "") + Number(x).toFixed(d == null ? 2 : d) + "%");
   const cls = (x) => (x == null ? "" : x >= 0 ? "up" : "down");
   const ago = (t) => {
     if (!t) return "";
@@ -29,9 +29,9 @@
     return Math.round(s / 86400) + "d ago";
   };
   const ratingBadge = (r) => r ? `<span class="badge b-${r.toLowerCase().replace(/\s/g, "")}">${esc(r)}</span>` : "";
-  const entryClass = (st) => !st ? "e-none" : st.startsWith("Buy") ? "e-now" : st.startsWith("Wait") ? "e-wait" : st === "Watch" ? "e-watch" : st === "Avoid" ? "e-avoid" : "e-none";
+  const entryClass = (st) => !st ? "e-none" : st.startsWith("Buy") ? "e-now" : st.startsWith("Wait") ? "e-wait" : st.startsWith("Watch") ? "e-watch" : st === "Avoid" ? "e-avoid" : "e-none";
   const entryBadge = (st) => st ? `<span class="badge ${entryClass(st)}">${esc(st)}</span>` : "";
-  const meter = (score) => `<span class="meter" title="Signal score ${score}/100"><i><b style="width:${score}%"></b></i><span class="num">${score}</span></span>`;
+  const meter = (score) => `<span class="meter" title="Signal score ${score}/100"><i><b class="${score >= 75 ? "hi" : score >= 50 ? "mid" : "lo"}" style="width:${score}%"></b></i><span class="num">${score}</span></span>`;
   const skeleton = (rows) => Array.from({ length: rows || 6 }, () => '<div class="skeleton"></div>').join("");
   function toast(msg) {
     const t = $("#toast"); t.textContent = msg; t.hidden = false;
@@ -50,13 +50,15 @@
 
   // Refresh buttons: rf("key") renders "Updated hh:mm:ss  ↻"; RF[key] reloads that section with fresh data.
   let RF = {};
-  const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh this section"><i data-lucide="rotate-cw"></i></button></span>`;
+  const RF_NAMES = { market: "market signals", wl: "watchlist", hnews: "news", screener: "market table", signals: "signals", quote: "quote and plan", chart: "chart",
+    perf: "performance", fund: "fundamentals", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
+  const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh ${RF_NAMES[key] || "this section"}"><i data-lucide="rotate-cw"></i></button></span>`;
   const stamp = (key) => $$(`[data-upd="${key}"]`).forEach((el) => (el.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })));
   async function runRefresh(key, btn) {
     if (!RF[key]) return;
     btn && (btn.disabled = true, btn.classList.add("spin"));
     freshOn = true;
-    try { await RF[key](); stamp(key); }
+    try { await RF[key](); stamp(key); const sr = $("#srStatus"); if (sr) sr.textContent = (RF_NAMES[key] || "Section") + " updated"; }
     catch (e) { toast("Refresh failed: " + e.message); }
     finally { freshOn = false; btn && (btn.disabled = false, btn.classList.remove("spin")); }
   }
@@ -101,10 +103,13 @@
     const u = await getUniverse();
     const rows = await api("/api/quotes?symbols=" + encodeURIComponent(u.indices.join(",")));
     const names = { "^VIX": "VIX", "BTC-USD": "Bitcoin", "EURUSD=X": "EUR/USD", SPY: "S&P 500", QQQ: "Nasdaq 100", DIA: "Dow", IWM: "Russell 2000", GLD: "Gold" };
-    $("#strip").innerHTML = rows.filter((r) => !r.error).map((r) =>
+    $("#strip").innerHTML = `<a class="chip mood-chip" href="#/" id="moodChip" title="Market mood"></a>` + rows.filter((r) => !r.error).map((r) =>
       `<a class="chip" href="#/stock/${encodeURIComponent(r.symbol)}"><span class="s">${esc(names[r.symbol] || r.symbol)}</span>` +
       `<span class="num">${fmt(r.price, dp(r.price))}</span><span class="num ${cls(r.changePct)}">${pct(r.changePct)}</span></a>`).join("");
+    if (window.Trade) window.Trade.regime($("#moodChip"), true);
   }
+
+  document.addEventListener("click", (e) => { if (e.target.closest("#bell") && window.Trade) window.Trade.openAlerts(); });
 
   // ------------------------------------------------------------ search
   (function setupSearch() {
@@ -146,11 +151,16 @@
         if (va == null) return 1; if (vb == null) return -1;
         return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * dir;
       });
-      el.innerHTML = `<div class="table-wrap"><table><thead><tr>${cols.map((c) =>
-        `<th class="${c.r ? "r" : ""} ${c.sm ? "hide-sm" : ""}" data-k="${c.key}" ${c.key === key ? `aria-sort="${dir > 0 ? "ascending" : "descending"}"` : ""} scope="col">${c.label}</th>`).join("")}</tr></thead>` +
-        `<tbody>${sorted.map((r) => `<tr data-sym="${esc(r.symbol)}">${cols.map((c) => `<td class="${c.r ? "r num" : ""} ${c.sm ? "hide-sm" : ""}">${c.html(r)}</td>`).join("")}</tr>`).join("") ||
+      const sortable = cols.filter((c) => c.label);
+      el.innerHTML = `<label class="sort-sm">Sort <select aria-label="Sort by">${sortable.map((c) => `<option value="${c.key}" ${c.key === key ? "selected" : ""}>${c.label}</option>`).join("")}</select>
+          <button type="button" class="btn sm" aria-label="Reverse order">${dir > 0 ? "↑" : "↓"}</button></label>
+        <div class="table-wrap"><table class="rt"><thead><tr>${cols.map((c) =>
+        `<th class="${c.r ? "r" : ""} ${c.sm ? "hide-sm" : ""}" data-k="${c.key}" aria-sort="${c.key === key ? (dir > 0 ? "ascending" : "descending") : "none"}" scope="col">${c.label ? `<button type="button" class="th-btn">${c.label}</button>` : `<span class="sr-only">Watch</span>`}</th>`).join("")}</tr></thead>` +
+        `<tbody>${sorted.map((r) => `<tr data-sym="${esc(r.symbol)}">${cols.map((c) => `<td class="${c.r ? "r num" : ""} ${c.sm ? "hide-sm" : ""} c-${c.key}">${c.html(r)}</td>`).join("")}</tr>`).join("") ||
         `<tr><td colspan="${cols.length}" class="empty">Nothing matches.</td></tr>`}</tbody></table></div>`;
-      $$("th", el).forEach((th) => th.addEventListener("click", () => { const k = th.dataset.k; dir = k === key ? -dir : -1; key = k; paint(); }));
+      $$("th .th-btn", el).forEach((b) => b.addEventListener("click", () => { const k = b.parentElement.dataset.k; dir = k === key ? -dir : -1; key = k; paint(); }));
+      $(".sort-sm select", el).addEventListener("change", (e) => { key = e.target.value; dir = -1; paint(); });
+      $(".sort-sm button", el).addEventListener("click", () => { dir = -dir; paint(); });
       $$("tbody tr[data-sym]", el).forEach((tr) => tr.addEventListener("click", (e) => {
         if (e.target.closest("button,a")) return;
         location.hash = "#/stock/" + encodeURIComponent(tr.dataset.sym);
@@ -159,7 +169,7 @@
     }
     paint();
   }
-  const symCell = (r) => `<span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name || "")}</span>`;
+  const symCell = (r) => `<a class="sym" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span>`;
   const star = (sym) => `<button class="star ${watchlist().includes(sym) ? "on" : ""}" data-sym="${esc(sym)}" aria-label="Toggle watchlist ${esc(sym)}" title="Watchlist">★</button>`;
   const COLS = {
     star: { key: "star", label: "", val: (r) => (watchlist().includes(r.symbol) ? 1 : 0), html: (r) => star(r.symbol) },
@@ -172,7 +182,7 @@
     rsi: { key: "rsi", label: "RSI", r: true, sm: true, val: (r) => r.rsi, html: (r) => fmt(r.rsi, 0) },
     score: { key: "score", label: "Score", val: (r) => r.score, html: (r) => meter(r.score) },
     rating: { key: "rating", label: "Rating", val: (r) => r.score, html: (r) => ratingBadge(r.rating) },
-    entry: { key: "entryStatus", label: "Entry", val: (r) => ({ "Buy now: breakout": 5, "Buy zone: pullback": 4, Watch: 3, "Wait: extended": 2, "No setup": 1, Avoid: 0 }[r.entryStatus]), html: (r) => entryBadge(r.entryStatus) },
+    entry: { key: "entryStatus", label: "Entry", val: (r) => ({ "Buy now: breakout": 6, "Buy zone: pullback": 5, Watch: 4, "Watch: market weak": 3, "Wait: earnings": 3, "Wait: extended": 2, "No setup": 1, Avoid: 0 }[r.entryStatus] ?? 1), html: (r) => entryBadge(r.entryStatus) + (r.earnings && r.earnings.days <= 14 ? ` <span class="tag earn" title="Earnings ${esc(r.earnings.date)}">E ${r.earnings.days}d</span>` : "") },
     sector: { key: "sector", label: "Sector", sm: true, val: (r) => r.sector, html: (r) => `<span class="muted">${esc(r.sector || "")}</span>` },
   };
 
@@ -184,6 +194,7 @@
 
   pages.home = async function () {
     view.innerHTML = `<h1>Market Dashboard</h1><p class="sub">Live overview of the market, today's best setups, your watchlist and portfolio.</p>
+      <div id="moodBanner" style="margin-bottom:16px"></div>
       <div class="grid g4" id="stats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Top Strong Buys</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
@@ -198,7 +209,8 @@
       $("#hn") && ($("#hn").innerHTML = newsHtml(news.slice(0, 7), true));
     }).catch((e) => $("#hn") && ($("#hn").innerHTML = `<p class="error">${esc(e.message)}</p>`));
     RF.hnews().then(() => stamp("hnews"));
-    RF.market = async () => { await Promise.all([homeMarket(), loadStrip()]); };
+    if (window.Trade) window.Trade.regime($("#moodBanner"));
+    RF.market = async () => { await Promise.all([homeMarket(), loadStrip(), window.Trade ? window.Trade.regime($("#moodBanner")) : null]); };
     RF.wl = homeWatch;
     await homeMarket(); stamp("market");
     await homeWatch(); stamp("wl");
@@ -218,7 +230,7 @@
       <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 →</a></div>`}</div>`;
     sortableTable($("#top"), strong.slice(0, 8), [COLS.sym, COLS.price, COLS.chg, COLS.score, COLS.entry], { sort: "score" });
-    sortableTable($("#zone"), zone.slice(0, 8), [COLS.sym, COLS.price, COLS.score], { sort: "score" });
+    sortableTable($("#zone"), zone.slice(0, 8), [COLS.sym, COLS.price, { key: "score", label: "Score", r: true, val: (r) => r.score, html: (r) => `<b class="num">${r.score}</b>` }], { sort: "score" });
   }
   async function homeWatch() {
     const wl = watchlist();
@@ -232,6 +244,7 @@
     const f = Object.assign({ group: "stocks", sector: "", rating: "", q: "" }, store.get("mfilter", {}));
     view.innerHTML = `<h1>Markets</h1><p class="sub">Every tracked stock and ETF, rated and timed. Click a row for the full analysis. Use search (top) to open any other ticker.</p>
       <div class="toolbar">
+        <a class="btn sm" href="#/map"><i data-lucide="layout-grid"></i> Map view</a>
         <div class="seg" id="grp"><button data-g="stocks">Stocks</button><button data-g="etfs">ETFs</button><button data-g="all">All</button></div>
         <select id="sector" aria-label="Sector"></select>
         <select id="rating" aria-label="Rating"><option value="">All ratings</option><option>Strong Buy</option><option>Buy</option><option>Hold</option><option>Sell</option><option>Strong Sell</option></select>
@@ -273,7 +286,7 @@
     stamp("signals");
     const uniq = []; const s = new Set(); rows.forEach((r) => { if (!s.has(r.symbol)) { s.add(r.symbol); uniq.push(r); } });
     const sets = {
-      now: uniq.filter((r) => (r.entryStatus || "").startsWith("Buy") && r.score >= 55),
+      now: uniq.filter((r) => (r.entryStatus || "").startsWith("Buy") && /Buy/.test(r.rating || "")),
       strong: uniq.filter((r) => r.rating === "Strong Buy"),
       watch: uniq.filter((r) => r.entryStatus === "Watch" || r.entryStatus === "Wait: extended"),
     };
@@ -288,17 +301,19 @@
 
   function signalCard(r) {
     const p = r.plan;
-    return `<a class="card" href="#/stock/${encodeURIComponent(r.symbol)}" style="color:inherit;text-decoration:none;display:block">
-      <div class="card-head"><div><span class="sym" style="font-size:18px">${esc(r.symbol)}</span><span class="nm">${esc(r.name || "")}</span></div>
+    return `<div class="card sigcard">
+      <div class="card-head"><div><a class="sym" style="font-size:18px" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span></div>
       <div style="text-align:right"><div class="num">${priceStr(r.price, r.currency)}</div><div class="num ${cls(r.changePct)}" style="font-size:13px">${pct(r.changePct)}</div></div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${ratingBadge(r.rating)} ${entryBadge(r.entryStatus)} ${meter(r.score)}</div>
       <p class="sec" style="font-size:13px;margin:0 0 10px">${esc(r.entryWhy)}</p>
       ${p ? `<div class="plan"><div><div class="k">Entry</div><div class="v num">${fmt(p.entry, dp(p.entry))}</div></div><div><div class="k">Stop (−${p.riskPct}%)</div><div class="v num down">${fmt(p.stop, dp(p.stop))}</div></div>
       <div><div class="k">Target 1 (2R)</div><div class="v num up">${fmt(p.target1, dp(p.target1))}</div></div><div><div class="k">Target 2 (3R)</div><div class="v num up">${fmt(p.target2, dp(p.target2))}</div></div></div>` : ""}
-    </a>`;
+      ${r.earnings && r.earnings.days <= 14 ? `<p class="earn-note"><i data-lucide="calendar-clock"></i> Earnings ${r.earnings.days === 0 ? "today" : "in " + r.earnings.days + " days"} (${esc(r.earnings.date)})</p>` : ""}
+      <div class="sig-actions"><a class="btn sm" href="#/stock/${encodeURIComponent(r.symbol)}"><i data-lucide="line-chart"></i> Analysis</a>${p && (r.entryStatus || "").startsWith("Buy") ? `<a class="btn sm primary" href="#/stock/${encodeURIComponent(r.symbol)}?ticket=1"><i data-lucide="clipboard-list"></i> Order ticket</a>` : ""}</div>
+    </div>`;
   }
 
-  pages.stock = async function (sym) {
+  pages.stock = async function (sym, params) {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
     sym = decodeURIComponent(sym || "SPY").toUpperCase();
     view.innerHTML = `<div class="card">${skeleton(3)}</div><div class="card" style="margin-top:16px;height:440px">${skeleton(10)}</div>`;
@@ -306,25 +321,17 @@
     const rid = routeId;
     try { a = await api("/api/analysis?symbol=" + encodeURIComponent(sym)); if (rid !== routeId) return; }
     catch (e) { if (rid !== routeId) return; view.innerHTML = `<div class="card empty"><h2>Couldn't load ${esc(sym)}</h2><p class="error">${esc(e.message)}</p><p>Try the search box: some tickers need an exchange suffix (e.g. VUSA.L for London, SAP.DE for Xetra).</p></div>`; return; }
-    const st = settings();
     const t212 = state.t212 && !state.t212.error ? state.t212 : null;
-    const acct = t212 && t212.cash && t212.cash.total ? t212.cash.total : st.account;
     const held = (t212 ? t212.positions : []).concat(manual()).find((p) => p.symbol === a.symbol);
     const p = a.plan;
-    const sizing = (riskPct) => {
-      if (!p) return null;
-      const riskAmt = acct * riskPct / 100, perShare = p.entry - p.stop;
-      const shares = perShare > 0 ? riskAmt / perShare : 0;
-      const capped = Math.min(shares, acct / p.entry);
-      return { riskAmt, shares: capped, cost: capped * p.entry };
-    };
-    const sz = sizing(st.riskPct);
     view.innerHTML = `
       <div class="quote-head">
         <div><h1>${esc(a.symbol)} <button class="star ${watchlist().includes(a.symbol) ? "on" : ""}" id="wstar" aria-label="Toggle watchlist">★</button></h1>
           <div class="sec">${esc(a.name)} · ${esc(a.exchange || "")} · ${esc(a.type || "")} · ${esc(a.currency || "")}</div></div>
         <div><div class="px num">${priceStr(a.price, a.currency)}</div><div class="num ${cls(a.change)}">${a.change >= 0 ? "+" : ""}${fmt(a.change, dp(a.price))} (${pct(a.changePct)}) today</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${ratingBadge(a.rating)} ${entryBadge(a.entryStatus)} ${rf("quote")}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${ratingBadge(a.rating)} ${entryBadge(a.entryStatus)}
+          ${a.earnings ? `<span class="badge ${a.earnings.days <= 7 ? "e-wait" : "e-none"}" title="Next earnings report"><i data-lucide="calendar-clock" class="ico"></i> Earnings ${a.earnings.days === 0 ? "today" : "in " + a.earnings.days + "d"}</span>` : ""}
+          <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button> ${rf("quote")}</div>
       </div>
       <div class="grid g2">
         <div class="card chart-card">
@@ -343,11 +350,11 @@
             <div class="callout">${esc(a.entryWhy)}</div>
             ${p ? `<div class="plan"><div><div class="k">Entry</div><div class="v num">${fmt(p.entry, dp(p.entry))}</div></div><div><div class="k">Stop loss (−${p.riskPct}%)</div><div class="v num down">${fmt(p.stop, dp(p.stop))}</div></div>
               <div><div class="k">Target 1 · 2R</div><div class="v num up">${fmt(p.target1, dp(p.target1))}</div></div><div><div class="k">Target 2 · 3R</div><div class="v num up">${fmt(p.target2, dp(p.target2))}</div></div></div>
+              ${p.resistance ? `<p class="muted" style="font-size:12.5px;margin:8px 0 0"><i data-lucide="triangle-alert" class="ico"></i> The 52-week high (${fmt(p.resistance, dp(p.resistance))}) sits before target 1: expect selling there.</p>` : ""}
               <h2 style="margin-top:16px">Position size</h2>
-              <div class="form-row"><label class="field">Account size<input id="acct" type="number" min="0" step="100" value="${Math.round(acct)}"></label>
-                <label class="field">Risk per trade %<input id="riskp" type="number" min="0.1" max="10" step="0.1" value="${st.riskPct}"></label></div>
-              <p class="sec" id="sizeOut" style="margin:10px 0 0">${sizeText(sz, a)}</p>
-              <p class="muted" style="font-size:12px;margin:6px 0 0">Trading 212 supports fractional shares. Place the stop as a Stop order right after you buy.</p>` : `<p class="muted">No entry plan: there is no buy setup today.</p>`}
+              <div class="sec" id="sizeOut">${skeleton(1)}</div>
+              <div class="tk-actions" style="margin-top:12px"><button class="btn primary" id="ticketBtn" type="button"><i data-lucide="clipboard-list"></i> Prepare Trading 212 order</button></div>` : `<p class="muted">No entry plan: there is no buy setup today.</p>`}
+            <div id="btBox" style="margin-top:14px"></div>
           </div>
           <div class="card"><div class="card-head"><h2>Signal rating</h2>${meter(a.score)}</div>
             <ul class="reasons">${a.reasons.map((x) => `<li class="${x.ok ? "" : "no"}">${esc(x.text)}</li>`).join("")}</ul></div>
@@ -384,7 +391,7 @@
       const m = ui.mode, fcOn = $("#fcOn").checked;
       $("#fcOn").parentElement.style.display = m === "1D" || m === "7D" ? "none" : "";
       if (m === "1D" || m === "7D") {
-        $("#chartTitle").textContent = m === "1D" ? "Today (5-minute bars)" : "Last 7 days (hourly bars)";
+        $("#chartTitle").textContent = m === "1D" ? "Latest session (5-minute bars)" : "Last 7 days (hourly bars)";
         $("#legend").innerHTML = m === "1D" ? `<span><i class="dash" style="color:var(--text-muted)"></i>Previous close</span><span class="muted">Times in your local time zone</span>` : `<span class="muted">Times in your local time zone</span>`;
         $("#fcNote").textContent = "";
         $("#chart").innerHTML = skeleton(8);
@@ -434,7 +441,7 @@
       $("#perf").innerHTML = `<div class="perf-grid">${keys.map((k) => {
         const v = pf.returns[k], b = pf.spy[k];
         return `<div class="perf-tile"><div class="k">${k === "Max" ? "Max" + (pf.since ? " (since " + new Date(pf.since * 1000).getFullYear() + ")" : "") : k}</div>
-          <div class="v num ${cls(v)}" ${v != null ? `data-count="${v}" data-fmt="pct:1"` : ""}>${pct(v, 1)}</div><div class="b num">S&amp;P ${pct(b, 1)}</div>
+          <div class="v num ${cls(v)}" ${v != null && v < 1000 ? `data-count="${v}" data-fmt="pct:1"` : ""}>${pct(v, 1)}</div><div class="b num">S&amp;P ${pct(b, 1)}</div>
           ${v != null && b != null ? `<div class="vs ${v >= b ? "up" : "down"}">${v >= b ? "▲ beat" : "▼ lagged"} by ${Math.abs(v - b).toFixed(1)} pts</div>` : ""}</div>`;
       }).join("")}</div>`;
     }).catch((e) => { $("#perf") && ($("#perf").innerHTML = `<p class="muted">${esc(e.message)}</p>`); });
@@ -476,14 +483,14 @@
     RF.fund().then(() => stamp("fund"));
     $("#wstar").addEventListener("click", (e) => e.target.classList.toggle("on", toggleWatch(a.symbol)));
     $("#addPf").addEventListener("click", () => { location.hash = "#/portfolio?add=" + encodeURIComponent(a.symbol) + "&price=" + a.price; });
-    if (p) {
-      const upd = () => {
-        const s2 = settings(); s2.riskPct = +$("#riskp").value || 1; s2.account = +$("#acct").value || 0; store.set("settings", s2);
-        const riskAmt = s2.account * s2.riskPct / 100, perShare = p.entry - p.stop;
-        const shares = Math.min(perShare > 0 ? riskAmt / perShare : 0, s2.account / p.entry);
-        $("#sizeOut").innerHTML = sizeText({ riskAmt, shares, cost: shares * p.entry }, a);
-      };
-      $("#acct").addEventListener("input", upd); $("#riskp").addEventListener("input", upd);
+    if (window.Trade) {
+      if (p) {
+        window.Trade.sizeLine(a, $("#sizeOut"));
+        $("#ticketBtn").addEventListener("click", () => window.Trade.openTicket(a));
+        if (params && params.get("ticket")) window.Trade.openTicket(a);
+      }
+      window.Trade.backtest(a.symbol, $("#btBox"));
+      $("#alertBtn").addEventListener("click", () => window.Trade.openAlerts({ symbol: a.symbol, price: p ? p.entry : a.price }));
     }
     RF.snews = () => api("/api/news?symbols=" + encodeURIComponent(a.symbol)).then((n) => { $("#snews") && ($("#snews").innerHTML = newsHtml(n.slice(0, 8), true)); })
       .catch(() => { $("#snews") && ($("#snews").innerHTML = `<p class="muted">No news available.</p>`); });
@@ -531,10 +538,6 @@
     $$("#rvSeg button").forEach((b) => b.addEventListener("click", () => paint(b.dataset.m)));
     paint("quarterly");
   }
-  function sizeText(sz, a) {
-    if (!sz) return "";
-    return `Buy <b class="num">${fmt(sz.shares, sz.shares < 10 ? 2 : 0)}</b> shares ≈ <b class="num">${priceStr(sz.cost, a.currency)}</b>. If the stop is hit you lose about <b class="num">${fmt(sz.riskAmt, 2)}</b>.`;
-  }
 
   // ------------------------------------------------------------ portfolio
   function portfolioSummary(t212, rows) {
@@ -556,7 +559,7 @@
     view.innerHTML = `<h1>My Portfolio</h1><p class="sub">Your Trading 212 account (read-only) plus any holdings you add by hand, with a live rating and exit check on every position.</p>
       <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
-        <div id="pret" class="ret-grid">${skeleton(2)}</div>
+        <div id="pret" class="ret-grid ret7">${skeleton(2)}</div>
         <div class="card-head" style="margin-top:16px;flex-wrap:wrap"><h2 style="margin:0">Money invested vs value</h2>
           <div class="seg" id="vrng"><button data-r="1M">1M</button><button data-r="6M">6M</button><button data-r="1Y">1Y</button><button data-r="5Y">5Y</button><button data-r="Max" class="on">Max</button></div></div>
         <div class="chart-box" id="vchart" style="height:320px">${skeleton(8)}</div>
@@ -567,9 +570,11 @@
         <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
         <div class="grid" style="align-content:start">
           <div class="card" id="link">${skeleton(4)}</div>
+          <div class="card"><div class="card-head"><h2>Risk check</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
           <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
         </div>
       </div>
+      <div class="card" style="margin-top:16px" id="journalCard"><div class="card-head"><h2>Trade journal</h2>${rf("journal")}</div><div id="journal"><p class="muted">Link Trading 212 to see your closed trades, win rate and average win and loss.</p></div></div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><h2>Add a holding manually</h2><p class="muted" style="margin-top:-6px">For shares held outside Trading 212, or to plan before you link. Stored only in this browser.</p>
           <form class="form" id="mform"><div class="form-row">
@@ -580,9 +585,12 @@
             <button class="btn primary" type="submit">Add</button></div></form></div>
         <div class="card"><h2>Risk settings</h2><form class="form" id="sform"><div class="form-row">
           <label class="field">Risk per trade %<input name="riskPct" type="number" step="0.1" min="0.1" max="10" value="${settings().riskPct}"></label>
+          <label class="field">Max position %<input name="maxPosPct" type="number" step="1" min="1" max="100" value="${settings().maxPosPct || 25}"></label>
+          <label class="field">Max open risk %<input name="maxHeatPct" type="number" step="0.5" min="0.5" max="50" value="${settings().maxHeatPct || 6}"></label>
           <label class="field">Account size (if not linked)<input name="account" type="number" step="100" min="0" value="${settings().account}"></label>
+          <label class="field">Account currency (if not linked)<select name="ccy">${["USD", "EUR", "GBP", "CHF"].map((c) => `<option ${c === (settings().ccy || "USD") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
           <button class="btn" type="submit">Save</button></div>
-          <p class="muted" style="margin:0;font-size:13px">Pros risk 0.5–2% of the account per trade. Every entry plan sizes the position from this number.</p></form></div>
+          <p class="muted" style="margin:0;font-size:13px">Pros risk 0.5–2% of the account per trade and keep total open risk under about 6%. Every order ticket is sized from these numbers.</p></form></div>
       </div>`;
 
     $("#mform").addEventListener("submit", (e) => {
@@ -594,7 +602,7 @@
     });
     $("#sform").addEventListener("submit", (e) => {
       e.preventDefault(); const fd = new FormData(e.target);
-      store.set("settings", Object.assign(settings(), { riskPct: +fd.get("riskPct"), account: +fd.get("account") })); toast("Saved");
+      store.set("settings", Object.assign(settings(), { riskPct: +fd.get("riskPct"), account: +fd.get("account"), maxPosPct: +fd.get("maxPosPct"), maxHeatPct: +fd.get("maxHeatPct"), ccy: fd.get("ccy") })); toast("Saved");
     });
 
     const t212 = await getT212(true).catch(() => null);
@@ -603,6 +611,8 @@
     RF.pos = () => pages.portfolio("", new URLSearchParams());
     if (!$("#pstats")) return;
     RF.hist = () => loadHistory(state.t212);
+    RF.journal = () => (window.Trade && state.t212 && !state.t212.error ? window.Trade.journal($("#journal")) : null);
+    if (t212 && !t212.error && window.Trade) window.Trade.journal($("#journal")).then(() => stamp("journal"));
     loadHistory(t212).then(() => stamp("hist"));
 
     const t = t212 && !t212.error ? t212 : null;
@@ -617,17 +627,26 @@
       p.mv = p.value != null ? p.value : (p.qty || 0) * (p.price || 0);
       p.plPct = p.avgPrice ? 100 * ((p.price || 0) / p.avgPrice - 1) : null;
       if (p.source === "Manual") p.ppl = (p.qty || 0) * ((p.price || 0) - p.avgPrice);
-      const stop = q.atr && p.avgPrice ? Math.max(p.avgPrice - 2 * q.atr, (q.sma50 || 0) * 0.97) : null;
+      const trail = q.chandelier; // highest close of the last 22 days minus 3 ATR
+      const samePx = q.price && p.price && Math.abs(q.price / p.price - 1) < 0.2; // same units (pence vs pounds guard)
       p.alert = !q.price ? "" : q.rating === "Strong Sell" || q.rating === "Sell" ? "Rating turned " + q.rating
-        : q.entryStatus === "Avoid" ? "In a downtrend" : stop && q.price < stop ? "Below trailing stop " + fmt(stop, dp(stop))
+        : q.entryStatus === "Avoid" ? "In a downtrend" : trail && samePx && q.price < trail ? "Below trailing stop " + fmt(trail, dp(trail))
+        : q.earnings && q.earnings.days <= 7 ? "Earnings in " + q.earnings.days + "d: gap risk"
         : q.rsi > 75 ? "Overbought: consider taking profit" : p.plPct > 20 && q.price < q.sma20 ? "Lost 20-day avg: protect gains" : "OK";
     }
+    const acctR = window.Trade ? await window.Trade.account() : null;
+    const uni = await getUniverse().catch(() => ({ stocks: {}, etfs: {} }));
+    const secMap = {};
+    for (const grp of ["stocks", "etfs"]) for (const [sec, list] of Object.entries(uni[grp] || {})) list.forEach((x) => (secMap[x] = secMap[x] || sec));
+    const R = acctR && positions.length ? await window.Trade.risk(positions, acctR, (s) => secMap[s] || "Other") : null;
+    for (const p of positions) if (p.unprotected && p.alert === "OK") p.alert = "No stop order";
     const ccy = t ? t.currency : "USD";
     const invested = positions.reduce((a, p) => a + (p.avgPrice || 0) * (p.qty || 0), 0);
     const total = t ? (t.cash.total || 0) + manual().reduce((a, p) => a + p.qty * (Q[p.symbol] ? Q[p.symbol].price : p.avgPrice), 0) : positions.reduce((a, p) => a + p.mv, 0);
     const ppl = (t && t.cash.ppl != null ? t.cash.ppl : positions.filter((p) => p.source === "Trading 212").reduce((a, p) => a + (p.ppl || 0), 0)) +
       positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
+    if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     $("#pstats").innerHTML = `
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${t ? "Trading 212 " + esc(t.env) + (manual().length ? " + manual" : "") : "manual holdings"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
@@ -646,6 +665,8 @@
       { key: "avg", label: "Avg", r: true, sm: true, val: (p) => p.avgPrice, html: (p) => fmt(p.avgPrice, dp(p.avgPrice)) },
       { key: "price", label: "Price", r: true, val: (p) => p.price, html: (p) => fmt(p.price, dp(p.price)) },
       { key: "pl", label: "P/L", r: true, val: (p) => p.plPct, html: (p) => `<span class="${cls(p.plPct)}">${pct(p.plPct)}</span><span class="nm ${cls(p.ppl)}">${p.ppl != null ? (p.ppl >= 0 ? "+" : "") + fmt(p.ppl, 2) : ""}</span>` },
+      { key: "stop", label: "Stop", r: true, sm: true, val: (p) => p.stopOrder || p.suggestedStop, html: (p) => p.stopOrder ? `<span class="num">${fmt(p.stopOrder, dp(p.stopOrder))}</span><span class="nm">T212 stop order</span>`
+        : p.suggestedStop ? `<span class="num ${p.unprotected ? "down" : "muted"}">${fmt(p.suggestedStop, dp(p.suggestedStop))}</span><span class="nm">${p.unprotected ? "⚠ none set · suggested" : "suggested"}</span>` : "–" },
       { key: "rating", label: "Rating", val: (p) => p.q.score, html: (p) => ratingBadge(p.q.rating) },
       { key: "alert", label: "Check", val: (p) => (p.alert === "OK" ? 0 : 1), html: (p) => p.alert === "OK" ? `<span class="muted">✓ OK</span>` : p.alert ? `<span class="badge e-wait">${esc(p.alert)}</span>` : "" },
       { key: "x", label: "", val: () => 0, html: (p) => p.source === "Manual" ? `<button class="btn sm danger" data-del="${p.idx}" aria-label="Remove">✕</button>` : "" },
@@ -656,6 +677,7 @@
 
     // allocation donut: top 7 + Other, fixed color order
     const colors = [1, 2, 3, 4, 5, 6, 7].map((i) => `var(--series-${i})`);
+    positions.forEach((p) => { if (p.valueAcct) p.mv = p.valueAcct; }); // weights in the account currency
     const sorted = positions.filter((p) => p.mv > 0).sort((a, b) => b.mv - a.mv);
     let items = sorted.slice(0, 7).map((p, i) => ({ label: p.symbol, value: p.mv, color: colors[i] }));
     const rest = sorted.slice(7).reduce((a, p) => a + p.mv, 0);
@@ -665,7 +687,7 @@
     const mixed = new Set(positions.map((p) => p.currency || p.q.currency).filter(Boolean)).size > 1;
     $("#alloc").innerHTML = `<div class="donut-wrap"><div id="allocPie" style="width:200px;height:200px;flex:0 0 auto"></div>
       <ul class="donut-legend">${items.map((it) => `<li><span><i style="background:${it.color}"></i>${esc(it.label)}</span><span class="num">${(100 * it.value / tot).toFixed(1)}%</span></li>`).join("")}</ul></div>
-      ${mixed ? `<p class="muted" style="font-size:12px">Holdings trade in different currencies, so weights are approximate.</p>` : ""}`;
+      ${mixed && !R ? `<p class="muted" style="font-size:12px">Holdings trade in different currencies, so weights are approximate.</p>` : ""}`;
     const pie = PRO ? PRO.AllocPie($("#allocPie"), items, items.length + " slices", "by value") : (($("#allocPie").innerHTML = donut(items, 200, items.length + " slices", "by value")), null);
     if (pie) { const prev = current; current = () => { prev && prev(); pie.destroy(); }; }
   };
@@ -699,7 +721,7 @@
       const cut = days ? new Date(Date.parse(h.dates[h.dates.length - 1]) - days * 86400000).toISOString().slice(0, 10) : "";
       let from = days ? h.dates.findIndex((d) => d >= cut) : 0;
       const firstHeld = h.value.findIndex((v) => v > 0);
-      from = Math.max(from, firstHeld > 0 ? firstHeld - 1 : 0);
+      from = Math.max(from, firstHeld > 0 ? firstHeld : 0);
       if (vc) vc.destroy();
       vc = TChart.ValueChart($("#vchart"), h, { from, money: (v) => m(v).replace(/\.\d+$/, "") });
     };
@@ -747,11 +769,12 @@
 
   // ------------------------------------------------------------ market map (ECharts treemap)
   pages.map = async function () {
-    const f = Object.assign({ group: "stocks", metric: "changePct" }, store.get("mapf", {}));
+    const f = Object.assign({ group: "stocks", metric: "changePct", view: "map" }, store.get("mapf", {}));
     view.innerHTML = `<div class="card-head" style="margin-bottom:4px"><h1 style="margin:0"><i data-lucide="layout-grid" class="ico"></i> Market Map</h1>${rf("map")}</div>
       <p class="sub">Every tracked stock and ETF at a glance, grouped by sector. Bigger tiles trade more money each day; colour shows the move. Click a tile for the full analysis.</p>
       <div class="toolbar">
         <div class="seg" id="mGrp"><button data-g="stocks">Stocks</button><button data-g="etfs">ETFs</button><button data-g="all">All</button></div>
+        <div class="seg" id="mView"><button data-v="map">Map</button><button data-v="list">List</button></div>
         <div class="seg" id="mMet"><button data-m="changePct">Today</button><button data-m="ret1m">1 month</button><button data-m="ret3m">3 months</button><button data-m="score">Signal score</button></div>
         <span class="scale-bar"><span id="scaleLo"></span><i></i><span id="scaleHi"></span></span>
       </div>
@@ -768,12 +791,21 @@
       let data = rows.filter((r) => f.group === "all" || r.group === f.group);
       if (f.group === "all") { const seen = new Set(); data = data.filter((r) => !seen.has(r.symbol) && seen.add(r.symbol)); }
       if (mm) mm.destroy();
+      mm = null;
+      $$("#mView button").forEach((b) => b.classList.toggle("on", b.dataset.v === f.view));
       $("#mapBox").innerHTML = "";
+      $("#mapBox").classList.toggle("as-list", f.view === "list");
+      if (f.view === "list") {
+        const m = { changePct: COLS.chg, ret1m: COLS.m1, ret3m: COLS.m3, score: COLS.score }[f.metric];
+        sortableTable($("#mapBox"), data, [COLS.sym, COLS.price, m, COLS.rating, COLS.sector], { sort: m.key });
+        return;
+      }
       mm = PRO ? PRO.MarketMap($("#mapBox"), data, f.metric, (sym) => (location.hash = "#/stock/" + encodeURIComponent(sym)))
         : (($("#mapBox").innerHTML = `<p class="empty">Map needs the ECharts library (dashboard/static/vendor).</p>`), null);
     };
     $$("#mGrp button").forEach((b) => b.addEventListener("click", () => { f.group = b.dataset.g; paint(); }));
     $$("#mMet button").forEach((b) => b.addEventListener("click", () => { f.metric = b.dataset.m; paint(); }));
+    $$("#mView button").forEach((b) => b.addEventListener("click", () => { f.view = b.dataset.v; paint(); }));
     RF.map = async () => { rows = await getScreener(true); paint(); };
     current = () => mm && mm.destroy();
     paint(); stamp("map");
@@ -800,6 +832,7 @@
         <h2 style="margin:0 12px 0 0">Candidates</h2>
         <select id="rTheme" aria-label="Theme"><option value="">All themes</option></select>
         <select id="rStage" aria-label="Stage"><option value="">All stages</option><option>Launch pattern</option><option>Building</option><option>Not yet</option><option>Extended</option><option>Late: already ran</option></select>
+        <label class="check"><input type="checkbox" id="rLeg"> Include the legends</label>
         <div class="seg" id="rSort"><button data-s="score">Radar score</button><button data-s="similarity">Pattern match</button><button data-s="growth">Growth</button><button data-s="upside">Analyst upside</button></div>
       </div>
       <div class="cand-grid" id="cands">${[1, 2, 3].map(() => `<div class="card">${skeleton(8)}</div>`).join("")}</div>
@@ -819,13 +852,13 @@
     };
     RF.radar = load;
     const paint = () => {
-      const C = data.candidates, W = data.winners;
+      const W = data.winners, C = data.candidates.filter((x) => !x.isPastWinner); // the legends aren't "the next" one
       $("#nScan").textContent = C.length;
       const launch = C.filter((x) => x.stage === "Launch pattern");
       $("#aiStats").innerHTML = `<div><b data-count="${C.length}" data-fmt="int">${C.length}</b><span>stocks scanned</span></div><div><b>${W.length}</b><span>legends learned</span></div>
         <div><b data-count="${launch.length}" data-fmt="int">${launch.length}</b><span>show the launch pattern</span></div><div><b>${esc(C[0].symbol)}</b><span>top score (${C[0].score})</span></div>`;
       $("#scope").innerHTML = TChart.radarScope(C.slice(0, 24)) + `<p class="muted scope-cap">Closer to the centre = higher score · green = 75+</p>`;
-      $("#legends").innerHTML = W.map((w) => `<a class="card legend" href="#/stock/${encodeURIComponent(w.symbol)}">
+      $("#legends").innerHTML = W.map((w) => `<a class="card legend-card" href="#/stock/${encodeURIComponent(w.symbol)}">
         <div class="card-head" style="margin-bottom:4px"><span class="sym" style="font-size:17px">${esc(w.symbol)}</span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
         <div class="muted" style="font-size:12px">Launch signal ${new Date(w.date + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", year: "numeric" })} at ${fmt(w.price, 2)}</div>
         ${TChart.legendPath(w.path)}
@@ -841,7 +874,7 @@
       $("#rTheme").value = f.theme; $("#rStage").value = f.stage;
       $$("#rSort button").forEach((b) => b.classList.toggle("on", b.dataset.s === f.sort));
       $$("#heat .heat-tile").forEach((b) => b.classList.toggle("on", b.dataset.theme === f.theme));
-      const rows = data.candidates.filter((x) => (!f.theme || x.theme === f.theme) && (!f.stage || x.stage === f.stage))
+      const rows = data.candidates.filter((x) => (f.legends || !x.isPastWinner) && (!f.theme || x.theme === f.theme) && (!f.stage || x.stage === f.stage))
         .sort((a, b) => (b[f.sort] ?? -999) - (a[f.sort] ?? -999));
       $("#cands").innerHTML = rows.map((x, i) => candCard(x, i + 1)).join("") || `<div class="card empty">No stocks match these filters.</div>`;
       $$("#cands [data-open]").forEach((b) => b.addEventListener("click", () => openDetail(b.dataset.open, b)));
@@ -862,24 +895,27 @@
       ${bar("Pattern match", x.similarity)}${x.growth == null ? `<div class="mbar"><span>Growth</span><i></i><em class="muted" title="Not enough earnings data">n/a</em></div>` : bar("Growth", x.growth)}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 6px"><span class="badge ${stageCls(x.stage)}">${esc(x.stage)}</span>${x.upside != null ? `<span class="badge ${x.upside >= 0 ? "b-buy" : "b-sell"}">Analysts ${pct(x.upside, 0)}</span>` : ""}</div>
       <p class="sec" style="font-size:12.5px;margin:4px 0">Matches the legends on: ${x.matches.map(esc).join(", ")}</p>
-      <button class="btn sm" data-open="${esc(x.symbol)}" style="width:100%;margin-top:6px">Compare with the legends ▾</button>
+      <button class="btn sm" type="button" aria-expanded="false" data-open="${esc(x.symbol)}" style="width:100%;margin-top:6px">Compare with the legends ▾</button>
       <div class="cand-detail" hidden></div></div>`;
     const openDetail = (sym, btn) => {
       const x = data.candidates.find((c) => c.symbol === sym);
       const box = btn.nextElementSibling;
       const card = btn.closest(".cand");
-      if (!box.hidden) { box.hidden = true; card.classList.remove("open"); btn.textContent = "Compare with the legends ▾"; return; }
+      if (!box.hidden) { box.hidden = true; card.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); btn.textContent = "Compare with the legends ▾"; return; }
       const ap = TChart.analogPaths(x.price, data.winners);
       box.innerHTML = `<div class="detail-grid"><div><h3 class="h3" style="margin-top:12px">Fingerprint vs the legends at launch</h3>${TChart.spider(data.features, x.features, data.profile, 300)}
         <div class="legend"><span><i style="background:var(--series-1)"></i>${esc(x.symbol)} today</span><span style="color:var(--series-2)"><i class="dash"></i>Legends at launch</span></div>
         <p class="muted" style="font-size:12px">Furthest from the legends: ${x.differs.map(esc).join(", ")}.</p>
         ${x.growthWhy.length ? `<h3 class="h3" style="margin-top:12px">Growth check</h3><ul class="reasons">${x.growthWhy.map((g) => `<li class="${g.ok ? "" : "no"}">${esc(g.text)}</li>`).join("")}</ul>` : ""}</div>
         <div><h3 class="h3" style="margin-top:12px">What if ${esc(x.symbol)} repeated a legend's next 12 months?</h3>${ap.svg}
+        <div class="legend">${data.winners.map((w, j) => `<span><i style="background:var(--series-${(j % 8) + 1})"></i>${esc(w.symbol)} ${w.path[w.path.length - 1] >= 1 ? "+" : ""}${Math.round((w.path[w.path.length - 1] - 1) * 100)}%</span>`).join("")}<span><i class="dash" style="color:var(--text-primary)"></i>Median</span></div>
         <p class="muted" style="font-size:12px">Each line takes today's price along one legend's actual 12 months after its launch signal. The median legend path ends at ${pct(100 * (ap.median - 1), 0)}. Hypothetical: it shows what the legends did, not what ${esc(x.symbol)} will do.</p></div></div>`;
-      box.hidden = false; card.classList.add("open"); card.scrollIntoView({ behavior: "smooth", block: "nearest" }); btn.textContent = "Hide comparison ▴";
+      box.hidden = false; card.classList.add("open"); card.scrollIntoView({ behavior: "smooth", block: "nearest" }); btn.textContent = "Hide comparison ▴"; btn.setAttribute("aria-expanded", "true");
     };
     $("#rTheme").addEventListener("change", (e) => { f.theme = e.target.value; cards(); });
     $("#rStage").addEventListener("change", (e) => { f.stage = e.target.value; cards(); });
+    $("#rLeg").checked = !!f.legends;
+    $("#rLeg").addEventListener("change", (e) => { f.legends = e.target.checked; cards(); });
     $$("#rSort button").forEach((b) => b.addEventListener("click", () => { f.sort = b.dataset.s; cards(); }));
     try { await load(); stamp("radar"); }
     catch (e) { $("#scope") && ($("#scope").innerHTML = `<p class="error">${esc(e.message)}</p>`); }
@@ -899,11 +935,16 @@
     const mine = [...new Set([...t, ...manual().map((p) => p.symbol), ...watchlist()])];
     view.innerHTML = `<h1>Trading News</h1><p class="sub">Headlines for your holdings and watchlist, or the whole market. Tagged by type so earnings, analyst calls and deals stand out.</p>
       <div class="toolbar"><div class="seg" id="ns"><button data-s="mine" class="on">My stocks</button><button data-s="market">Market</button></div>
-        <input type="text" id="nsym" placeholder="Ticker, e.g. AMD" aria-label="News for ticker" style="width:150px"><button class="btn sm" id="ngo">Show</button>
+        <input type="text" id="nsym" placeholder="Ticker, e.g. AMD" aria-label="News for ticker" style="width:150px"><button class="btn" id="ngo" type="button">Show</button>
         <select id="ntag" aria-label="Filter by type"><option value="">All types</option><option value="earnings">Earnings</option><option value="analyst">Analyst</option><option value="deal">Deals</option><option value="legal">Legal</option><option value="macro">Macro</option></select>${rf("news")}</div>
       <div id="nl" class="news-list">${skeleton(10)}</div>`;
     let items = [];
-    const paint = () => { const tag = $("#ntag").value; $("#nl").innerHTML = newsHtml(tag ? items.filter((n) => n.tags.includes(tag)) : items); };
+    let shown = 20;
+    const paint = () => {
+      const tag = $("#ntag").value, list = tag ? items.filter((n) => n.tags.includes(tag)) : items;
+      $("#nl").innerHTML = newsHtml(list.slice(0, shown)) + (list.length > shown ? `<button class="btn" id="nMore" type="button">Load more (${list.length - shown})</button>` : "");
+      const more = $("#nMore"); if (more) more.addEventListener("click", () => { shown += 20; paint(); });
+    };
     let last = [];
     const load = async (syms) => {
       last = syms;
@@ -930,11 +971,25 @@
     const [path, qs] = (location.hash.replace(/^#\/?/, "") || "").split("?");
     const [name, arg] = path.split("/");
     const page = pages[name || "home"] ? name || "home" : "home";
-    $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === page));
+    const tab = { stock: "markets" }[page] || page;
+    $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
+    const first = routeId === 1;
     try { await pages[page](arg, new URLSearchParams(qs || "")); }
     catch (e) { view.innerHTML = `<div class="card empty"><h2>Something went wrong</h2><p class="error">${esc(e.message)}</p><p>Is the dashboard server still running?</p></div>`; }
+    finally {
+      const h = $("h1", view);
+      document.title = (h ? h.textContent.replace(/[★]/g, "").trim() + " · " : "") + "TraderDash";
+      if (window.Trade) window.Trade.badge();
+      if (!first) view.focus({ preventScroll: true });
+    }
   }
+  new MutationObserver(() => {
+    $$(".seg button, .heat-tile").forEach((b) => { const v = b.classList.contains("on") ? "true" : "false"; if (b.getAttribute("aria-pressed") !== v) b.setAttribute("aria-pressed", v); });
+    $$("button:not([type])").forEach((b) => { if (!b.closest("form")) b.setAttribute("type", "button"); });
+  }).observe(view, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  // shared with trade.js (order ticket, alerts, risk, journal, backtest)
+  window.TD = { api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
   window.addEventListener("hashchange", route);
   route();
   loadStrip().catch(() => {});

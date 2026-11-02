@@ -47,6 +47,23 @@ T212_API_KEY=... T212_API_SECRET=... T212_ENV=live python3 dashboard/server.py
 
 The API works for Trading 212 **Invest** and **Stocks ISA** accounts (not CFD).
 
+## Trading tools
+
+| Tool | Where | What it does |
+| --- | --- | --- |
+| **Order ticket** | Stock page, Strong Buys cards | Shares sized to your risk % in your account currency (FX and pence converted), capped at your max position size and halved on an amber market. Shows cost, max loss, both targets, warnings (free cash, earnings, weak market, limit above price) and the exact steps for Trading 212. Copy it in one tap. Never sent anywhere |
+| **Market mood** | Dashboard, header chip | Green / amber / red from the S&P 500 and Nasdaq 100 vs their 50/200-day averages and the VIX. Red puts new "Buy" verdicts on hold; amber halves suggested size |
+| **Earnings warning** | Every signal, position and ticket | Next report date (Nasdaq.com, US stocks). Within 7 days a buy becomes "Wait: earnings" |
+| **Signal backtest** | Stock page | Replays the same buy rules over 5 years on that stock: % that hit 2R, win rate, average R per trade, hold time, running total |
+| **Risk check** | Portfolio | Money lost if every stop hits (vs your max open risk), positions with no stop order in Trading 212, largest position, biggest sector, cash |
+| **Stop column** | Portfolio | Your Trading 212 stop order, or a suggested trailing stop (highest close of 22 days minus 3 ATR) flagged "none set" |
+| **Trade journal** | Portfolio | Closed trades from your Trading 212 history (first-in first-out): win rate, average win and loss, per-trade average, profit factor, hold time, by month |
+| **Price alerts** | Bell icon, stock page, ticket | Alert above/below a price; checked every minute while the dashboard is open, with a browser notification |
+
+Risk settings (Portfolio page): risk per trade %, max position %, max open risk %,
+account size and currency when Trading 212 isn't linked. Give your Trading 212
+API key the **orders: read** permission so the stop check can see your stop orders.
+
 ## How the rating works
 
 Each stock earns points for: price above its 20, 50 and 200-day averages; the
@@ -62,15 +79,20 @@ an up day on above-average volume. The score is 0 to 100:
 | 22 to 39 | Sell |
 | under 22 | Strong Sell |
 
+A check that can't be computed yet (a recent listing has no 200-day average)
+is left out rather than counted as failed. Relative strength is measured
+against the stock's home index (S&P 500, FTSE 100, DAX, CAC 40, AEX...).
 Each stock page lists every check it passed and failed, so nothing is hidden.
 
 ## Best moment to buy
 
 | Verdict | Meaning |
 | --- | --- |
-| **Buy now: breakout** | Closed above the 20-day high on 1.3x+ normal volume |
+| **Buy now: breakout** | Above the 20-day high on 1.3x+ normal volume (scaled to the time of day), score 55+, not stretched |
 | **Buy zone: pullback** | An uptrend pulled back to its 20-day average: buying near support keeps the stop close |
-| **Wait: extended** | Ran too far above the 20-day average or RSI above 72. Suggests a limit price to wait for |
+| **Wait: extended** | Ran too far above the 20-day average or RSI above 72. Suggests a limit price, always below the market |
+| **Wait: earnings** | A buy setup, but earnings are due within 7 days |
+| **Watch: market weak** | A buy setup, but the market light is red |
 | **Watch** | Trend fine, price between levels. Shows the pullback and breakout prices to wait for |
 | **Avoid** | Downtrend (below the 50-day, which is below the 200-day) |
 
@@ -80,7 +102,8 @@ size = (account × risk %) ÷ (entry − stop).
 
 ## Forecast, P/E and earnings
 
-- **Forecast cone**: the last 6 months' price trend (halved, since trends fade)
+- **Forecast cone**: the last 6 months' price trend (halved and capped at about
+  ±10% a year, since trends fade)
   projected 3 months ahead, with ranges from recent volatility: the darker band
   holds about 68% of outcomes, the lighter one 95%. It is a statistical range,
   not a prediction.

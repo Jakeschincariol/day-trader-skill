@@ -42,10 +42,14 @@ class Rating(unittest.TestCase):
     def setUp(self):
         self._get = srv.get_bars
         self._spy = srv.spy_return_63
+        self._earn, self._reg = srv.next_earnings, srv.market_regime
+        srv.next_earnings = lambda s, wait=True: None
+        srv.market_regime = lambda: {"level": "green", "label": "ok", "notes": []}
 
     def tearDown(self):
         srv.get_bars = self._get
         srv.spy_return_63 = self._spy
+        srv.next_earnings, srv.market_regime = self._earn, self._reg
 
     def run_on(self, closes, spy=0.0):
         srv.get_bars = lambda s, rng="2y": fake_bars(closes)
@@ -110,11 +114,23 @@ class Trading212(unittest.TestCase):
         self.assertEqual(out["positions"][0]["symbol"], "VUSA.L")
         self.assertEqual(out["positions"][0]["qty"], 2)
 
-    def test_no_order_endpoints(self):
+    def test_trading212_is_read_only(self):
+        # every Trading 212 call goes through t212_get, which only ever sends GET requests
         with open(os.path.join(ROOT, "dashboard", "server.py")) as fh:
             src = fh.read()
-        self.assertNotIn("/equity/orders", src)
-        self.assertNotIn("urlopen(req, data", src)
+        for bad in ("/equity/orders/limit", "/equity/orders/market", "/equity/orders/stop", "method=\"POST\"",
+                    "method=\"DELETE\"", "urlopen(req, data", "data=json"):
+            self.assertNotIn(bad, src)
+        seen = []
+        old = srv.http_get
+        srv.http_get = lambda url, headers=None, timeout=20: seen.append(url) or {}
+        srv.T212.update(key="k", secret="s", env="demo")
+        try:
+            srv.t212_get("/equity/orders")
+        finally:
+            srv.http_get = old
+            srv.T212.update(key=None, secret=None)
+        self.assertEqual(seen, ["https://demo.trading212.com/api/v0/equity/orders"])
 
     def test_keys_file_is_git_ignored(self):
         with open(os.path.join(ROOT, ".gitignore")) as fh:
@@ -296,6 +312,102 @@ class Vendor(unittest.TestCase):
             text = fh.read()
         for name in ("Lightweight Charts", "ECharts", "CountUp", "Lucide", "Inter", "JetBrains Mono"):
             self.assertIn(name, text)
+
+
+class Rules(unittest.TestCase):
+    def ind(self, closes, vol=1e6, last_vol=None):
+        bars = fake_bars(closes, vol)["bars"]
+        if last_vol is not None:
+            bars[-1]["v"] = last_vol
+        return srv.indicators(bars)
+
+    def test_missing_history_does_not_cost_points(self):
+        res = srv.rule(self.ind([100 + i * 0.5 for i in range(80)]), 79)  # too short for a 200-day average
+        texts = " ".join(x["text"] for x in res["reasons"])
+        self.assertNotIn("200-day", texts)
+        self.assertNotIn("golden cross", texts)
+
+    def test_extended_limit_is_always_below_the_price(self):
+        closes = [100 * 1.002 ** i for i in range(250)] + [100 * 1.002 ** 250 * (1.03 ** k) for k in range(1, 11)]
+        res = srv.rule(self.ind(closes), len(closes) - 1)
+        self.assertTrue(res["status"].startswith("Wait"))
+        self.assertLess(res["plan"]["entry"], closes[-1])
+
+    def test_breakout_needs_volume_and_a_decent_score(self):
+        closes = [100.0 + (i % 5) * 0.2 for i in range(260)] + [103.0]
+        quiet = srv.rule(self.ind(closes), len(closes) - 1)
+        self.assertNotEqual(quiet["status"], "Buy now: breakout")
+
+    def test_volume_uses_completed_days_only(self):
+        ind = self.ind([100.0] * 40, vol=1000, last_vol=5000)
+        self.assertEqual(ind["vprev"][-1], 1000)
+
+    def test_backtest_produces_r_multiples(self):
+        import math as _m
+        closes = [100 * 1.0015 ** i * (1 + 0.06 * _m.sin(i / 5.0)) for i in range(700)]  # uptrend with regular pullbacks
+        old, old_b = srv.get_bars, srv.bench_by_day
+        srv.get_bars = lambda s, rng="2y": fake_bars(closes)
+        srv.bench_by_day = lambda s, rng="2y": ("SPY", {})
+        try:
+            srv._cache.pop(("backtest", "ZZBT", 40), None)
+            b = srv.backtest("ZZBT")
+        finally:
+            srv.get_bars, srv.bench_by_day = old, old_b
+        self.assertGreater(b["n"], 0)
+        for t in b["trades"]:
+            self.assertGreaterEqual(t["R"], -3)  # a stop can gap, but not absurdly
+        self.assertEqual(len(b["equity"]), b["n"])
+
+
+class Journal(unittest.TestCase):
+    def test_fifo_pairs_buys_and_sells(self):
+        old = srv.t212_orders
+        srv.t212_orders = lambda: ([
+            {"id": "1", "symbol": "AAA", "ts": 1700000000, "qty": 10, "price": 10.0},
+            {"id": "2", "symbol": "AAA", "ts": 1700086400, "qty": 10, "price": 20.0},
+            {"id": "3", "symbol": "AAA", "ts": 1700864000, "qty": -15, "price": 30.0},
+            {"id": "4", "symbol": "BBB", "ts": 1700000000, "qty": -5, "price": 9.0},  # sell without a known buy
+        ], True)
+        try:
+            j = srv.trade_journal()
+        finally:
+            srv.t212_orders = old
+        self.assertEqual(j["stats"]["n"], 1)
+        t = j["trades"][0]
+        self.assertAlmostEqual(t["entry"], (10 * 10 + 5 * 20) / 15.0, places=3)
+        self.assertAlmostEqual(t["pnl"], 15 * 30 - 200, places=2)
+        self.assertEqual(j["openLots"], [{"symbol": "AAA", "qty": 5.0}])
+
+
+class Currency(unittest.TestCase):
+    def test_minor_units_and_same_currency(self):
+        self.assertEqual(srv.fx_rate("USD", "USD"), 1.0)
+        self.assertEqual(srv.fx_rate("GBp", "GBP"), 0.01)
+        self.assertEqual(srv.fx_rate("GBP", "GBp"), 100.0)
+
+    def test_benchmarks_by_exchange(self):
+        self.assertEqual(srv.benchmark_for("VUSA.L"), "^FTSE")
+        self.assertEqual(srv.benchmark_for("SAP.DE"), "^GDAXI")
+        self.assertEqual(srv.benchmark_for("AAPL"), "SPY")
+
+
+class Earnings(unittest.TestCase):
+    def test_no_wait_never_blocks(self):
+        import time as _t
+        old = srv.nasdaq
+        srv.nasdaq = lambda path, ttl=0, timeout=25: (_t.sleep(2), {"announcement": "Earnings announcement* for ZZZ: Jan 05, 2099"})[1]
+        srv._cache.pop(("earnings", "ZZZ"), None)
+        try:
+            t0 = _t.time()
+            self.assertIsNone(srv.next_earnings("ZZZ", wait=False))
+            self.assertLess(_t.time() - t0, 0.5)
+            srv._cache.pop(("earnings", "ZZZ"), None)
+            e = srv.next_earnings("ZZZ", wait=True)
+            self.assertEqual(e["date"], "2099-01-05")
+            self.assertGreater(e["days"], 1000)
+        finally:
+            srv.nasdaq = old
+        self.assertIsNone(srv.next_earnings("VUSA.L"))
 
 
 if __name__ == "__main__":

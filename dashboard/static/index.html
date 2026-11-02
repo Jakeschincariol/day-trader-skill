@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<a class="skip" href="#view">Skip to content</a>
 <header class="top">
   <a class="brand" href="#/">
     <img src="/icon.svg" alt="" width="26" height="26">
@@ -18,12 +19,13 @@
   <nav class="tabs" id="tabs">
     <a href="#/" data-tab="home"><i data-lucide="layout-dashboard"></i>Dashboard</a>
     <a href="#/markets" data-tab="markets"><i data-lucide="candlestick-chart"></i>Markets</a>
-    <a href="#/map" data-tab="map"><i data-lucide="layout-grid"></i>Market Map</a>
+    <a href="#/map" data-tab="map" class="hide-m"><i data-lucide="layout-grid"></i>Market Map</a>
     <a href="#/signals" data-tab="signals"><i data-lucide="flame"></i>Strong Buys</a>
     <a href="#/radar" data-tab="radar" class="tab-ai"><i data-lucide="radar"></i>AI Radar</a>
     <a href="#/portfolio" data-tab="portfolio"><i data-lucide="wallet"></i>Portfolio</a>
-    <a href="#/news" data-tab="news"><i data-lucide="newspaper"></i>News</a>
+    <a href="#/news" data-tab="news" class="hide-m"><i data-lucide="newspaper"></i>News</a>
   </nav>
+  <button class="bell" id="bell" type="button" aria-label="Price alerts"><i data-lucide="bell"></i><span id="bellCount" class="bell-count" hidden></span></button>
   <form class="search" id="search" autocomplete="off" role="search">
     <i data-lucide="search" class="search-ico"></i>
     <input id="searchInput" type="search" placeholder="Search any stock or ETF…" aria-label="Search stocks and ETFs">
@@ -40,12 +42,14 @@
 </footer>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="srStatus" class="sr-only" role="status" aria-live="polite"></div>
 <script src="/vendor/lucide.min.js"></script>
 <script src="/vendor/countup.js"></script>
 <script src="/vendor/lightweight-charts.js"></script>
 <script src="/vendor/echarts.min.js"></script>
 <script src="/chart.js"></script>
 <script src="/pro-charts.js"></script>
+<script src="/trade.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
