@@ -188,6 +188,23 @@ class DayTradeChecks(unittest.TestCase):
     def test_a_lower_price_does_not_shrink_the_risk(self):
         res = check.check([tsla()], cfg(), prices={"TSLA": 360.00}, now=at(NOW))
         self.assertEqual(res["results"][0]["entry_ref"], 364.18)
+        self.assertEqual(verdicts(res), ["PASS"])
+
+    def test_a_fresh_price_through_the_stop_blocks(self):
+        # AMZN, 2026-10-29: plan entry 248.79, stop 244.85, last 244.67. The plan's entry hid it.
+        res = check.check([tsla()], cfg(), prices={"TSLA": 358.00}, now=at(NOW))
+        self.assertEqual(verdicts(res), ["BLOCK"])
+        self.assertIn("stop: the last price 358.00 is already at or below the stop 358.32", reasons(res))
+
+    def test_a_fresh_price_through_the_target_blocks(self):
+        res = check.check([tsla()], cfg(), prices={"TSLA": 370.50}, now=at(NOW))
+        self.assertEqual(verdicts(res), ["BLOCK"])
+        self.assertIn("target: the last price 370.50 is already at or above the target 370.04", reasons(res))
+
+    def test_a_stale_price_through_the_stop_is_not_used(self):
+        res = check.check([tsla()], cfg(), prices={"TSLA": 358.00}, now=at("2026-10-19 11:30"),
+                          price_times={"TSLA": QUOTE_TIME})
+        self.assertEqual(verdicts(res), ["PASS"])
 
     def test_a_limit_order_uses_its_limit_price(self):
         o = tsla(type="limit", limit_price="364.00")
