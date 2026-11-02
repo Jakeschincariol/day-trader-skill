@@ -15,8 +15,13 @@ work around the one moment that matters, your yes:
             different stock or amount, and any order that is not READY.
   decline   records a no.
   result    records what happened after the Allow once / Deny card:
-            placed (with the broker's order id), denied, or failed.
-  fill      records a fill in trader/portfolio.json (cash and shares).
+            placed (the broker's order id is required), denied, or failed.
+  fill      records a fill in trader/portfolio.json (cash and shares). A fill
+            must name the broker order id of an order you approved and that was
+            recorded as placed; its symbol, side and qty must match that order
+            (--leg stop|target for the bracket's own exit legs). Each fill has a
+            key (broker order id + leg + --fill-id, default qty@price): the same
+            fill twice changes nothing, so a retry is safe.
   flatten   builds a sell ticket that closes a symbol's open position by
             flat_by. It still goes through trader-risk and your yes.
   log       prints today's decisions.
@@ -25,7 +30,7 @@ work around the one moment that matters, your yes:
     python3 ticket.py show --index 1 --json   # one ticket as JSON
     python3 ticket.py approve --index 1 --reply "yes"
     python3 ticket.py result --index 1 --status placed --broker-id 61e6...
-    python3 ticket.py fill --symbol TSLA --side buy --qty 8 --price 364.20
+    python3 ticket.py fill --broker-id 61e6... --symbol TSLA --side buy --qty 8 --price 364.20
     python3 ticket.py flatten --symbol TSLA --qty 8
     python3 ticket.py log
 
@@ -37,10 +42,13 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 
+BROKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{2,127}$")
+FILL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@\-]{0,127}$")
 ALPACA_FIELDS = ("symbol", "side", "qty", "notional", "type", "time_in_force", "limit_price",
                  "stop_price", "trail_price", "trail_percent", "extended_hours", "client_order_id",
                  "order_class", "take_profit_limit_price", "stop_loss_stop_price",
@@ -125,14 +133,26 @@ def read_json(path, what, required=True):
 
 
 def write_json(path, data):
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
+    """Atomic: the file is either the old one or the whole new one. Never NaN or Infinity."""
+    try:
+        blob = json.dumps(data, indent=2, allow_nan=False)
+    except ValueError as e:
+        raise TicketError("refusing to write %s: %s" % (path, e))
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, path)
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(blob + "\n")
+        os.replace(tmp, path)
+    except OSError as e:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+        raise TicketError("could not write %s: %s" % (path, e))
 
 
 def rec_day(rec):
@@ -159,10 +179,31 @@ def _str_num(v):
 
 
 def _f(x):
-    try:
-        return float(x)
-    except (TypeError, ValueError):
+    """A finite float, or None. NaN, Infinity, booleans and junk strings are not numbers here."""
+    if isinstance(x, bool):
         return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def positive(x, what, whole=False):
+    """A finite number above 0 (a whole number when whole=True), or a TicketError."""
+    v = _f(x)
+    if v is None or v <= 0:
+        raise TicketError("%s must be a finite number above 0, got %r" % (what, x))
+    if whole and abs(v - round(v)) > 1e-9:
+        raise TicketError("%s must be whole shares, got %r" % (what, x))
+    return v
+
+
+def check_broker_id(bid):
+    if not bid or not BROKER_ID.match(str(bid)):
+        raise TicketError("a broker order id is required (--broker-id, the id place_stock_order returned), got %r"
+                          % (bid,))
+    return str(bid)
 
 
 def tool_input(order):
@@ -391,19 +432,31 @@ def ticket_json(order, idx, cfg, risk, state, today):
 
 # ---------------------------------------------------------------- fills -> portfolio
 
-def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
-    """Record a filled order in trader/portfolio.json: cash and shares, with a
-    cost-basis lot per buy (oldest lots are relieved first on a sell)."""
+def load_portfolio(portfolio_path, cfg):
+    """trader/portfolio.json, or a fresh one funded with the config's budget. Numbers are checked."""
     pf = read_json(portfolio_path, "portfolio", required=False)
     if pf is None:
-        budget = cfg.get("budget")
-        if not budget:
+        budget = _f(cfg.get("budget"))
+        if not budget or budget <= 0:
             raise TicketError("no %s yet and no budget in the config to start it from" % portfolio_path)
-        pf = {"cash": float(budget), "positions": []}
+        return {"cash": budget, "positions": []}
+    if not isinstance(pf, dict) or _f(pf.get("cash")) is None:
+        raise TicketError("%s needs a finite \"cash\" number" % portfolio_path)
+    for p in pf.get("positions", []) or []:
+        if _f(p.get("shares", 0)) is None:
+            raise TicketError("%s: shares for %s is not a finite number" % (portfolio_path, p.get("ticker")))
+        for l in p.get("lots", []) or []:
+            if _f(l.get("shares")) is None or _f(l.get("cost")) is None:
+                raise TicketError("%s: a lot of %s has a bad shares or cost number" % (portfolio_path, p.get("ticker")))
+    return pf
+
+
+def apply_fill_doc(pf, symbol, side, qty, price, date):
+    """Apply one fill to a portfolio dict in memory: cash and shares, with a
+    cost-basis lot per buy (oldest lots are relieved first on a sell). Nothing is written."""
     symbol = symbol.upper()
-    qty, price = float(qty), float(price)
-    if qty <= 0 or price <= 0:
-        raise TicketError("a fill needs a positive qty and price")
+    qty = positive(qty, "the fill qty")
+    price = positive(price, "the fill price")
     cost = round(qty * price, 2)
     pos = None
     for p in pf.setdefault("positions", []):
@@ -435,18 +488,108 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
         if pos["shares"] <= 1e-9:
             pf["positions"].remove(pos)
         pf["cash"] = round(float(pf.get("cash", 0)) + cost, 2)
-    write_json(portfolio_path, pf)
     return pf
 
 
-def log_fill(state_path, now, today, symbol, side, qty, price):
-    """A fill in the log, so trader-risk can count day trades (a buy and a sell the same day)."""
-    state = load_state(state_path)
-    state.setdefault("orders", []).append({
-        "at": ny_iso(now), "date": today, "status": "filled", "symbol": symbol.upper(), "side": side,
-        "qty": _str_num(float(qty)), "price": float(price),
-        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), symbol.upper(), _p(price))})
-    write_json(state_path, state)
+def placed_order(state, broker_id):
+    """The order recorded as placed with this broker order id, or None."""
+    found = None
+    for r in state.get("orders", []):
+        if r.get("status") == "placed" and r.get("broker_order_id") == broker_id:
+            found = r
+    return found
+
+
+def was_approved(state, rec):
+    """Was there an explicit yes for this exact order (same fingerprint, same day) before it was placed?"""
+    return any(r.get("status") == "approved" and r.get("fingerprint") == rec.get("fingerprint")
+               and rec_day(r) == rec_day(rec) for r in state.get("orders", []))
+
+
+def prepare_fill(state, broker_id, symbol, side, qty, price, fill_id=None, leg=None):
+    """Check one fill against the approved, placed order it belongs to. Nothing is written.
+
+    Returns (record, duplicate): record is the "filled" log entry to add; duplicate is the
+    earlier record when this exact fill was already recorded (a safe retry)."""
+    broker_id = check_broker_id(broker_id)
+    order = placed_order(state, broker_id)
+    if order is None:
+        raise TicketError("no order was recorded as placed with broker id %s: a fill must belong to an order "
+                          "you approved and placed (ticket.py result --status placed --broker-id ...)" % broker_id)
+    if not was_approved(state, order):
+        raise TicketError("order %s has no recorded yes: a fill for an order you did not approve is not recorded"
+                          % broker_id)
+    sym = str(order.get("symbol", "")).upper()
+    if symbol and str(symbol).strip().upper() != sym:
+        raise TicketError("the fill is for %s but broker order %s is for %s" % (str(symbol).upper(), broker_id, sym))
+    order_side = str(order.get("side", "")).lower()
+    bracket = bool(order.get("bracket"))
+    if leg:
+        if not bracket or order.get("kind") != "entry":
+            raise TicketError("--leg %s is for the stop-loss or take-profit of a bracket entry; %s is not one"
+                              % (leg, broker_id))
+        want_side = "sell" if order_side == "buy" else "buy"
+    else:
+        want_side = order_side
+    if side and str(side).lower() != want_side:
+        raise TicketError("the fill is a %s but %s%s is a %s" % (side, broker_id, (" (%s leg)" % leg) if leg else "",
+                                                                 want_side))
+    qty = positive(qty, "--qty", whole=bracket)
+    price = positive(price, "--price")
+    fill_id = str(fill_id) if fill_id else "%s@%s" % (_str_num(qty), _str_num(price))
+    if not FILL_ID.match(fill_id):
+        raise TicketError("--fill-id wants letters, digits and . _ : @ -, got %r" % fill_id)
+    key = "%s|%s|%s" % (broker_id, leg or "order", fill_id)
+    fills = [r for r in state.get("orders", []) if r.get("status") == "filled" and r.get("broker_order_id") == broker_id]
+    for r in fills:
+        if r.get("fill_key") == key:
+            if abs(_f(r.get("qty")) - qty) > 1e-9 or abs(_f(r.get("price")) - price) > 1e-9:
+                raise TicketError("fill %s was already recorded with qty %s at %s; this one says %s at %s"
+                                  % (fill_id, r.get("qty"), r.get("price"), _str_num(qty), _str_num(price)))
+            return None, r
+    entry_done = sum(_f(r.get("qty")) or 0 for r in fills if not r.get("leg"))
+    if leg:
+        exited = sum(_f(r.get("qty")) or 0 for r in fills if r.get("leg"))
+        if exited + qty > entry_done + 1e-9:
+            raise TicketError("a %s-share %s fill is more than the %s shares the entry filled (%s already out)"
+                              % (_str_num(qty), leg, _str_num(entry_done), _str_num(exited)))
+    else:
+        order_qty = _f(order.get("qty"))
+        notional = _f(order.get("notional"))
+        if order_qty is not None and entry_done + qty > order_qty + 1e-9:
+            raise TicketError("fills of %s shares would be more than the %s shares of order %s (%s filled)"
+                              % (_str_num(entry_done + qty), _str_num(order_qty), broker_id, _str_num(entry_done)))
+        if order_qty is None and notional is not None:
+            done_usd = sum((_f(r.get("qty")) or 0) * (_f(r.get("price")) or 0) for r in fills if not r.get("leg"))
+            if done_usd + qty * price > notional * 1.01 + 0.01:
+                raise TicketError("fills of %s would be more than the %s of order %s"
+                                  % (_money(done_usd + qty * price), _money(notional), broker_id))
+        if order_qty is None and notional is None:
+            raise TicketError("order %s has no qty or notional in the log to check the fill against" % broker_id)
+    rec = {"status": "filled", "symbol": sym, "side": want_side, "qty": _str_num(qty), "price": price,
+           "broker_order_id": broker_id, "fill_id": fill_id, "fill_key": key, "fingerprint": order.get("fingerprint"),
+           "plain": "%s %s %s at %s" % (want_side.upper(), _str_num(qty), sym, _p(price))}
+    if leg:
+        rec["leg"] = leg
+        rec["kind"] = "exit"
+    return rec, None
+
+
+def commit_fill(state, state_path, portfolio_path, cfg, rec, now, today, extra=()):
+    """Apply a checked fill: the portfolio first, then the log (with any extra records, like the
+    placed record that came with the fill). The portfolio keeps the keys of the fills it applied,
+    so if the log write fails, a retry does not count the fill twice."""
+    pf = load_portfolio(portfolio_path, cfg)
+    applied = pf.setdefault("applied_fills", [])
+    if rec["fill_key"] not in applied:
+        apply_fill_doc(pf, rec["symbol"], rec["side"], rec["qty"], rec["price"], today)
+        applied.append(rec["fill_key"])
+        write_json(portfolio_path, pf)                 # step 1: the portfolio
+    new_state = {k: v for k, v in state.items()}
+    new_state["orders"] = list(state.get("orders", [])) + list(extra) + [dict(rec, at=ny_iso(now), date=today)]
+    write_json(state_path, new_state)                  # step 2: the order log
+    state["orders"] = new_state["orders"]
+    return pf
 
 
 # ---------------------------------------------------------------- commands
@@ -510,7 +653,8 @@ def cmd_approve(a):
     loss, stop = max_loss(order)
     rec = {"at": ny_iso(now), "date": today, "index": a.index, "fingerprint": fingerprint(order),
            "symbol": str(order.get("symbol", "")).upper(), "side": order.get("side"),
-           "qty": order.get("qty"), "kind": kind_of(order, rv), "max_loss": loss, "stop": stop,
+           "qty": order.get("qty"), "notional": order.get("notional"), "bracket": is_bracket(order),
+           "kind": kind_of(order, rv), "max_loss": loss, "stop": stop,
            "plain": plain(order), "status": "approved", "reply": a.reply,
            "paper": bool(cfg.get("paper", True)), "broker": cfg.get("broker", "alpaca")}
     state.setdefault("orders", []).append(rec)
@@ -545,27 +689,43 @@ def cmd_result(a):
     rec = latest(state, fp, today)
     if not rec or rec.get("status") != "approved":
         raise TicketError("order %d has no yes recorded today; a result can only follow an approval" % a.index)
+    if a.status == "placed":
+        bid = check_broker_id(a.broker_id)
+        if placed_order(state, bid) is not None:
+            raise TicketError("broker id %s is already recorded for another placed order" % bid)
+    elif a.filled_qty or a.filled_price:
+        raise TicketError("--filled-qty and --filled-price only go with --status placed")
+    if bool(a.filled_qty) != bool(a.filled_price):
+        raise TicketError("give both --filled-qty and --filled-price, or neither")
     new = {"at": ny_iso(now), "date": today, "index": a.index, "fingerprint": fp, "symbol": rec["symbol"],
            "side": rec["side"], "plain": rec["plain"], "status": a.status}
-    for k in ("qty", "kind", "max_loss", "stop"):
+    for k in ("qty", "notional", "bracket", "kind", "max_loss", "stop"):
         if rec.get(k) is not None:
             new[k] = rec[k]
     if a.broker_id:
-        new["broker_order_id"] = a.broker_id
+        new["broker_order_id"] = check_broker_id(a.broker_id)
     if a.note:
         new["note"] = a.note
+    if a.status == "placed" and a.filled_qty:
+        # validate the fill against the order as it will be logged, then write the portfolio and the
+        # log together: the order is never left "placed" with a fill the portfolio does not have
+        trial = dict(state, orders=list(state.get("orders", [])) + [new])
+        fill, dup = prepare_fill(trial, new["broker_order_id"], rec["symbol"], rec["side"], a.filled_qty,
+                                 a.filled_price, a.fill_id)
+        if dup is not None:
+            raise TicketError("that fill is already recorded for broker order %s" % new["broker_order_id"])
+        commit_fill(state, a.state, a.portfolio, cfg, fill, now, today, extra=[new])
+        print("Recorded order %d as placed and added the fill to %s." % (a.index, a.portfolio))
+        return 0
     state["orders"].append(new)
     write_json(a.state, state)
     print("Recorded order %d as %s." % (a.index, a.status))
-    if a.status == "placed" and a.filled_qty and a.filled_price:
-        apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], a.filled_qty, a.filled_price, today)
-        log_fill(a.state, now, today, rec["symbol"], rec["side"], a.filled_qty, a.filled_price)
-        print("Added the fill to %s." % a.portfolio)
-    elif a.status == "placed":
-        print("When it fills, record it: ticket.py fill --symbol %s --side %s --qty Q --price P"
-              % (rec["symbol"], rec["side"]))
+    if a.status == "placed":
+        print("When it fills, record it: ticket.py fill --broker-id %s --symbol %s --side %s --qty Q --price P"
+              % (new["broker_order_id"], rec["symbol"], rec["side"]))
         if rec.get("kind") == "entry" and is_bracket(order):
-            print("When the stop-loss or the take-profit fills later, record that sell the same way.")
+            print("When the stop-loss or the take-profit fills later, record that sell with the same "
+                  "--broker-id and --leg stop or --leg target.")
     return 0
 
 
@@ -575,11 +735,15 @@ def cmd_fill(a):
     date = a.date or to_eastern(now).date().isoformat()
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise TicketError("--date wants a date like 2026-10-19")
-    pf = apply_fill(a.portfolio, cfg, a.symbol, a.side, a.qty, a.price, date)
-    log_fill(a.state, now, date, a.symbol, a.side, a.qty, a.price)
-    print("Recorded %s %s %s at %s on %s in %s. Cash now %s." % (a.side, a.qty, a.symbol.upper(),
-                                                                _money(a.price), date, a.portfolio,
-                                                                _money(pf["cash"])))
+    state = load_state(a.state)
+    rec, dup = prepare_fill(state, a.broker_id, a.symbol, a.side, a.qty, a.price, a.fill_id, a.leg)
+    if dup is not None:
+        print("Already recorded: fill %s of broker order %s (%s). Nothing changed."
+              % (dup.get("fill_id"), dup.get("broker_order_id"), dup.get("plain")))
+        return 0
+    pf = commit_fill(state, a.state, a.portfolio, cfg, rec, now, date)
+    print("Recorded %s on %s in %s (broker order %s, fill %s). Cash now %s."
+          % (rec["plain"], date, a.portfolio, rec["broker_order_id"], rec["fill_id"], _money(pf["cash"])))
     return 0
 
 
@@ -588,14 +752,30 @@ def cmd_flatten(a):
     sym = a.symbol.strip().upper()
     now, today = _clock(a)
     source = "the broker, get_open_position"
+    pf = read_json(a.portfolio, "portfolio", required=False)
+    held = None
+    if pf is not None:
+        if not isinstance(pf, dict):
+            raise TicketError("%s is not a portfolio" % a.portfolio)
+        held = 0.0
+        for p in pf.get("positions", []) or []:
+            if str(p.get("ticker") or p.get("symbol") or "").upper() != sym:
+                continue
+            n = _f(p.get("shares", p.get("qty")))
+            if n is None:
+                raise TicketError("%s: the %s shares are not a finite number" % (a.portfolio, sym))
+            held += n
     if a.qty is not None:
         qty = _f(a.qty)
         if qty is None or qty <= 0:
             raise TicketError("--qty wants the number of shares you hold, like --qty 8")
+        if held is not None and qty > held + 1e-9:
+            # never sell more than the position: a sell past it would open a short
+            raise TicketError("--qty %s is more than the %s %s shares in %s. Check get_open_position %s; if "
+                              "the broker holds more, record the missing fill first (ticket.py fill)"
+                              % (_str_num(qty), _str_num(held), sym, a.portfolio, sym))
     else:
-        pf = read_json(a.portfolio, "portfolio", required=False) or {}
-        qty = sum(_f(p.get("shares", p.get("qty"))) or 0 for p in pf.get("positions", [])
-                  if str(p.get("ticker") or p.get("symbol") or "").upper() == sym)
+        qty = held or 0.0
         source = a.portfolio
         if qty <= 1e-9:
             raise TicketError("nothing to flatten: no %s shares in %s. Check the broker (get_open_position "
@@ -681,8 +861,12 @@ def main(argv=None):
     p.add_argument("--note")
     p.add_argument("--filled-qty")
     p.add_argument("--filled-price")
+    p.add_argument("--fill-id", help="the broker's id for this fill (default qty@price)")
     p.add_argument("--portfolio", default="trader/portfolio.json")
-    p = sub.add_parser("fill", help="record a fill in trader/portfolio.json")
+    p = sub.add_parser("fill", help="record a fill of a placed order in trader/portfolio.json")
+    p.add_argument("--broker-id", required=True, help="the broker order id recorded with result --status placed")
+    p.add_argument("--fill-id", help="the broker's id for this fill (default qty@price)")
+    p.add_argument("--leg", choices=["stop", "target"], help="a bracket's stop-loss or take-profit leg filled")
     p.add_argument("--symbol", required=True)
     p.add_argument("--side", required=True, choices=["buy", "sell"])
     p.add_argument("--qty", required=True)

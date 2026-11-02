@@ -1,6 +1,7 @@
 """trader-exit tests. Bars for the ATR stop reuse tests/fixtures/trader-entry/
 (TSLA's real Oct 19 2026 five-minute bars, see test_entry.py)."""
 
+import calendar
 import io
 import json
 import os
@@ -199,9 +200,12 @@ class Cli(unittest.TestCase):
         self.assertEqual((p["stop"], p["risk_per_share"], p["target"]), (359.35, 4.83, 373.84))
         self.assertEqual((p["stop_rule"], p["atr_bars"]), ("atr", 9))
         self.assertAlmostEqual(p["atr"], 3.2182, places=4)
-        code, _, err = self.plan("--stop", "atr:1.5", "--offline", TSLA, "--entry-bar", "1")
+        code, _, err = self.plan("--stop", "atr:1.5", "--offline", TSLA, "--entry-bar", "1", "--time", "9:40 AM")
         self.assertEqual(code, 1)
         self.assertIn("at least 3 closed", err)
+        code, _, err = self.plan("--stop", "atr:1.5", "--offline", TSLA, "--entry-bar", "1")
+        self.assertEqual(code, 1)                    # entry.json says 10:15 AM, which closes bar 8
+        self.assertIn("entry_bar 1 but the entry time 10:15 AM closes bar 8", err)
 
     def test_refusals_from_the_cli(self):
         self.write(os.path.join("trader", "entry.json"), dict(REEL_ENTRY, status="waiting", time=None, price=None,
@@ -268,6 +272,124 @@ class Cli(unittest.TestCase):
         code, text, _ = run(exitp, ["show"])
         self.assertEqual(code, 1)
         self.assertIn("No plan", text)
+
+
+def ts(hhmm):
+    """2026-10-19 New York time HH:MM -> the Yahoo timestamp (EDT, UTC-4)."""
+    h, m = map(int, hhmm.split(":"))
+    return calendar.timegm((2026, 10, 19, h + 4, m, 0))
+
+
+class NoLookAhead(unittest.TestCase):
+    """Fix 5: the ATR uses closed bars up to the entry and nothing after it."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        with open(TSLA) as fh:
+            self.chart = json.load(fh)
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+
+    def quote(self):
+        return self.chart["chart"]["result"][0]["indicators"]["quote"][0]
+
+    def stamps(self):
+        return self.chart["chart"]["result"][0]["timestamp"]
+
+    def save(self, name="chart.json"):
+        path = os.path.join(self.d, name)
+        with open(path, "w") as fh:
+            json.dump(self.chart, fh)
+        return path
+
+    def plan(self, path, *extra):
+        argv = ["plan", "--symbol", "TSLA", "--entry", "364.18", "--date", "2026-10-19", "--stop", "atr:1.5",
+                "--offline", path, "--now", "2026-10-19 10:16", "--json"] + list(extra)
+        return run(exitp, argv)
+
+    def test_later_bars_do_not_change_the_atr_or_the_stop(self):
+        code, text, err = self.plan(TSLA, "--entry-bar", "8")
+        self.assertEqual(code, 0, err)
+        base = json.loads(text)
+        self.assertEqual((base["stop"], base["atr_bars"]), (359.35, 9))
+        # make every bar after the entry wildly volatile, then replay with the clock long after them
+        q = self.quote()
+        for i, t in enumerate(self.stamps()):
+            if t > ts("10:10"):
+                q["high"][i], q["low"][i], q["close"][i] = 999.0, 1.0, 500.0
+        wild = self.save()
+        for extra in (["--entry-bar", "8"], ["--time", "10:15 AM"], ["--entry-bar", "8", "--now", "2026-10-19 15:00"]):
+            argv = list(extra)
+            code, text, err = run(exitp, ["plan", "--symbol", "TSLA", "--entry", "364.18", "--date", "2026-10-19",
+                                          "--stop", "atr:1.5", "--offline", wild, "--json"] + argv)
+            self.assertEqual(code, 0, (extra, err))
+            p = json.loads(text)
+            self.assertEqual((p["stop"], p["atr"], p["atr_bars"], p["entry_bar"]),
+                             (base["stop"], base["atr"], base["atr_bars"], 8), extra)
+
+    def test_the_entry_bar_is_required(self):
+        code, _, err = self.plan(TSLA)
+        self.assertEqual(code, 1)
+        self.assertIn("an atr stop needs the entry bar", err)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "plan.json")))
+
+    def test_a_bad_entry_bar(self):
+        for bad in ("-1", "78", "500"):
+            code, _, err = self.plan(TSLA, "--entry-bar=" + bad)
+            self.assertEqual(code, 1, bad)
+            self.assertIn("outside the 5m session", err)
+        for bad in ("eight", 8.5, True, "8"):
+            info = {"entry_bar": bad, "entry_time": None}
+            with self.assertRaises(exitp.PlanError, msg=repr(bad)):
+                exitp.entry_slot(info, exitp.datetime.date(2026, 10, 19), "5m")
+        code, _, err = self.plan(TSLA, "--time", "10:17 AM")
+        self.assertIn("is not the close of a 5m bar", err)
+
+    def test_an_entry_bar_that_has_not_closed(self):
+        code, _, err = self.plan(TSLA, "--entry-bar", "8", "--now", "2026-10-19 10:12")
+        self.assertEqual(code, 1)
+        self.assertIn("is not a closed bar in the data by --now", err)
+
+    def test_repeated_or_out_of_order_timestamps(self):
+        st = self.stamps()
+        i = st.index(ts("09:45"))
+        st[i] = st[i - 1]
+        code, _, err = self.plan(self.save(), "--entry-bar", "8")
+        self.assertEqual(code, 1)
+        self.assertIn("out of order or repeated", err)
+
+    def test_a_missing_bar_up_to_the_entry(self):
+        i = self.stamps().index(ts("09:50"))
+        self.quote()["close"][i] = None              # Yahoo's null bar: dropped, which leaves a gap
+        code, _, err = self.plan(self.save(), "--entry-bar", "8")
+        self.assertEqual(code, 1)
+        self.assertIn("missing 1 of the 9 bars up to the entry (first gap at 09:50)", err)
+
+    def test_bad_ohlc(self):
+        i = self.stamps().index(ts("09:40"))
+        for field, bad, why in (("high", float("nan"), "not a finite number"),
+                                ("low", float("inf"), "not a finite number"),
+                                ("close", -1.0, "not a finite number above 0"),
+                                ("high", 1.0, "not coherent")):
+            with open(TSLA) as fh:
+                self.chart = json.load(fh)
+            self.quote()[field][i] = bad
+            code, _, err = self.plan(self.save(), "--entry-bar", "8")
+            self.assertEqual(code, 1, (field, bad))
+            self.assertIn(why, err)
+            self.assertNotIn("Traceback", err)
+
+    def test_nan_and_infinite_prices_from_the_flags(self):
+        for bad in ("nan", "inf", "-inf"):
+            code, _, err = run(exitp, ["plan", "--symbol", "TSLA", "--entry=" + bad, "--stop", "pct:1",
+                                       "--now", "2026-10-19 10:16"])
+            self.assertEqual(code, 1, bad)
+            self.assertIn("finite", err)
+        code, _, err = run(exitp, ["plan", "--symbol", "TSLA", "--entry", "364.18", "--or-high", "nan",
+                                   "--or-low", "354.47", "--now", "2026-10-19 10:16"])
+        self.assertEqual(code, 1)
+        self.assertNotIn("Traceback", err)
 
 
 class SkillDoc(unittest.TestCase):

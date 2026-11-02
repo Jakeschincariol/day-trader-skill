@@ -36,7 +36,7 @@ Two yeses from the user, one PASS from the rules. No yes, no order.
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" show                     # every ticket, READY or not
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" approve --index 1 --reply "yes"
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" result --index 1 --status placed --broker-id ID --filled-qty 8 --filled-price 364.20
-python3 "${CLAUDE_SKILL_DIR}/ticket.py" fill --symbol TSLA --side sell --qty 8 --price 370.04
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" fill --broker-id ID --leg target --symbol TSLA --side sell --qty 8 --price 370.04
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" flatten --symbol TSLA --qty 8
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" log
 ```
@@ -152,17 +152,30 @@ that draft orders to Needs approval too.
    response or `get_open_position`), or `--status denied`, or `--status failed`
    with `--note`. A failed order is not retried without a new check and a new yes.
    The log keeps the entry's max loss for trader-risk's daily limit.
+   `--status placed` needs the broker's order id. With a fill, the portfolio
+   is written first and the log second; if the fill is refused, the order is
+   not recorded as placed.
+
+Fills are bound to orders. `ticket.py fill` needs `--broker-id` of an order
+you approved and that was recorded as placed; the symbol, side and qty must
+match it (no more shares than the order, no exit leg larger than what the
+entry filled). Each fill has a key (broker order id, leg, and `--fill-id`,
+by default qty@price): recording the same fill again changes nothing, so a
+retry is safe. NaN, Infinity, 0 and negative numbers are refused.
 
 ## Steps: while it is open, and out by the close
 
 - trader-alerts watches the stop, the target and the flat-by time
   (`alerts.py add --from-plan`). The bracket's own orders do the stopping.
-- When the stop-loss or the take-profit fills, record it:
-  `ticket.py fill --symbol TSLA --side sell --qty 8 --price 358.32`.
+- When the stop-loss or the take-profit fills, record it against the bracket's
+  broker order id: `ticket.py fill --broker-id <id> --leg stop --symbol TSLA
+  --side sell --qty 8 --price 358.32`.
 - By `flat_by` (15:55 New York), anything still open gets closed:
   1. Ask Alpaca how many shares are held: `get_open_position` (read only).
   2. `ticket.py flatten --symbol TSLA --qty 8` writes a market sell for those
-     shares to `trader/orders.json`.
+     shares to `trader/orders.json`. It refuses a `--qty` above the shares in
+     `trader/portfolio.json` (that sell would open a short): record any
+     missing fill first.
   3. `/trader-risk`. A sell that only closes what the user holds is never
      blocked by the daily limits or the entry window.
   4. `ticket.py show`, then the user's yes for that one order, as above.

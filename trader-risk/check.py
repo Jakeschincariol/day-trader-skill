@@ -37,8 +37,18 @@ What blocks an entry (on top):
   duplicate     the same symbol and side twice in this batch, or already
                 placed today (trader/state/broker.json)
   daily limit   max_orders_per_day orders placed today
-  stop          no stop while "require_stop": true (a bracket stop_loss_stop_price
-                or the order's plan stop); a stop on the wrong side of the entry
+  stop          no valid stop_loss_stop_price IN THE ORDER that goes to the
+                broker (a bracket or oto leg). A stop that is only in the plan
+                does not count, and "require_stop": false no longer waives it.
+                The stop must be a finite price above 0, under the entry for a
+                buy and above it for a short. Three stops are reported apart:
+                planned (plan.stop), in the order (the leg) and confirmed by
+                the broker (never: this tool cannot see the broker)
+  live          any entry on a live account ("paper": false): the broker's
+                acceptance of the stop cannot be confirmed here, so it blocks
+  price         a market entry with neither a valid plan entry nor a fresh,
+                timestamped price (under 15 minutes old, not in the future):
+                an old or undated quote is never used to measure the risk
   loss          qty x (entry - stop) over max_loss_per_trade_usd. The entry is
                 the limit price for a limit order, else the HIGHER of the plan's
                 entry and a fresh price (under 15 minutes old), so a stale plan
@@ -54,6 +64,10 @@ What blocks an entry (on top):
   pdt           only with "pdt_guard": true: 3 day trades already in the last
                 5 business days (a 4th would trip the old pattern-day-trader rule)
 
+Numbers: NaN, Infinity, booleans and non-numeric strings are never a number
+here. A bad number in an order blocks it; a bad number in the config, the
+portfolio or prices.json stops the check with an error (nothing passes).
+
 Exit code 0 when every order passes, 1 when any order is blocked.
 The verdicts go to trader/state/risk.json with a fingerprint of each order,
 so trader-broker only shows an order as ready if THIS exact order passed today.
@@ -63,6 +77,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -88,8 +103,14 @@ TICKER = re.compile(r"^[A-Z]{1,5}([.\-][A-Z]{1,2})?$")
 HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 CENT = 0.005
 FRESH_MINUTES = 15
+CLOCK_SKEW_SECONDS = 60          # a quote stamped up to a minute ahead of our clock still counts
 REF_WORDS = {"plan": "the plan's entry", "price": "the latest price", "limit": "the limit price",
-             "stop price": "the stop price", "stale price": "an old price"}
+             "stop price": "the stop price"}
+# config numbers: each must be a finite number >= 0 when set (None or absent = the default / off)
+CONFIG_NUMBERS = ("budget", "cash_buffer_pct", "max_position_pct", "max_order_usd", "min_order_usd",
+                  "max_loss_per_trade_usd", "max_daily_loss_usd", "max_trades_per_day", "max_orders_per_day",
+                  "min_reward_risk")
+STOP_CLASSES = ("bracket", "oto")  # order classes whose stop_loss leg reaches the broker with the entry
 
 NYSE_HOLIDAYS = {
     "2026-01-01": "New Year's Day",
@@ -276,10 +297,36 @@ def fingerprint(order):
 
 
 def _f(x):
-    try:
-        return float(x)
-    except (TypeError, ValueError):
+    """A finite float, or None. NaN, Infinity, booleans and junk strings are not numbers here."""
+    if isinstance(x, bool):
         return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def _strict(x, what):
+    """A finite float or a RiskError: for numbers the check cannot run without."""
+    v = _f(x)
+    if v is None:
+        raise RiskError("%s must be a finite number, got %r" % (what, x))
+    return v
+
+
+def validate_config(c):
+    """Fail closed on a limit that is not a usable number: NaN would switch a limit off silently."""
+    for k in CONFIG_NUMBERS:
+        if c.get(k) is None:
+            continue
+        v = _strict(c[k], "config %s" % k)
+        if v < 0:
+            raise RiskError("config %s must be 0 or more, got %r" % (k, c[k]))
+    if not 0 <= float(c.get("cash_buffer_pct") or 0) < 100:
+        raise RiskError("config cash_buffer_pct must be from 0 to under 100, got %r" % c.get("cash_buffer_pct"))
+    if c.get("max_position_pct") is not None and not 0 < float(c["max_position_pct"]) <= 100:
+        raise RiskError("config max_position_pct must be above 0 and at most 100, got %r" % c["max_position_pct"])
 
 
 def money(x):
@@ -301,26 +348,31 @@ def account(cfg, portfolio, prices):
     warnings = []
     if portfolio is None:
         budget = _f(cfg.get("budget"))
-        if not budget:
+        if not budget or budget <= 0:
             raise RiskError("no trader/portfolio.json and no budget in the config: "
                             "nothing to check the orders against")
         return {"cash": budget, "shares": {}, "values": {}}, warnings
+    if not isinstance(portfolio, dict):
+        raise RiskError("portfolio.json must be a JSON object")
     cash = _f(portfolio.get("cash"))
     if cash is None:
-        raise RiskError("portfolio.json needs a \"cash\" number")
+        raise RiskError("portfolio.json needs a finite \"cash\" number, got %r" % portfolio.get("cash"))
     shares, values = {}, {}
     for p in portfolio.get("positions", []):
         t = str(p.get("ticker") or p.get("symbol") or "").upper()
         if not t:
             continue
-        n = _f(p.get("shares", p.get("qty")))
-        if n is None:
-            n = sum(_f(l.get("shares")) or 0 for l in p.get("lots", []))
+        lots = p.get("lots", []) or []
+        raw = p.get("shares", p.get("qty"))
+        if raw is not None:
+            n = _strict(raw, "portfolio.json shares for %s" % t)
+        else:
+            n = sum(_strict(l.get("shares"), "portfolio.json lot shares for %s" % t) for l in lots)
         shares[t] = shares.get(t, 0) + n
         if prices.get(t):
             values[t] = shares[t] * prices[t]
         else:
-            basis = sum(_f(l.get("cost")) or 0 for l in p.get("lots", []))
+            basis = sum(_strict(l.get("cost", 0), "portfolio.json lot cost for %s" % t) for l in lots)
             values[t] = basis
             warnings.append("no price for %s: valued at its cost basis %s" % (t, money(basis)))
     return {"cash": cash, "shares": shares, "values": values}, warnings
@@ -374,10 +426,13 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     """Pure function. Returns {"results": [...], "pass": n, "block": n, "warnings": [...]}.
 
     now          naive UTC (default: the real clock); its New York date is "today"
-    price_times  {SYM: naive UTC time of that price}; None = every price counts as fresh"""
+    price_times  {SYM: naive UTC time of that price}. A price without a time is never
+                 fresh, so it is never used as the entry (None = no price has a time)"""
     c = dict(DEFAULTS)
     c.update(cfg or {})
-    prices = {str(k).upper(): float(v) for k, v in (prices or {}).items() if _f(v)}
+    validate_config(c)
+    prices = {str(k).upper(): _f(v) for k, v in (prices or {}).items() if _f(v) is not None and _f(v) > 0}
+    price_times = price_times or {}
     now_utc = now or parse_now(None)
     now_et = to_eastern(now_utc)
     today = today or now_et.date().isoformat()
@@ -405,15 +460,30 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     top_warn.extend(win_warns)
 
     def fresh(sym):
+        """(price or None, record). The record says where the price came from, its time, its
+        age in seconds, and why it was not used."""
+        rec = {"source": "trader/prices.json", "price": None, "time": None, "age_seconds": None,
+               "fresh": False, "reason": None}
         if sym not in prices:
-            return None
-        if price_times is None:
-            return prices[sym]
+            rec["reason"] = "no valid price for %s" % sym
+            return None, rec
+        rec["price"] = prices[sym]
         t = price_times.get(sym)
         if t is None:
-            return None
-        age = (now_utc - t).total_seconds()
-        return prices[sym] if -60 <= age <= FRESH_MINUTES * 60 else None
+            rec["reason"] = "the %s price has no timestamp" % sym
+            return None, rec
+        age = int(round((now_utc - t).total_seconds()))
+        rec["time"], rec["age_seconds"] = t.strftime("%Y-%m-%dT%H:%M:%SZ"), age
+        if age < -CLOCK_SKEW_SECONDS:
+            rec["reason"] = ("the %s price is timestamped %d minutes in the future (%s UTC)"
+                             % (sym, -age // 60, rec["time"]))
+            return None, rec
+        if age > FRESH_MINUTES * 60:
+            rec["reason"] = ("the %s price is %d minutes old, older than %d minutes"
+                             % (sym, age // 60, FRESH_MINUTES))
+            return None, rec
+        rec["fresh"] = True
+        return prices[sym], rec
 
     for i, o in enumerate(orders, 1):
         reasons, warns, info = [], [], []
@@ -483,15 +553,20 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             reasons.append("asset: %s does not look like a US stock or ETF ticker; "
                            "this pack trades stocks and ETFs only" % sym)
 
-        # the reference price: what one share costs to get in
+        # the reference price: what one share costs to get in. Never an old or undated quote.
         plan_entry = _f(plan.get("entry"))
-        live = fresh(sym)
+        bad_plan_entry = plan.get("entry") is not None and (plan_entry is None or plan_entry <= 0)
+        if bad_plan_entry:
+            plan_entry = None
+        live, price_rec = fresh(sym)
         ref, ref_from = None, None
         if typ in ("limit", "stop_limit"):
             ref, ref_from = _f(o.get("limit_price")), "limit"
         elif typ == "stop":
             ref, ref_from = _f(o.get("stop_price")), "stop price"
-        if ref is None:
+        if ref is not None and ref <= 0:
+            ref = None
+        if ref is None and typ not in ("limit", "stop_limit", "stop"):
             cands = [(p, w) for p, w in ((plan_entry, "plan"), (live, "price")) if p]
             if cands:
                 ref, ref_from = max(cands, key=lambda x: x[0])
@@ -499,11 +574,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 if live and ref_from == "price" and plan_entry and live > plan_entry + CENT:
                     info.append("%s last %s is above the plan's entry %s: the risk is measured from %s"
                                 % (sym, _p(ref), _p(plan_entry), _p(ref)))
-            elif sym in prices:
-                ref, ref_from = prices[sym], "stale price"
-        if plan_entry and live is None and sym in prices and price_times is not None and typ == "market":
-            warns.append("the %s price in trader/prices.json is older than %d minutes: not used"
-                         % (sym, FRESH_MINUTES))
+        price_rec["used"] = ref_from == "price"
+        price_rec["entry_ref_from"] = ref_from
+        if live is None and sym in prices and typ == "market":
+            warns.append("the %s price in trader/prices.json is not used: %s" % (sym, price_rec["reason"]))
         q = _f(qty)
         if notional is not None and _f(notional):
             value = _f(notional)
@@ -523,9 +597,14 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         elif side == "buy" and held < -1e-9 and q is not None:
             exiting = q <= -held + 1e-9
         kind = "exit" if exiting else "entry"
-        if kind == "entry" and value is None and q:
-            later.append("price: no price for %s to size a %s-share order; add it to "
-                         "trader/prices.json (trader-alerts: alerts.py quote %s --write)" % (sym, qty, sym))
+        if kind == "entry" and side in ("buy", "sell") and ref is None:
+            if bad_plan_entry:
+                later.append("price: the plan's entry %r is not a valid price" % (plan.get("entry"),))
+            if typ not in ("limit", "stop_limit", "stop"):    # those already block on format
+                price_rec["reason"] = price_rec["reason"] or "no price"
+                later.append("price: no price for %s to measure the risk: no valid plan entry and no fresh "
+                             "quote (%s). Add a fresh one to trader/prices.json (trader-alerts: alerts.py quote %s "
+                             "--write)" % (sym, price_rec["reason"], sym))
 
         # blocked list and size
         if sym in blocked:
@@ -569,24 +648,41 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
 
         # day-trade checks: stop, loss, reward:risk, daily loss, trades, window, pdt
         max_loss = risk_ps = rr = stop = target = None
+        stops = {"planned": None, "in_order": None, "confirmed_by_broker": None}
         if kind == "entry" and side in ("buy", "sell"):
             long = side == "buy"
-            leg_stop, plan_stop = _f(o.get("stop_loss_stop_price")), _f(plan.get("stop"))
-            stop = leg_stop if leg_stop else plan_stop
+            plan_stop = _f(plan.get("stop"))
+            plan_stop = plan_stop if plan_stop is not None and plan_stop > 0 else None
+            leg_raw = o.get("stop_loss_stop_price")
+            leg_stop = _f(leg_raw)
+            leg_stop = leg_stop if leg_stop is not None and leg_stop > 0 else None
+            if leg_stop is not None and not (bracket or oc in STOP_CLASSES):
+                later.append("stop: stop_loss_stop_price %s only reaches the broker on a bracket or oto order "
+                             "(order_class %r)" % (_p(leg_stop), oc or None))
+                leg_stop = None
+            # the stop that counts is the one in the payload sent to the broker; never the plan's
+            stop = leg_stop
+            stops = {"planned": plan_stop, "in_order": leg_stop, "confirmed_by_broker": False}
             target = _f(o.get("take_profit_limit_price")) or _f(plan.get("target"))
             if leg_stop and plan_stop and abs(leg_stop - plan_stop) > CENT:
                 warns.append("the bracket stop %s differs from the plan's stop %s: the bracket's is the one "
                              "the broker uses" % (_p(leg_stop), _p(plan_stop)))
-            if stop and not leg_stop:
-                warns.append("the stop %s is in the plan only, not at the broker: set a stop alert "
-                             "(trader-alerts: alerts.py add --from-plan)" % _p(stop))
             if not stop:
-                if c.get("require_stop", True):
-                    later.append("stop: no stop. Every entry needs one (\"require_stop\": true): a bracket "
-                                 "stop_loss_stop_price, from trader-exit and trader-budget")
+                if leg_raw is not None and leg_stop is None and (bracket or oc in STOP_CLASSES):
+                    later.append("stop: stop_loss_stop_price %r is not a valid price" % (leg_raw,))
+                elif plan_stop:
+                    later.append("stop: the stop %s is in the plan only, not in the order sent to the broker. "
+                                 "Send a bracket with stop_loss_stop_price (trader-budget writes one)"
+                                 % _p(plan_stop))
                 else:
-                    warns.append("no stop: the max loss is not capped, so it is not counted in the daily loss")
-            elif ref:
+                    later.append("stop: no stop. Every entry needs a stop_loss_stop_price in the order: a "
+                                 "bracket from trader-exit and trader-budget")
+                if not c.get("require_stop", True):
+                    warns.append("\"require_stop\": false no longer waives the stop: an entry without a stop "
+                                 "in the order is always blocked")
+            elif not ref:
+                pass                             # blocked above: no price to measure the risk from
+            else:
                 if (long and stop >= ref - CENT) or (not long and stop <= ref + CENT):
                     later.append("stop: the stop %s must be %s the entry %s for a %s"
                                  % (_p(stop), "below" if long else "above", _p(ref), side))
@@ -624,6 +720,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 later.append("trades: %d entries placed today plus %d passed earlier in this batch, your limit "
                              "is %d a day" % (len(entries_today), batch_entries, cap_t))
             later.extend(win_reasons)
+            if not c.get("paper", True):
+                later.append("live: this pack cannot confirm that the broker accepted the stop (stop confirmed "
+                             "by the broker: no), so live entries are blocked. Use the paper account "
+                             "(\"paper\": true)")
             if c.get("pdt_guard") and pdt_n >= 3:
                 later.append("pdt: %d day trades in the last 5 business days (%s); a 4th trips the "
                              "pattern-day-trader rule your broker applies (\"pdt_guard\": true)"
@@ -686,8 +786,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             "amount": money(_f(notional) or 0) if notional is not None else ("%s shares" % qty),
             "value_usd": round(value, 2) if value is not None else None,
             "entry_ref": round(ref, 2) if ref else None, "entry_ref_from": ref_from,
-            "stop": stop, "target": target, "risk_per_share": risk_ps, "max_loss": max_loss,
-            "reward_risk": rr, "fingerprint": fingerprint(o), "verdict": verdict,
+            "stop": stop, "stop_planned": stops["planned"], "stop_in_order": stops["in_order"],
+            "stop_confirmed_by_broker": stops["confirmed_by_broker"],
+            "target": target, "risk_per_share": risk_ps, "max_loss": max_loss,
+            "reward_risk": rr, "price_check": price_rec, "fingerprint": fingerprint(o), "verdict": verdict,
             "reasons": reasons, "warnings": warns, "info": info,
         })
 
@@ -756,10 +858,10 @@ def load_prices(pdoc):
     as_of = parse_utc(pdoc.get("as_of"))
     detail = pdoc.get("detail") or {}
     for s, p in prices.items():
-        if _f(p) is None:
-            continue
+        if _f(p) is None or _f(p) <= 0:
+            continue                     # NaN, Infinity, 0, negative or junk: not a price
         s = str(s).upper()
-        out[s] = float(p)
+        out[s] = _f(p)
         d = detail.get(s) or {}
         times[s] = parse_utc(d.get("time")) or parse_utc(d.get("fetched")) or as_of
     return out, times
@@ -803,15 +905,16 @@ def main(argv=None):
             rec["checked_at"] = datetime.datetime.now(datetime.timezone.utc).replace(
                 microsecond=0, tzinfo=None).strftime("%Y-%m-%dT%H:%M:%SZ")
             rec["orders_file"] = a.orders
+            blob = json.dumps(rec, indent=2, allow_nan=False)
             tmp = a.out + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(rec, fh, indent=2)
-                fh.write("\n")
+                fh.write(blob + "\n")
             os.replace(tmp, a.out)
-    except RiskError as e:
+        out = json.dumps(res, indent=2, allow_nan=False) if a.json else report(res)
+    except (RiskError, ValueError, TypeError, OverflowError, ZeroDivisionError) as e:
         print("check.py: %s" % e, file=sys.stderr)
         return 1
-    print(json.dumps(res, indent=2) if a.json else report(res))
+    print(out)
     return 1 if res["block"] else 0
 
 

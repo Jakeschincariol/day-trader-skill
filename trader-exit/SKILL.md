@@ -55,7 +55,7 @@ level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
 | `or-low` | the opening-range low: wider, so fewer shares for the same max loss |
 | `price:X` | your price |
 | `pct:X` | X percent under the entry |
-| `atr:K` | K times the 14-bar ATR under the entry, on the session's bars up to the entry bar. With fewer than 14 bars by then it averages all of them and says so |
+| `atr:K` | K times the 14-bar ATR under the entry, on the session's bars up to the entry bar. With fewer than 14 bars by then it averages all of them and says so. It needs the entry bar (`--entry-bar`, or the entry time it closed at) and makes no plan without it: a bar after the entry never counts. Bars out of order, repeated, missing up to the entry, or with a high, low or close that is not a finite, coherent price are refused |
 
 A level setup has no opening range to lean on, so it needs a stop you name.
 

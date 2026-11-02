@@ -268,6 +268,38 @@ def chart_result(text, sym):
     return res[0]
 
 
+def finite(x):
+    """A finite float, or None. NaN, Infinity, booleans and junk strings are not numbers here."""
+    if isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def check_bar(ts, o, h, l, c, v):
+    """One bar, checked, or a TMError: a whole timestamp, finite prices above 0, low <= open,
+    close <= high, a volume 0 or more. One bad bar would poison the replay pool, so it stops the run."""
+    t = finite(ts)
+    if t is None or t != int(t) or t <= 0:
+        raise TMError("the chart has a bad timestamp %r" % (ts,))
+    when = to_eastern(utc_of(int(t))).strftime("%Y-%m-%d %H:%M")
+    px = [finite(x) for x in (o, h, l, c)]
+    if any(x is None or x <= 0 for x in px):
+        raise TMError("the bar at %s New York has a price that is not a finite number above 0 "
+                      "(open %r, high %r, low %r, close %r)" % (when, o, h, l, c))
+    ov, hv, lv, cv = px
+    if hv < lv or not (lv - 1e-9 <= ov <= hv + 1e-9) or not (lv - 1e-9 <= cv <= hv + 1e-9):
+        raise TMError("the bar at %s New York is not coherent: open %s, high %s, low %s, close %s"
+                      % (when, ov, hv, lv, cv))
+    vol = 0.0 if v is None else finite(v)
+    if vol is None or vol < 0:
+        raise TMError("the bar at %s New York has a volume that is not a finite number, 0 or more: %r" % (when, v))
+    return ov, hv, lv, cv, int(vol), int(t)
+
+
 def parse_bars(result, now_utc):
     """Yahoo chart result -> (meta, bars, dropped). Regular-session 5-min bars only,
     oldest first. Dropped: bars with a missing price, bars off the 5-minute grid
@@ -289,7 +321,7 @@ def parse_bars(result, now_utc):
         if ts is None or None in (o, h, l, c):
             dropped["no_price"] += 1
             continue
-        ts = int(ts)
+        o, h, l, c, v, ts = check_bar(ts, o, h, l, c, v)
         if ts % INTERVAL:
             dropped["off_grid"] += 1
             continue
@@ -303,7 +335,7 @@ def parse_bars(result, now_utc):
             dropped["not_complete"] += 1
             continue
         bars[ts] = {"date": local.date().isoformat(), "slot": mins // 5, "start": local.strftime("%H:%M"),
-                    "o": o, "h": h, "l": l, "c": c, "v": v or 0}
+                    "o": o, "h": h, "l": l, "c": c, "v": v}
     return meta, [bars[t] for t in sorted(bars)], dropped
 
 
@@ -493,9 +525,11 @@ def history_replay(sessions, rule, last, side="buy"):
 # ---------------------------------------------------------------- the plan
 
 def _num(v, what):
+    if isinstance(v, bool):
+        raise TMError("the plan needs a number for %s, got %r" % (what, v))
     try:
         x = float(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise TMError("the plan needs a number for %s, got %r" % (what, v))
     if not x > 0 or math.isinf(x):
         raise TMError("the plan's %s must be a positive price, got %r" % (what, v))
@@ -858,13 +892,21 @@ def render_chart(doc, height=17):
 
 # ---------------------------------------------------------------- commands
 
+def _dumps(doc, indent):
+    """JSON without NaN or Infinity: a result that has one is an error, not a file."""
+    try:
+        return json.dumps(doc, indent=indent, allow_nan=False)
+    except ValueError as e:
+        raise TMError("the result has a number that is not finite (%s): not written" % e)
+
+
 def _write(path, doc):
+    blob = _dumps(doc, 1)
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=1)
-        fh.write("\n")
+        fh.write(blob + "\n")
 
 
 def compute(a):
@@ -883,7 +925,7 @@ def cmd_run(a):
         _write(a.write, doc)
     if a.json:
         slim = dict(doc, mc={k: v for k, v in doc["mc"].items() if k != "sample_paths"})
-        print(json.dumps(slim, indent=2))
+        print(_dumps(slim, 2))
     else:
         print("\n".join(report(doc)))
         if a.write:

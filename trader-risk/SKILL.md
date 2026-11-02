@@ -68,7 +68,9 @@ batch that is fine order by order but breaks a limit together is caught.
 | size | (entries) under `min_order_usd` or over `max_order_usd` |
 | position | (entries) the stock would be over `max_position_pct` of the account |
 | cash | (entries) the buy would leave less than the cash buffer, or need margin |
-| stop | (entries) no stop while `require_stop` is true (a bracket `stop_loss_stop_price`, or the order's plan stop); a stop on the wrong side of the entry |
+| stop | (entries) no valid `stop_loss_stop_price` in the order that goes to the broker (a bracket or oto leg). A stop only in the plan does not count, and `require_stop: false` no longer waives it. NaN, Infinity, 0 or a stop on the wrong side of the entry blocks too |
+| price | (entries) a market order with neither a valid plan entry nor a fresh, timestamped price (an old, undated or future-dated quote is never used) |
+| live | (entries) any entry while `paper` is false: the tool cannot confirm the broker accepted the stop, so live entries are blocked |
 | loss | (entries) qty x (entry minus stop) over `max_loss_per_trade_usd` |
 | reward:risk | (entries) (target minus entry) / (entry minus stop) under `min_reward_risk` |
 | daily loss | (entries) the max losses at the stops of today's entries, plus this one, over `max_daily_loss_usd` |
@@ -83,8 +85,17 @@ How the numbers work:
 - **The entry it measures from**: the limit price for a limit order. For a
   market order, the HIGHER of the plan's entry and a fresh price from
   `trader/prices.json` (under 15 minutes old). A plan written at 10:15 cannot
-  understate the risk at 10:55 after the price ran up. An older price is not
-  used, and it says so.
+  understate the risk at 10:55 after the price ran up. An older price, a price
+  with no timestamp, or one stamped more than a minute in the future is never
+  used, and it says so. Without a valid plan entry and without a fresh price,
+  the entry is blocked. Each result records the price's source, time, age in
+  seconds and why it was not used (`price_check`).
+- **Three stops, reported apart**: `stop_planned` (the plan), `stop_in_order`
+  (the leg in the payload, the only one that counts) and
+  `stop_confirmed_by_broker` (always false: this tool cannot see the broker).
+- **Bad numbers fail closed**: NaN, Infinity or a non-number in the config,
+  the portfolio or a limit stops the check with an error and writes no
+  verdicts. A bad number in an order blocks that order.
 - **Daily loss** counts the full max loss of every entry placed today, win or
   lose, as trader-broker logged it. Three full-size trades use up a $150 day.
 - **The window** is New York time, worked out in the tool (daylight saving

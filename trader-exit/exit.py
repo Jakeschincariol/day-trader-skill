@@ -17,7 +17,12 @@ Stops (a long's stop rounds DOWN to the cent, away from the entry):
   pct:X      X percent under the entry
   atr:K      K times the 14-bar ATR under the entry, on the session's bars up
              to the entry bar (--offline FILE or Yahoo). With fewer than 14
-             bars by then it averages all of them and says so.
+             bars by then it averages all of them and says so. It needs the
+             entry bar (--entry-bar, or the entry time it closed at): without
+             it there is no plan, because bars after the entry must never
+             count. Only closed bars up to the entry bar (and up to --now)
+             are used; bars out of order, repeated, missing up to the entry,
+             or with an OHLC that is not finite and coherent are refused.
   A level setup has no opening-range default: give a stop.
 
 Targets (round half up to the cent):
@@ -42,6 +47,7 @@ import argparse
 import datetime
 import gzip
 import json
+import math
 import os
 import re
 import sys
@@ -194,12 +200,19 @@ def session(d):
 # ---------------------------------------------------------------- money math (Decimal, to the cent)
 
 def D(x, what="a number"):
+    """A finite Decimal, or a PlanError. NaN, Infinity and booleans are not numbers here."""
+    if isinstance(x, bool):
+        raise PlanError("%s is not a number: %r" % (what, x))
     try:
         if isinstance(x, float):
-            return Decimal(repr(x))
-        return Decimal(str(x).strip().lstrip("$").replace(",", ""))
-    except (InvalidOperation, ValueError):
+            d = Decimal(repr(x))
+        else:
+            d = Decimal(str(x).strip().lstrip("$").replace(",", ""))
+    except (InvalidOperation, ValueError, TypeError):
         raise PlanError("%s is not a number: %r" % (what, x))
+    if not d.is_finite():
+        raise PlanError("%s must be a finite number, got %r" % (what, x))
+    return d
 
 
 def cents(x):
@@ -434,9 +447,34 @@ def load_chart(sym, interval, day, offline=None):
         if t is None or c is None:
             continue
         h, lo = at("high", i), at("low", i)
-        bars.append({"t": int(t), "h": float(c if h is None else h), "l": float(c if lo is None else lo),
-                     "c": float(c)})
+        bars.append(check_bar(sym, t, c if h is None else h, c if lo is None else lo, c))
     return {"bars": bars, "data_time": meta.get("regularMarketTime")}
+
+
+def _finite(x):
+    if isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def check_bar(sym, t, h, lo, c):
+    """One bar, checked: a whole timestamp, finite prices above 0, low <= close <= high."""
+    ts = _finite(t)
+    if ts is None or ts != int(ts) or ts <= 0:
+        raise PlanError("the %s chart has a bad timestamp %r" % (sym, t))
+    vals = [_finite(v) for v in (h, lo, c)]
+    when = "the %s bar at %s" % (sym, to_eastern(utc_of(ts)).strftime("%Y-%m-%d %H:%M"))
+    if any(v is None or v <= 0 for v in vals):
+        raise PlanError("%s has a price that is not a finite number above 0 (high %r, low %r, close %r)"
+                        % (when, h, lo, c))
+    hv, lv, cv = vals
+    if hv < lv or not lv - 1e-9 <= cv <= hv + 1e-9:
+        raise PlanError("%s is not coherent: high %s, low %s, close %s" % (when, hv, lv, cv))
+    return {"t": int(ts), "h": hv, "l": lv, "c": cv}
 
 
 def session_bars(chart, day, interval, upto_slot=None, now_utc=None):
@@ -464,6 +502,83 @@ def session_bars(chart, day, interval, upto_slot=None, now_utc=None):
             continue
         out[slot] = b
     return [out[k] for k in sorted(out)]
+
+
+def entry_slot(info, day, interval):
+    """The entry bar's slot in the session (0 = the 9:30 bar), from entry_bar or the entry time
+    (the bar's close). Both given must agree. Neither is a PlanError: an ATR without the entry bar
+    could read bars after the entry."""
+    s = session(day)
+    if not s:
+        raise PlanError("%s is not an NYSE trading day: no session bars for an atr stop" % day)
+    step = INTERVALS[interval]
+    open_dt, close_dt = datetime.datetime.combine(day, s[0]), datetime.datetime.combine(day, s[1])
+    n = int((close_dt - open_dt).total_seconds()) // step
+    slot = None
+    bar = info.get("entry_bar")
+    if bar is not None:
+        if isinstance(bar, float) and bar.is_integer():
+            bar = int(bar)
+        if isinstance(bar, bool) or not isinstance(bar, int):
+            raise PlanError("entry_bar must be a whole bar number, got %r" % (bar,))
+        slot = bar
+    if info.get("entry_time"):
+        t = parse_clock(info["entry_time"], "the entry time")
+        secs = int((datetime.datetime.combine(day, t) - open_dt).total_seconds())
+        if secs <= 0 or secs % step:
+            raise PlanError("the entry time %s is not the close of a %s bar in the session"
+                            % (info["entry_time"], interval))
+        t_slot = secs // step - 1
+        if slot is not None and slot != t_slot:
+            raise PlanError("the entry disagrees with itself: entry_bar %d but the entry time %s closes bar %d"
+                            % (slot, info["entry_time"], t_slot))
+        slot = t_slot
+    if slot is None:
+        raise PlanError("an atr stop needs the entry bar (--entry-bar N, or the entry --time it closed at): "
+                        "without it the ATR could read bars after the entry")
+    if not 0 <= slot < n:
+        raise PlanError("entry bar %d is outside the %s session on %s (bars 0 to %d)" % (slot, interval, day, n - 1))
+    return slot
+
+
+def atr_bars(chart, day, interval, slot, now_utc=None):
+    """The closed bars from the open through the entry bar, and nothing after it.
+    Refused: timestamps out of order or repeated, a missing bar up to the entry, an entry bar
+    that has not closed by now (--now, else the data's own time)."""
+    step = INTERVALS[interval]
+    s = session(day)
+    open_dt = datetime.datetime.combine(day, s[0])
+    close_dt = datetime.datetime.combine(day, s[1])
+    if now_utc is None and chart.get("data_time"):
+        now_utc = utc_of(chart["data_time"])
+    local = to_eastern(now_utc) if now_utc else None
+    out, last = {}, None
+    for b in chart["bars"]:
+        if last is not None and b["t"] <= last:
+            raise PlanError("the chart's timestamps are out of order or repeated at %s New York"
+                            % to_eastern(utc_of(b["t"])).strftime("%Y-%m-%d %H:%M:%S"))
+        last = b["t"]
+        if b["t"] % step:
+            continue                                   # the live tick is not a bar
+        et = to_eastern(utc_of(b["t"]))
+        if et.date() != day or not (open_dt <= et < close_dt):
+            continue
+        k = int((et - open_dt).total_seconds()) // step
+        if k > slot:
+            continue                                   # after the entry: never in the ATR
+        if local and et + datetime.timedelta(seconds=step) > local:
+            continue                                   # not closed yet
+        out[k] = b
+    if slot not in out:
+        start = open_dt + datetime.timedelta(seconds=step * slot)
+        raise PlanError("the entry bar (%s, bar %d) is not a closed bar in the data%s"
+                        % (hm(start.time()), slot, " by --now" if local else ""))
+    missing = [k for k in range(slot + 1) if k not in out]
+    if missing:
+        raise PlanError("the data is missing %d of the %d bars up to the entry (first gap at %s): the ATR would "
+                        "be wrong" % (len(missing), slot + 1,
+                                      hm((open_dt + datetime.timedelta(seconds=step * missing[0])).time())))
+    return [out[k] for k in range(slot + 1)]
 
 
 def atr_of(bars, n=ATR_BARS):
@@ -584,8 +699,10 @@ def build_plan(a, now_utc):
     entry_time = parse_clock(info["entry_time"], "the entry time") if info["entry_time"] else None
     atr = atr_n = None
     if stop_rule == "atr":
+        slot = entry_slot(info, day, info["interval"])
         chart = load_chart(info["symbol"], info["interval"], day, a.offline)
-        bars = session_bars(chart, day, info["interval"], info["entry_bar"], parse_now(a.now) if a.now else None)
+        bars = atr_bars(chart, day, info["interval"], slot, parse_now(a.now) if a.now else None)
+        info["entry_bar"] = slot
         if len(bars) < 3:
             raise PlanError("an atr stop needs at least 3 closed %s bars of %s on %s by the entry; found %d"
                             % (info["interval"], info["symbol"], day, len(bars)))
@@ -652,15 +769,18 @@ def describe(plan):
 def cmd_plan(a):
     now = parse_now(a.now)
     plan, warnings = build_plan(a, now)
+    try:
+        blob = json.dumps(plan, indent=2, allow_nan=False)
+    except ValueError as e:
+        raise PlanError("refusing to write a plan with a number that is not finite: %s" % e)
     if a.write:
         d = os.path.dirname(a.write)
         if d:
             os.makedirs(d, exist_ok=True)
         with open(a.write, "w", encoding="utf-8") as fh:
-            json.dump(plan, fh, indent=2)
-            fh.write("\n")
+            fh.write(blob + "\n")
     if a.json:
-        print(json.dumps(dict(plan, warnings=warnings), indent=2))
+        print(json.dumps(dict(plan, warnings=warnings), indent=2, allow_nan=False))
         return 0
     for line in describe(plan):
         print(line)
