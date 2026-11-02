@@ -134,7 +134,9 @@ class Trading212(unittest.TestCase):
 
     def test_keys_file_is_git_ignored(self):
         with open(os.path.join(ROOT, ".gitignore")) as fh:
-            self.assertIn("dashboard/.t212.json", fh.read())
+            text = fh.read()
+        for secret in ("dashboard/.t212.json", "dashboard/.access.json", "dashboard/.logo-cache/"):
+            self.assertIn(secret, text)
 
 
 class Http(unittest.TestCase):
@@ -408,6 +410,92 @@ class Earnings(unittest.TestCase):
         finally:
             srv.nasdaq = old
         self.assertIsNone(srv.next_earnings("VUSA.L"))
+
+
+class LongTerm(unittest.TestCase):
+    def test_linear_scores(self):
+        self.assertEqual(srv._lin(25, 8, 25), 100.0)
+        self.assertEqual(srv._lin(8, 8, 25), 0.0)
+        self.assertEqual(srv._lin(1, 3, 1), 100.0)  # falling scale (lower PEG is better)
+        self.assertIsNone(srv._lin(None, 0, 1))
+
+    def test_max_drawdown(self):
+        self.assertAlmostEqual(srv._max_drawdown([100, 120, 60, 130, 117]), -0.5)
+
+    def test_irr_of_a_simple_doubling(self):
+        self.assertAlmostEqual(srv._irr([(0, -100.0), (1, 110.0)]), 0.10, places=4)
+
+    def test_time_weighted_stats_ignore_deposits(self):
+        h = {"dates": ["2024-01-01", "2024-07-01", "2025-01-01", "2025-07-01"],
+             "value": [100.0, 110.0, 220.0, 242.0], "flow": [100.0, 0.0, 100.0, 0.0]}
+        st = srv._twr_stats(h)["twr"]
+        # growth per step with the 100 deposit taken out: 110/100, (220-100)/110, 242/220
+        self.assertAlmostEqual(st["total"], 100 * (1.10 * (120 / 110.0) * 1.10 - 1), places=1)
+
+
+class Logos(unittest.TestCase):
+    def test_monogram_for_indices_and_bad_input(self):
+        d, t = srv.get_logo("^VIX")
+        self.assertEqual(t, "image/svg+xml")
+        self.assertIn(b"VIX", d)
+        d, t = srv.get_logo("../../etc/passwd")
+        self.assertEqual(t, "image/svg+xml")
+
+    def test_cached_logo_is_served_from_disk(self):
+        import tempfile
+        old = srv.LOGO_DIR
+        srv.LOGO_DIR = tempfile.mkdtemp()
+        try:
+            png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+            with open(os.path.join(srv.LOGO_DIR, "ZZTEST.png"), "wb") as f:
+                f.write(png)
+            self.assertEqual(srv.get_logo("ZZTEST"), (png, "image/png"))
+        finally:
+            srv.LOGO_DIR = old
+
+
+class PhoneMode(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.httpd = srv.ThreadingHTTPServer(("0.0.0.0", 0), srv.Handler)
+        cls.httpd.phone_token = "t" * 32
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        cls.ip = srv.lan_ip()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+
+    def req(self, path, headers=None, method="GET", body=None):
+        c = http.client.HTTPConnection(self.ip, self.port, timeout=5)
+        c.request(method, path, body=body, headers=headers or {})
+        r = c.getresponse()
+        return r.status, r.getheader("Set-Cookie") or "", r.read()
+
+    def test_other_devices_need_the_key(self):
+        if not self.ip or self.ip.startswith("127."):
+            self.skipTest("no network address")
+        self.assertEqual(self.req("/api/universe")[0], 403)
+        self.assertEqual(self.req("/?key=wrong")[0], 403)
+        status, cookie, body = self.req("/?key=" + "t" * 32)
+        self.assertEqual(status, 200)
+        self.assertIn("HttpOnly", cookie)
+        self.assertEqual(self.req("/api/universe", {"Cookie": "td_key=" + "t" * 32})[0], 200)
+
+    def test_key_cookie_doesnt_allow_other_sites(self):
+        if not self.ip or self.ip.startswith("127."):
+            self.skipTest("no network address")
+        st, _, _ = self.req("/api/t212/disconnect", {"Cookie": "td_key=" + "t" * 32, "Origin": "http://evil.example",
+                                                     "Content-Type": "application/json"}, "POST", "{}")
+        self.assertEqual(st, 403)
+
+    def test_phone_cannot_read_the_key(self):
+        if not self.ip or self.ip.startswith("127."):
+            self.skipTest("no network address")
+        st, _, body = self.req("/api/phone", {"Cookie": "td_key=" + "t" * 32})
+        self.assertEqual(st, 403)
+        self.assertNotIn(b"tttt", body)
 
 
 if __name__ == "__main__":

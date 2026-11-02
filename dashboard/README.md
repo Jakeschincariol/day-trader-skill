@@ -11,6 +11,49 @@ python3 dashboard/server.py
 Then open **http://127.0.0.1:8212** in your browser. Python 3.8+ only, nothing
 to install, no signup.
 
+**Easiest start on Windows:** double-click `dashboard/start.bat` (or
+`start-phone.bat` to also use it on your iPhone). On a Mac: `start-phone.command`.
+
+## Use it on your iPhone
+
+1. Start the dashboard in phone mode: `python3 dashboard/server.py --phone`
+   (or double-click `start-phone.bat` / `start-phone.command`). If Windows asks
+   whether Python may use the network, allow **Private networks**.
+2. On the computer, click **Use on iPhone** at the bottom of any page. A QR code appears.
+3. On the iPhone (same Wi-Fi), point the **Camera** at the code and tap the link.
+4. In Safari: **Share → Add to Home Screen → Add**. TraderDash now opens full screen like an app.
+
+The link carries a secret key (stored in `dashboard/.access.json`, git-ignored).
+Without it the dashboard refuses every other device; with it, other websites
+still can't reach it. To log every phone out: `--phone --new-key`. The computer
+must stay on with the dashboard running. Away from home, install the free
+**Tailscale** app on both the computer and the iPhone and use the computer's
+Tailscale address instead.
+
+## Long-term or swing
+
+A switch in the header (and on the Portfolio page) picks the style. **Long-term**
+is the default.
+
+| | Long-term investing | Swing trading |
+| --- | --- | --- |
+| Rating | **Long-term score** 0-100: quality 25% (ROE, margins, free cash flow, profitable years), growth 20%, valuation 20% (PEG, FCF yield, analyst upside), balance sheet 15%, trend 15% (vs its index, 200-day, worst fall), dividend 5%. Bands: Core quality 75+, Good 60+, Fair 45+, Speculative. ETFs and non-US listings are scored on their track record | Trend/momentum/volume rating |
+| When to buy | **Buy zone**: Accumulate+ (good business on sale: below the 200-day, P/E low in its range, or down 15%+ without a recent run-up), Accumulate, Stretched, Speculative | Breakout / pullback / extended / avoid |
+| Stock page | Long-term card, 1/3/5/10-year buy-and-hold results and a 5-year monthly investing test vs the index (dividends reinvested), "Buy an amount" ticket | Entry, stop, targets, order ticket, 40-day signal backtest |
+| Strong Buys tab | **Quality**: on sale now, core quality, best ETFs | Strong Buys and setups |
+| Portfolio | Action per holding (Accumulate+, Accumulate, Hold, Trim, Review thesis), **Monthly plan** (splits your monthly amount towards targets, ready for a Trading 212 Pie), **Diversification** with ETF look-through and overlap (e.g. VUSA + CSPX, world fund + S&P 500), dividends received, yearly growth, worst fall and your portfolio vs the same money in a world index fund | Stops, risk check, trade journal |
+
+ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
+refresh them now and then). The first long-term scan of all stocks takes a few
+minutes; results are cached for hours.
+
+## Logos
+
+Company and fund logos come from Financial Modeling Prep and Parqet, fetched by
+the server once and cached in `dashboard/.logo-cache` (git-ignored). Indices,
+currencies and unknown tickers get a generated monogram. Logos are trademarks of
+their owners; the footer credits the sources.
+
 ## Pages
 
 | Page | What you get |
@@ -18,7 +61,7 @@ to install, no signup.
 | **Dashboard** | Indices strip (S&P 500, Nasdaq, Dow, Russell, VIX, gold, bitcoin, EUR/USD), market breadth, top Strong Buys, stocks in a buy zone right now, your watchlist, latest headlines |
 | **Market Map** | A heat map of every tracked stock or ETF grouped by sector: tile size = money traded per day, colour = today, 1 month, 3 months or signal score. Click a tile to open the stock |
 | **Markets** | 100+ US stocks by sector and ETFs (US plus UCITS ETFs sold on Trading 212 such as VUSA, CSPX, VWRL, EQQQ). Sort by any column, filter by sector or rating, ★ to watch. Use the search box for any other ticker in the world |
-| **Strong Buys** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |
+| **Strong Buys / Quality** | Cards for every stock with a buy signal: why, entry, stop loss, target 1 (2R) and target 2 (3R) |
 | **Stock page** | Charts for 1D (5-minute bars), 7D (hourly bars) and 3M to 2Y (daily, with 20/50/200-day averages, volume, RSI, your entry/stop/target lines, and a forecast cone plus the analysts' average target). 1D and 7D add tables of hourly levels and the last 7 days. "Best moment to buy" verdict with the reason, position size calculator, the checklist behind the rating, performance (1W, 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, Max) against the S&P 500, statistics (P/E TTM, forward P/E, PEG, price/sales, price/book, EV/EBITDA, margins, ROE, cash, debt, free cash flow), analyst price targets and buy/hold/sell counts, earnings trends (EPS per quarter with year-over-year growth and the next quarters' forecasts, revenue vs net income by quarter or year), and news |
 | **✦ AI Radar** | Scans 45 AI-economy stocks (memory, chip equipment, AI chips, networking, power and data centers, quantum and space, AI software) for the price "fingerprint" NVIDIA, Micron, SanDisk, ASML, Western Digital, Palantir, AppLovin and Broadcom showed on the day their big runs began, then checks the earnings growth behind them. Animated radar, the legends' runs, theme heat map, and for each stock a score ring, a spider chart vs the legends and a "what if it repeated a legend's 12 months" chart |
 | **Portfolio** | Trading 212 cash, value, open and realised P/L; gain or loss in % and money for today, 1 week, 1 month, this year, 1 year, 5 years and all time; a graph of money invested vs portfolio value over time; every position with its live rating and an exit check; allocation chart; add holdings by hand with their buy date |

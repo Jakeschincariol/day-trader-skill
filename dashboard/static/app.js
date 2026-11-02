@@ -32,6 +32,8 @@
   const entryClass = (st) => !st ? "e-none" : st.startsWith("Buy") ? "e-now" : st.startsWith("Wait") ? "e-wait" : st.startsWith("Watch") ? "e-watch" : st === "Avoid" ? "e-avoid" : "e-none";
   const entryBadge = (st) => st ? `<span class="badge ${entryClass(st)}">${esc(st)}</span>` : "";
   const meter = (score) => `<span class="meter" title="Signal score ${score}/100"><i><b class="${score >= 75 ? "hi" : score >= 50 ? "mid" : "lo"}" style="width:${score}%"></b></i><span class="num">${score}</span></span>`;
+  const logo = (sym, size) => `<img class="logo" src="/logo/${encodeURIComponent(sym)}" alt="" width="${size || 28}" height="${size || 28}" loading="lazy" decoding="async">`;
+  const isLT = () => (settings().mode || "lt") === "lt";
   const skeleton = (rows) => Array.from({ length: rows || 6 }, () => '<div class="skeleton"></div>').join("");
   function toast(msg) {
     const t = $("#toast"); t.textContent = msg; t.hidden = false;
@@ -169,8 +171,15 @@
     }
     paint();
   }
-  const symCell = (r) => `<a class="sym" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span>`;
+  const symCell = (r) => `<span class="symwrap">${logo(r.symbol)}<span><a class="sym" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span></span></span>`;
   const star = (sym) => `<button class="star ${watchlist().includes(sym) ? "on" : ""}" data-sym="${esc(sym)}" aria-label="Toggle watchlist ${esc(sym)}" title="Watchlist">★</button>`;
+  const ltOf = (r) => ("lt" in r ? r.lt || {} : r); // market rows carry .lt; long-term profiles are used directly
+  const LTC = {
+    score: { key: "lts", label: "LT score", val: (r) => ltOf(r).score, html: (r) => { const p = ltOf(r); return p.score == null ? `<span class="muted">…</span>` : `${meter(p.score)}<span class="nm">${esc(p.band || "")}</span>`; } },
+    zone: { key: "zone", label: "Buy zone", val: (r) => ({ "Accumulate+": 4, Accumulate: 3, Stretched: 2, Speculative: 1 }[ltOf(r).zone] || 0), html: (r) => window.LT ? window.LT.zoneBadge(ltOf(r).zone) : "" },
+    c5: { key: "c5", label: "5y a year", r: true, val: (r) => (ltOf(r).history || {}).cagr5, html: (r) => { const v = (ltOf(r).history || {}).cagr5; return `<span class="${cls(v)}">${pct(v, 1)}</span>`; } },
+    ath: { key: "ath", label: "From high", r: true, sm: true, val: (r) => ltOf(r).fromATH, html: (r) => { const v = ltOf(r).fromATH; return `<span class="${cls(v)}">${pct(v, 0)}</span>`; } },
+  };
   const COLS = {
     star: { key: "star", label: "", val: (r) => (watchlist().includes(r.symbol) ? 1 : 0), html: (r) => star(r.symbol) },
     sym: { key: "symbol", label: "Symbol", val: (r) => r.symbol, html: symCell },
@@ -186,6 +195,19 @@
     sector: { key: "sector", label: "Sector", sm: true, val: (r) => r.sector, html: (r) => `<span class="muted">${esc(r.sector || "")}</span>` },
   };
 
+  function setMode(m) {
+    store.set("settings", Object.assign(settings(), { mode: m }));
+    toast(m === "lt" ? "Long-term investing mode" : "Swing trading mode");
+    syncModeUI(); route();
+  }
+  function syncModeUI() {
+    const lt = isLT();
+    $$("#modeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.m === (lt ? "lt" : "swing")));
+    const sig = $('#tabs a[data-tab="signals"]');
+    if (sig) sig.innerHTML = lt ? '<i data-lucide="gem"></i>Quality' : '<i data-lucide="flame"></i>Strong Buys';
+  }
+  document.addEventListener("click", (e) => { const b = e.target.closest("#modeSeg button"); if (b) setMode(b.dataset.m); });
+
   // ------------------------------------------------------------ pages
   let current = null; // cleanup for the active page
   const stockMode = {}; // chart range picked per symbol
@@ -193,12 +215,13 @@
   const pages = {};
 
   pages.home = async function () {
-    view.innerHTML = `<h1>Market Dashboard</h1><p class="sub">Live overview of the market, today's best setups, your watchlist and portfolio.</p>
+    const lt = isLT();
+    view.innerHTML = `<h1>Market Dashboard</h1><p class="sub">${lt ? "Your long-term overview: quality businesses on sale, your watchlist, portfolio and the market mood." : "Live overview of the market, today's best setups, your watchlist and portfolio."}</p>
       <div id="moodBanner" style="margin-bottom:16px"></div>
       <div class="grid g4" id="stats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>Top Strong Buys</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
-        <div class="card"><div class="card-head"><h2>In the buy zone now</h2>${rf("market")}</div><div id="zone">${skeleton(6)}</div></div>
+        <div class="card"><div class="card-head"><h2>${lt ? "Quality on sale" : "Top Strong Buys"}</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
+        <div class="card"><div class="card-head"><h2>${lt ? "Top quality (score 75+)" : "In the buy zone now"}</h2>${rf("market")}</div><div id="zone">${skeleton(6)}</div></div>
       </div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Your watchlist</h2><span style="display:flex;gap:10px;align-items:center">${rf("wl")}<a href="#/markets">Add more →</a></span></div><div id="wl">${skeleton(5)}</div></div>
@@ -229,6 +252,20 @@
       <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
       <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 →</a></div>`}</div>`;
+    if (isLT() && window.LT) {
+      $("#stats").children[2].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
+      $("#top").innerHTML = `<p class="muted" style="font-size:13px">Scoring stocks for quality and value (the first time takes about a minute)…</p>`;
+      const u = await getUniverse();
+      const prof = await window.LT.profiles([...new Set(Object.values(u.stocks).flat())]).catch(() => []);
+      if (!$("#top")) return;
+      const sale = prof.filter((p) => p.zone === "Accumulate+").sort((a, b) => b.score - a.score);
+      const core = prof.filter((p) => p.score >= 75).sort((a, b) => b.score - a.score);
+      $("#qCount").textContent = sale.length;
+      sortableTable($("#top"), sale.slice(0, 8), [COLS.sym, COLS.price, LTC.score, LTC.zone], { sort: "lts" });
+      if (!sale.length) $("#top").innerHTML = `<p class="empty">No quality names on sale right now: keep your monthly plan.</p>`;
+      sortableTable($("#zone"), core.slice(0, 8), [COLS.sym, LTC.score, LTC.c5], { sort: "lts" });
+      return;
+    }
     sortableTable($("#top"), strong.slice(0, 8), [COLS.sym, COLS.price, COLS.chg, COLS.score, COLS.entry], { sort: "score" });
     sortableTable($("#zone"), zone.slice(0, 8), [COLS.sym, COLS.price, { key: "score", label: "Score", r: true, val: (r) => r.score, html: (r) => `<b class="num">${r.score}</b>` }], { sort: "score" });
   }
@@ -236,7 +273,7 @@
     const wl = watchlist();
     const wrows = await api("/api/quotes?symbols=" + encodeURIComponent(wl.join(","))).catch(() => []);
     if ($("#wl")) wrows.filter((r) => !r.error).length
-      ? sortableTable($("#wl"), wrows.filter((r) => !r.error), [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.rating, COLS.entry], { sort: "changePct" })
+      ? sortableTable($("#wl"), wrows.filter((r) => !r.error), isLT() ? [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.y1] : [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.rating, COLS.entry], { sort: "changePct" })
       : ($("#wl").innerHTML = `<p class="empty">Tap ★ on any stock to watch it here.</p>`);
   };
 
@@ -247,7 +284,7 @@
         <a class="btn sm" href="#/map"><i data-lucide="layout-grid"></i> Map view</a>
         <div class="seg" id="grp"><button data-g="stocks">Stocks</button><button data-g="etfs">ETFs</button><button data-g="all">All</button></div>
         <select id="sector" aria-label="Sector"></select>
-        <select id="rating" aria-label="Rating"><option value="">All ratings</option><option>Strong Buy</option><option>Buy</option><option>Hold</option><option>Sell</option><option>Strong Sell</option></select>
+        <select id="rating" aria-label="Rating" ${isLT() ? "hidden" : ""}><option value="">All ratings</option><option>Strong Buy</option><option>Buy</option><option>Hold</option><option>Sell</option><option>Strong Sell</option></select>
         <input type="text" id="filter" placeholder="Filter symbol or name" aria-label="Filter">
         ${rf("screener")}
       </div>
@@ -266,6 +303,16 @@
       let data = rows.filter((r) => (f.group === "all" || r.group === f.group) && (!f.sector || r.sector === f.sector) && (!f.rating || r.rating === f.rating) &&
         (!q || r.symbol.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q)));
       if (f.group === "all") { const s = new Set(); data = data.filter((r) => !s.has(r.symbol) && s.add(r.symbol)); }
+      if (isLT() && window.LT) {
+        data.forEach((r) => { r.lt = window.LT.cache[r.symbol]; });
+        sortableTable($("#tbl"), data, [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.y1, LTC.c5, LTC.ath, LTC.score, LTC.zone, COLS.sector], { sort: "lts" });
+        const missing = data.filter((r) => !r.lt).map((r) => r.symbol);
+        if (missing.length && !paint._busy) {
+          paint._busy = true;
+          window.LT.profiles(missing).then(() => { paint._busy = false; if ($("#tbl")) paint(); }).catch(() => { paint._busy = false; });
+        }
+        return;
+      }
       sortableTable($("#tbl"), data, [COLS.star, COLS.sym, COLS.price, COLS.chg, COLS.m1, COLS.m3, COLS.y1, COLS.rsi, COLS.score, COLS.rating, COLS.entry, COLS.sector], { sort: "score" });
     };
     $$("#grp button").forEach((b) => b.addEventListener("click", () => { f.group = b.dataset.g; paint(); }));
@@ -277,6 +324,7 @@
   };
 
   pages.signals = async function () {
+    if (isLT() && window.LT) return window.LT.qualityPage(view);
     view.innerHTML = `<h1>Strong Buys &amp; Best Entries</h1><p class="sub">Stocks and ETFs where trend, momentum, volume and relative strength line up, with the entry, stop and targets for each.</p>
       <div class="toolbar"><div class="seg" id="sg"><button data-g="now" class="on">Buy now</button><button data-g="strong">All Strong Buys</button><button data-g="watch">Watch list setups</button></div>${rf("signals")}</div>
       <div class="grid g3" id="cards">${[1, 2, 3].map(() => `<div class="card">${skeleton(6)}</div>`).join("")}</div>`;
@@ -302,7 +350,7 @@
   function signalCard(r) {
     const p = r.plan;
     return `<div class="card sigcard">
-      <div class="card-head"><div><a class="sym" style="font-size:18px" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span></div>
+      <div class="card-head"><div class="symwrap">${logo(r.symbol, 32)}<div><a class="sym" style="font-size:18px" href="#/stock/${encodeURIComponent(r.symbol)}">${esc(r.symbol)}</a><span class="nm">${esc(r.name || "")}</span></div></div>
       <div style="text-align:right"><div class="num">${priceStr(r.price, r.currency)}</div><div class="num ${cls(r.changePct)}" style="font-size:13px">${pct(r.changePct)}</div></div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${ratingBadge(r.rating)} ${entryBadge(r.entryStatus)} ${meter(r.score)}</div>
       <p class="sec" style="font-size:13px;margin:0 0 10px">${esc(r.entryWhy)}</p>
@@ -326,10 +374,10 @@
     const p = a.plan;
     view.innerHTML = `
       <div class="quote-head">
-        <div><h1>${esc(a.symbol)} <button class="star ${watchlist().includes(a.symbol) ? "on" : ""}" id="wstar" aria-label="Toggle watchlist">★</button></h1>
+        <div><h1>${logo(a.symbol, 36)} ${esc(a.symbol)} <button class="star ${watchlist().includes(a.symbol) ? "on" : ""}" id="wstar" aria-label="Toggle watchlist">★</button></h1>
           <div class="sec">${esc(a.name)} · ${esc(a.exchange || "")} · ${esc(a.type || "")} · ${esc(a.currency || "")}</div></div>
         <div><div class="px num">${priceStr(a.price, a.currency)}</div><div class="num ${cls(a.change)}">${a.change >= 0 ? "+" : ""}${fmt(a.change, dp(a.price))} (${pct(a.changePct)}) today</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${ratingBadge(a.rating)} ${entryBadge(a.entryStatus)}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="hdrBadges">${isLT() ? "" : ratingBadge(a.rating) + " " + entryBadge(a.entryStatus)}
           ${a.earnings ? `<span class="badge ${a.earnings.days <= 7 ? "e-wait" : "e-none"}" title="Next earnings report"><i data-lucide="calendar-clock" class="ico"></i> Earnings ${a.earnings.days === 0 ? "today" : "in " + a.earnings.days + "d"}</span>` : ""}
           <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button> ${rf("quote")}</div>
       </div>
@@ -337,15 +385,16 @@
         <div class="card chart-card">
           <div class="card-head" style="flex-wrap:wrap"><h2 id="chartTitle">Price chart (daily)</h2>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${rf("chart")}
-              <label class="check" style="font-size:13px"><input type="checkbox" id="fcOn" checked> Forecast</label>
+              <label class="check" style="font-size:13px"><input type="checkbox" id="fcOn" ${isLT() ? "" : "checked"}> Forecast</label>
               <div class="seg" id="rng"><button data-b="1D">1D</button><button data-b="7D">7D</button><button data-b="63">3M</button><button data-b="126" class="on">6M</button><button data-b="252">1Y</button><button data-b="504">2Y</button></div></div></div>
           <div class="chart-box" id="chart"></div>
           <div class="legend" id="legend"></div>
           <div id="fcNote" class="muted" style="font-size:12px;margin-top:6px"></div>
         </div>
         <div class="grid" style="align-content:start">
-          <div class="card">
-            <div class="card-head"><h2 style="margin:0">Best moment to buy</h2>${rf("quote")}</div>
+          ${isLT() ? `<div class="card"><div class="card-head"><h2 style="margin:0">Long-term view</h2>${rf("ltv")}</div><div id="ltCard"></div><div id="ltBt" style="margin-top:14px"></div></div>
+          <details class="card swing" id="swingBox"><summary><h2 style="margin:0;display:inline">Swing trading plan</h2> <span class="muted" style="font-size:13px">entry, stop, targets for short trades</span></summary>` : `<div class="card">`}
+            <div class="card-head"><h2 style="margin:0">${isLT() ? "" : "Best moment to buy"}</h2>${isLT() ? "" : rf("quote")}</div>
             <div>${entryBadge(a.entryStatus)}</div>
             <div class="callout">${esc(a.entryWhy)}</div>
             ${p ? `<div class="plan"><div><div class="k">Entry</div><div class="v num">${fmt(p.entry, dp(p.entry))}</div></div><div><div class="k">Stop loss (−${p.riskPct}%)</div><div class="v num down">${fmt(p.stop, dp(p.stop))}</div></div>
@@ -355,8 +404,8 @@
               <div class="sec" id="sizeOut">${skeleton(1)}</div>
               <div class="tk-actions" style="margin-top:12px"><button class="btn primary" id="ticketBtn" type="button"><i data-lucide="clipboard-list"></i> Prepare Trading 212 order</button></div>` : `<p class="muted">No entry plan: there is no buy setup today.</p>`}
             <div id="btBox" style="margin-top:14px"></div>
-          </div>
-          <div class="card"><div class="card-head"><h2>Signal rating</h2>${meter(a.score)}</div>
+          ${isLT() ? "</details>" : "</div>"}
+          <div class="card" ${isLT() ? "hidden" : ""}><div class="card-head"><h2>Signal rating</h2>${meter(a.score)}</div>
             <ul class="reasons">${a.reasons.map((x) => `<li class="${x.ok ? "" : "no"}">${esc(x.text)}</li>`).join("")}</ul></div>
         </div>
       </div>
@@ -381,10 +430,10 @@
       </div>`;
 
     // ---- chart: daily ranges, 1D / 7D intraday, forecast cone
-    const ui = { mode: stockMode[a.symbol] || "126", intra: null, fund: null, chart: null };
+    const ui = { mode: stockMode[a.symbol] || (isLT() ? "504" : "126"), intra: null, fund: null, chart: null };
     $$("#rng button").forEach((x) => x.classList.toggle("on", x.dataset.b === ui.mode));
     const legendDaily = `<span><i style="background:var(--series-2)"></i>SMA 20</span><span><i style="background:var(--series-1)"></i>SMA 50</span><span><i style="background:var(--series-5)"></i>SMA 200</span><span><i style="background:var(--series-7)"></i>RSI 14</span>` +
-      (p ? `<span style="color:var(--accent)"><i class="dash"></i>Entry</span><span style="color:var(--bad)"><i class="dash"></i>Stop</span><span style="color:var(--good)"><i class="dash"></i>Targets</span>` : "");
+      (p && !isLT() ? `<span style="color:var(--accent)"><i class="dash"></i>Entry</span><span style="color:var(--bad)"><i class="dash"></i>Stop</span><span style="color:var(--good)"><i class="dash"></i>Targets</span>` : "");
     const legendFc = `<span><i style="background:rgba(57,135,229,.45)"></i>Forecast range (68% / 95%)</span><span style="color:var(--accent)"><i class="dash"></i>Trend path</span><span><i style="background:var(--warning);width:9px;height:9px;transform:rotate(45deg)"></i>Analyst target</span>`;
     async function drawChart() {
       if (ui.chart) ui.chart.destroy();
@@ -408,7 +457,7 @@
       $("#legend").innerHTML = legendDaily + (fcOn && a.forecast ? legendFc : "");
       const tgt = ui.fund && ui.fund.analyst ? ui.fund.analyst.avg : null;
       $("#fcNote").textContent = fcOn && a.forecast ? "Forecast: the last 6 months' trend (halved, since trends fade) with ranges from recent volatility. A statistical range, not a prediction." : "";
-      ui.chart = Price($("#chart"), a.series, { bars: +m, plan: p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null });
+      ui.chart = Price($("#chart"), a.series, { bars: +m, plan: isLT() ? null : p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null });
     }
     function renderHourly(d, m) {
       const card = $("#hourlyCard"); card.hidden = false;
@@ -433,6 +482,14 @@
     RF.chart = async () => { if (/D$/.test(ui.mode)) { ui.intra = null; await drawChart(); } else await pages.stock(a.symbol); };
     ["quote", "chart"].forEach(stamp);
     current = () => ui.chart && ui.chart.destroy();
+    if (isLT() && window.LT) {
+      RF.ltv = async () => { delete window.LT.cache[a.symbol]; await window.LT.stockCard(a, $("#ltCard")); };
+      window.LT.stockCard(a, $("#ltCard")).then((lp) => {
+        stamp("ltv");
+        if (lp && $("#hdrBadges")) $("#hdrBadges").insertAdjacentHTML("afterbegin", window.LT.bandBadge(lp.band) + " " + window.LT.zoneBadge(lp.zone) + " ");
+      });
+      window.LT.backtestCard(a.symbol, $("#ltBt"));
+    }
 
     // ---- performance overview
     RF.perf = () => api("/api/performance?symbol=" + encodeURIComponent(a.symbol)).then((pf) => {
@@ -489,7 +546,8 @@
         $("#ticketBtn").addEventListener("click", () => window.Trade.openTicket(a));
         if (params && params.get("ticket")) window.Trade.openTicket(a);
       }
-      window.Trade.backtest(a.symbol, $("#btBox"));
+      if (!isLT()) window.Trade.backtest(a.symbol, $("#btBox"));
+      else $("#swingBox").addEventListener("toggle", function once() { window.Trade.backtest(a.symbol, $("#btBox")); $("#swingBox").removeEventListener("toggle", once); });
       $("#alertBtn").addEventListener("click", () => window.Trade.openAlerts({ symbol: a.symbol, price: p ? p.entry : a.price }));
     }
     RF.snews = () => api("/api/news?symbols=" + encodeURIComponent(a.symbol)).then((n) => { $("#snews") && ($("#snews").innerHTML = newsHtml(n.slice(0, 8), true)); })
@@ -556,25 +614,29 @@
 
   pages.portfolio = async function (arg, params) {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
-    view.innerHTML = `<h1>My Portfolio</h1><p class="sub">Your Trading 212 account (read-only) plus any holdings you add by hand, with a live rating and exit check on every position.</p>
+    const lt = isLT();
+    view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only) plus manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only) plus any holdings you add by hand, with a live rating and exit check on every position."}</p>
       <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
         <div id="pret" class="ret-grid ret7">${skeleton(2)}</div>
         <div class="card-head" style="margin-top:16px;flex-wrap:wrap"><h2 style="margin:0">Money invested vs value</h2>
           <div class="seg" id="vrng"><button data-r="1M">1M</button><button data-r="6M">6M</button><button data-r="1Y">1Y</button><button data-r="5Y">5Y</button><button data-r="Max" class="on">Max</button></div></div>
         <div class="chart-box" id="vchart" style="height:320px">${skeleton(8)}</div>
-        <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio value</span><span style="color:var(--text-muted)"><i class="dash"></i>Money invested (cost of shares held)</span><span><i style="background:rgba(12,163,12,.4);height:10px"></i>Gain</span><span><i style="background:rgba(208,59,59,.4);height:10px"></i>Loss</span></div>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio value</span><span style="color:var(--text-muted)"><i class="dash"></i>Money invested (cost of shares held)</span><span style="color:var(--series-2)"><i class="dash"></i>Same money in a world index fund (VWRL)</span><span><i style="background:rgba(12,163,12,.4);height:10px"></i>Gain</span><span><i style="background:rgba(208,59,59,.4);height:10px"></i>Loss</span></div>
         <div id="phWarn" class="muted" style="font-size:12px;margin-top:6px"></div>
       </div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
         <div class="grid" style="align-content:start">
           <div class="card" id="link">${skeleton(4)}</div>
-          <div class="card"><div class="card-head"><h2>Risk check</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
+          <div class="card"><div class="card-head"><h2>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
           <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
         </div>
       </div>
-      <div class="card" style="margin-top:16px" id="journalCard"><div class="card-head"><h2>Trade journal</h2>${rf("journal")}</div><div id="journal"><p class="muted">Link Trading 212 to see your closed trades, win rate and average win and loss.</p></div></div>
+      ${lt ? `<div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="coins"></i>Dividends</h2>${rf("divs")}</div><div id="divBox"><p class="muted">Link Trading 212 to see the dividends you receive.</p></div></div></div>` : ""}
+      <div class="card" style="margin-top:16px${lt ? ";display:none" : ""}" id="journalCard"><div class="card-head"><h2>Trade journal</h2>${rf("journal")}</div><div id="journal"><p class="muted">Link Trading 212 to see your closed trades, win rate and average win and loss.</p></div></div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><h2>Add a holding manually</h2><p class="muted" style="margin-top:-6px">For shares held outside Trading 212, or to plan before you link. Stored only in this browser.</p>
           <form class="form" id="mform"><div class="form-row">
@@ -590,7 +652,8 @@
           <label class="field">Account size (if not linked)<input name="account" type="number" step="100" min="0" value="${settings().account}"></label>
           <label class="field">Account currency (if not linked)<select name="ccy">${["USD", "EUR", "GBP", "CHF"].map((c) => `<option ${c === (settings().ccy || "USD") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
           <button class="btn" type="submit">Save</button></div>
-          <p class="muted" style="margin:0;font-size:13px">Pros risk 0.5–2% of the account per trade and keep total open risk under about 6%. Every order ticket is sized from these numbers.</p></form></div>
+          <p class="muted" style="margin:0;font-size:13px">Pros risk 0.5–2% of the account per trade and keep total open risk under about 6%. Every order ticket is sized from these numbers.</p></form>
+          <div class="mode-row"><span>Style</span><div class="seg" id="modeSeg2"><button data-m="lt">Long-term investing</button><button data-m="swing">Swing trading</button></div></div></div>
       </div>`;
 
     $("#mform").addEventListener("submit", (e) => {
@@ -600,6 +663,7 @@
       m.push({ symbol: fd.get("symbol").trim().toUpperCase(), qty: +fd.get("qty"), avgPrice: +fd.get("avgPrice"), date: fd.get("date"), source: "manual" });
       store.set("manual", m); toast("Added " + fd.get("symbol").toUpperCase()); history.replaceState(null, "", "#/portfolio"); pages.portfolio("", new URLSearchParams());
     });
+    $$("#modeSeg2 button").forEach((b) => { b.classList.toggle("on", b.dataset.m === (lt ? "lt" : "swing")); b.addEventListener("click", () => setMode(b.dataset.m)); });
     $("#sform").addEventListener("submit", (e) => {
       e.preventDefault(); const fd = new FormData(e.target);
       store.set("settings", Object.assign(settings(), { riskPct: +fd.get("riskPct"), account: +fd.get("account"), maxPosPct: +fd.get("maxPosPct"), maxHeatPct: +fd.get("maxHeatPct"), ccy: fd.get("ccy") })); toast("Saved");
@@ -640,18 +704,39 @@
     for (const grp of ["stocks", "etfs"]) for (const [sec, list] of Object.entries(uni[grp] || {})) list.forEach((x) => (secMap[x] = secMap[x] || sec));
     const R = acctR && positions.length ? await window.Trade.risk(positions, acctR, (s) => secMap[s] || "Other") : null;
     for (const p of positions) if (p.unprotected && p.alert === "OK") p.alert = "No stop order";
+    let ltMap = {};
+    if (lt && window.LT && positions.length) {
+      const prof = await window.LT.profiles(syms).catch(() => []);
+      ltMap = Object.fromEntries(prof.map((x) => [x.symbol, x]));
+      const L = await api("/api/lookthrough").catch(() => null);
+      const isFund = (sym) => !!(L && Object.values(L.indexes).some((v) => v.funds.includes(sym))) || (Q[sym] && /ETF/i.test(Q[sym].type || ""));
+      const targets = store.get("targets", {});
+      const tsum = Object.values(targets).reduce((a, b) => a + (+b || 0), 0) || 100;
+      const totAcct = positions.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0) + (t && t.cash.free > 0 ? t.cash.free : 0);
+      for (const p of positions) {
+        p.weight = totAcct ? 100 * (p.valueAcct || p.mv || 0) / totAcct : 0;
+        const tg = targets[p.symbol] != null ? 100 * targets[p.symbol] / tsum : null;
+        const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol));
+        p.verdict = vd.v; p.verdictWhy = vd.why;
+        p.alert = vd.v === "Trim" || vd.v === "Review thesis" ? vd.v : "OK";
+      }
+      window.LT.plan($("#planBox"), positions, acctR, ltMap, () => pages.portfolio("", new URLSearchParams()));
+      RF.divs = () => (t ? window.LT.dividends($("#divBox"), t.currency) : null);
+      if (t) window.LT.dividends($("#divBox"), t.currency).then(() => stamp("divs"));
+    }
     const ccy = t ? t.currency : "USD";
     const invested = positions.reduce((a, p) => a + (p.avgPrice || 0) * (p.qty || 0), 0);
     const total = t ? (t.cash.total || 0) + manual().reduce((a, p) => a + p.qty * (Q[p.symbol] ? Q[p.symbol].price : p.avgPrice), 0) : positions.reduce((a, p) => a + p.mv, 0);
     const ppl = (t && t.cash.ppl != null ? t.cash.ppl : positions.filter((p) => p.source === "Trading 212").reduce((a, p) => a + (p.ppl || 0), 0)) +
       positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
-    if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
+    if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
+    else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     $("#pstats").innerHTML = `
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${t ? "Trading 212 " + esc(t.env) + (manual().length ? " + manual" : "") : "manual holdings"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>Positions needing attention</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
     stamp("pos");
 
     if (!positions.length) {
@@ -665,12 +750,18 @@
       { key: "avg", label: "Avg", r: true, sm: true, val: (p) => p.avgPrice, html: (p) => fmt(p.avgPrice, dp(p.avgPrice)) },
       { key: "price", label: "Price", r: true, val: (p) => p.price, html: (p) => fmt(p.price, dp(p.price)) },
       { key: "pl", label: "P/L", r: true, val: (p) => p.plPct, html: (p) => `<span class="${cls(p.plPct)}">${pct(p.plPct)}</span><span class="nm ${cls(p.ppl)}">${p.ppl != null ? (p.ppl >= 0 ? "+" : "") + fmt(p.ppl, 2) : ""}</span>` },
+      ...(lt ? [
+        { key: "weight", label: "Weight", r: true, val: (p) => p.weight, html: (p) => p.weight != null ? p.weight.toFixed(1) + "%" : "–" },
+        { key: "lts", label: "LT score", val: (p) => (ltMap[p.symbol] || {}).score, html: (p) => { const x = ltMap[p.symbol]; return x && x.score != null ? `${meter(x.score)}<span class="nm">${esc(x.band || "")}</span>` : "–"; } },
+        { key: "verdict", label: "Action", val: (p) => ["Review thesis", "Trim", "Accumulate+", "Accumulate", "Hold"].indexOf(p.verdict), html: (p) => p.verdict ? `<span class="badge ${window.LT.verdictCls(p.verdict)}">${esc(p.verdict)}</span><span class="nm">${esc(p.verdictWhy || "")}</span>` : "" },
+      ] : [
       { key: "stop", label: "Stop", r: true, sm: true, val: (p) => p.stopOrder || p.suggestedStop, html: (p) => p.stopOrder ? `<span class="num">${fmt(p.stopOrder, dp(p.stopOrder))}</span><span class="nm">T212 stop order</span>`
         : p.suggestedStop ? `<span class="num ${p.unprotected ? "down" : "muted"}">${fmt(p.suggestedStop, dp(p.suggestedStop))}</span><span class="nm">${p.unprotected ? "⚠ none set · suggested" : "suggested"}</span>` : "–" },
       { key: "rating", label: "Rating", val: (p) => p.q.score, html: (p) => ratingBadge(p.q.rating) },
       { key: "alert", label: "Check", val: (p) => (p.alert === "OK" ? 0 : 1), html: (p) => p.alert === "OK" ? `<span class="muted">✓ OK</span>` : p.alert ? `<span class="badge e-wait">${esc(p.alert)}</span>` : "" },
+      ]),
       { key: "x", label: "", val: () => 0, html: (p) => p.source === "Manual" ? `<button class="btn sm danger" data-del="${p.idx}" aria-label="Remove">✕</button>` : "" },
-    ], { sort: "pl" });
+    ], { sort: lt ? "weight" : "pl" });
     $$("[data-del]").forEach((b) => b.addEventListener("click", () => {
       const m = manual(); m.splice(+b.dataset.del, 1); store.set("manual", m); pages.portfolio("", new URLSearchParams());
     }));
@@ -706,7 +797,11 @@
     const ccy = h.base;
     const m = (v) => money(v, ccy);
     const label = { "1D": "Today", "1W": "1 week", "1M": "1 month", "3M": "3 months", YTD: "This year", "1Y": "1 year", "5Y": "5 years", Max: "All time" };
-    $("#pret").innerHTML = ["1D", "1W", "1M", "YTD", "1Y", "5Y", "Max"].map((k) => {
+    const tw = h.twr || {};
+    $("#pret").innerHTML = (isLT() && tw.years ? `<div class="perf-tile"><div class="k">Growth a year</div><div class="v num ${cls(tw.cagr)}">${tw.cagr != null ? pct(tw.cagr) : "–"}</div><div class="b">${tw.cagr != null ? "over " + tw.years + " years" : "after 1 year of history"}</div></div>
+      <div class="perf-tile"><div class="k">Worst fall</div><div class="v num down">${pct(tw.maxdd)}</div><div class="b">peak to bottom</div></div>` : "") +
+      (isLT() && h.bench && h.bench.length ? (() => { const bv = h.bench[h.bench.length - 1], v = h.value[h.value.length - 1]; return bv ? `<div class="perf-tile"><div class="k">vs world index fund</div><div class="v num ${cls(v - bv)}">${v - bv >= 0 ? "+" : ""}${m(v - bv)}</div><div class="b">same deposits in VWRL: ${m(bv)}</div></div>` : ""; })() : "") +
+      ["1D", "1W", "1M", "YTD", "1Y", "5Y", "Max"].map((k) => {
       const r = h.returns[k];
       return `<div class="perf-tile"><div class="k">${label[k]}</div>${r ? `<div class="v num ${cls(r.gain)}" ${r.pct != null ? `data-count="${r.pct}" data-fmt="pct"` : ""}>${pct(r.pct)}</div><div class="b num ${cls(r.gain)}">${r.gain >= 0 ? "+" : ""}${m(r.gain)}</div>`
         : `<div class="v muted">–</div><div class="b">history too short</div>`}${r && r.partial ? `<div class="b">since your first buy</div>` : ""}</div>`;
@@ -859,7 +954,7 @@
         <div><b data-count="${launch.length}" data-fmt="int">${launch.length}</b><span>show the launch pattern</span></div><div><b>${esc(C[0].symbol)}</b><span>top score (${C[0].score})</span></div>`;
       $("#scope").innerHTML = TChart.radarScope(C.slice(0, 24)) + `<p class="muted scope-cap">Closer to the centre = higher score · green = 75+</p>`;
       $("#legends").innerHTML = W.map((w) => `<a class="card legend-card" href="#/stock/${encodeURIComponent(w.symbol)}">
-        <div class="card-head" style="margin-bottom:4px"><span class="sym" style="font-size:17px">${esc(w.symbol)}</span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
+        <div class="card-head" style="margin-bottom:4px"><span class="symwrap">${logo(w.symbol, 26)}<span class="sym" style="font-size:17px">${esc(w.symbol)}</span></span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
         <div class="muted" style="font-size:12px">Launch signal ${new Date(w.date + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", year: "numeric" })} at ${fmt(w.price, 2)}</div>
         ${TChart.legendPath(w.path)}
         <div style="display:flex;justify-content:space-between;font-size:12px"><span class="sec">12 months later <b class="${cls(w.gain12)}">${w.gain12 >= 0 ? "+" : ""}${w.gain12}%</b></span><span class="sec">Today <b class="up">+${w.sinceLaunch}%</b></span></div></a>`).join("");
@@ -883,7 +978,7 @@
     const bar = (label, v) => `<div class="mbar"><span>${label}</span><i><b style="width:${v ?? 0}%"></b></i><em class="num">${v ?? "–"}</em></div>`;
     const candCard = (x, rank) => `<div class="card cand" id="c-${esc(x.symbol)}">
       <div class="cand-top">
-        <div class="rank">#${rank}</div>
+        <div class="rank">#${rank}</div>${logo(x.symbol, 34)}
         <div style="flex:1;min-width:0"><a href="#/stock/${encodeURIComponent(x.symbol)}" class="sym" style="font-size:18px">${esc(x.symbol)}</a>${x.isPastWinner ? ` <span class="pill" title="One of the legends the radar learned from">legend</span>` : ""}
           <span class="nm">${esc(x.name)}</span><span class="tag" style="margin-top:4px;display:inline-block">${esc(x.theme)}</span></div>
         ${TChart.ring(x.score, 66, "Radar score")}
@@ -989,8 +1084,9 @@
     $$("button:not([type])").forEach((b) => { if (!b.closest("form")) b.setAttribute("type", "button"); });
   }).observe(view, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   // shared with trade.js (order ticket, alerts, risk, journal, backtest)
-  window.TD = { api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
+  window.TD = { logo, isLT, api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
   window.addEventListener("hashchange", route);
+  syncModeUI();
   route();
   loadStrip().catch(() => {});
   setInterval(() => { if (!document.hidden) loadStrip().catch(() => {}); }, 60000);

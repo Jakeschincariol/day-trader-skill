@@ -352,7 +352,7 @@
       const cnt = Math.max(1, n - start - 1);
       const x = (i) => left + (i - start) / cnt * pw;
       let lo = Infinity, hi = -Infinity;
-      for (let i = start; i < n; i++) { lo = Math.min(lo, d.value[i], d.invested[i]); hi = Math.max(hi, d.value[i], d.invested[i]); }
+      for (let i = start; i < n; i++) { lo = Math.min(lo, d.value[i], d.invested[i]); hi = Math.max(hi, d.value[i], d.invested[i]); if (d.bench && d.bench[i] != null) { lo = Math.min(lo, d.bench[i]); hi = Math.max(hi, d.bench[i]); } }
       lo = Math.max(0, lo - (hi - lo) * 0.08); hi += (hi - lo) * 0.08 || 1;
       const y = (v) => top + (hi - v) / (hi - lo) * ph;
       const { ticks } = niceTicks(lo, hi, 5);
@@ -371,6 +371,12 @@
         ctx.stroke(); ctx.setLineDash([]);
       };
       line(d.invested, C.inv, [6, 4]);
+      if (d.bench) {
+        ctx.strokeStyle = css("--series-2"); ctx.lineWidth = 1.5; ctx.setLineDash([2, 3]); ctx.beginPath();
+        let on = false;
+        for (let i = start; i < n; i++) { const v = d.bench[i]; if (v == null) { on = false; continue; } on ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)); on = true; }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
       line(d.value, C.val);
       // x labels
       ctx.fillStyle = C.muted; ctx.textAlign = "center"; ctx.textBaseline = "top";
@@ -403,7 +409,8 @@
       tip.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${new Date(d.dates[i] + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</div>` +
         row("Value", money(d.value[i])) + row("Invested", money(d.invested[i])) +
         row("Unrealised", (gain >= 0 ? "+" : "") + money(gain) + (d.invested[i] ? ` (${gain >= 0 ? "+" : ""}${(100 * gain / d.invested[i]).toFixed(1)}%)` : ""), gain >= 0 ? "up" : "down") +
-        (d.realized ? row("Realised so far", money(d.realized[i])) : "");
+        (d.realized ? row("Realised so far", money(d.realized[i])) : "") +
+        (d.bench && d.bench[i] != null ? row("Same money in VWRL", money(d.bench[i])) : "");
       tip.hidden = false;
       const tw = tip.offsetWidth, th = tip.offsetHeight;
       let lx = px + 16; if (lx + tw > W) lx = px - tw - 16;

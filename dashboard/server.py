@@ -32,6 +32,10 @@ Origin is not this machine, so other websites cannot read your portfolio.
 
 import argparse
 import base64
+import hashlib
+import hmac
+import secrets
+import socket
 import calendar
 import email.utils
 import concurrent.futures
@@ -51,10 +55,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 CRED_FILE = os.path.join(HERE, ".t212.json")
+ACCESS_FILE = os.path.join(HERE, ".access.json")  # phone mode secret, git-ignored
 UA = "Mozilla/5.0 (compatible; day-trader-skill-dashboard/1.0; +https://github.com/Jakeschincariol/day-trader-skill)"
 
 with open(os.path.join(HERE, "universe.json")) as _f:
     UNIVERSE = json.load(_f)
+with open(os.path.join(HERE, "etf_lookthrough.json")) as _f:
+    LOOKTHROUGH = json.load(_f)
 
 # ---------------------------------------------------------------- caching
 
@@ -784,14 +791,15 @@ def performance(symbol):
     def series(sym):
         dres = _chart(sym, "range=2y&interval=1d", 600)
         wres = _chart(sym, "range=max&interval=1wk", 3600)
-        daily = [(x[0], x[4]) for x in _rows(dres)]
-        weekly = [(x[0], x[4]) for x in _rows(wres)]
+        daily = _adj(dres)  # dividends included
+        weekly = _adj(wres)
         if daily and weekly and weekly[-1][0] < daily[-1][0]:
             weekly.append(daily[-1])
         return daily, weekly
-    me, spy = POOL.map(lambda s: series(s), [symbol, "SPY"])
+    bench = benchmark_for(symbol)
+    me, spy = POOL.map(lambda s: series(s), [symbol, bench if bench != symbol else "SPY"])
     first = me[1][0][0] if me[1] else None
-    return {"symbol": symbol, "since": first, "returns": _ret_table(*me), "spy": _ret_table(*spy)}
+    return {"symbol": symbol, "since": first, "returns": _ret_table(*me), "spy": _ret_table(*spy), "benchmark": bench, "totalReturn": True}
 
 
 # ---------------------------------------------------------------- fundamentals (Nasdaq, US listings)
@@ -1483,7 +1491,49 @@ def portfolio_history(lots, base="USD"):
     out["returns"] = period_returns(out)
     out["warnings"] = warnings
     out["base"] = base
+    out.update(_twr_stats(out))
+    try:
+        out.update(_bench_replay(out, base, first))
+    except Exception:
+        pass
     return out
+
+
+def _twr_stats(h):
+    """Time-weighted index (deposits removed), its yearly growth rate and worst fall."""
+    V, F, dates = h["value"], h["flow"], h["dates"]
+    idx, level, started = [], 1.0, False
+    for i in range(len(V)):
+        if i and V[i - 1] > 0:
+            r_ = (V[i] - F[i]) / V[i - 1] - 1
+            level *= 1 + r_
+            started = True
+        idx.append(level if started or V[i] > 0 else None)
+    pts = [(d, x) for d, x in zip(dates, idx) if x is not None]
+    if len(pts) < 2:
+        return {}
+    yrs = (calendar.timegm(time.strptime(pts[-1][0], "%Y-%m-%d")) - calendar.timegm(time.strptime(pts[0][0], "%Y-%m-%d"))) / 31557600.0
+    total = pts[-1][1] / pts[0][1] - 1
+    return {"twr": {"total": round(100 * total, 2), "cagr": round(100 * ((1 + total) ** (1 / yrs) - 1), 2) if yrs >= 1 else None,
+                    "years": round(yrs, 1), "maxdd": round(100 * _max_drawdown([x for _, x in pts]), 2)}}
+
+
+def _bench_replay(h, base, first, bench="VWRL.L"):
+    """The same money, on the same days, put into a world index fund instead."""
+    series, ccy = _daily_closes(bench, first)
+    unit, scale = (ccy, 1.0) if ccy not in ("GBp", "GBX") else ("GBP", 0.01)
+    fxs = {} if unit == base else _daily_closes("%s%s=X" % (unit, base), first)[0]
+    units, out, px, rate = 0.0, [], None, None
+    for d, f in zip(h["dates"], h["flow"]):
+        px = series.get(d, px)
+        rate = fxs.get(d, rate) if fxs else 1.0
+        if px is None or rate is None:
+            out.append(None)
+            continue
+        p = px * scale * rate
+        units += f / p
+        out.append(round(units * p, 2))
+    return {"bench": out, "benchSymbol": bench, "benchName": "Vanguard FTSE All-World (VWRL)"}
 
 
 def period_returns(h):
@@ -1652,6 +1702,402 @@ def fx_rate(src, dst):
         return None
 
 
+# ---------------------------------------------------------------- long-term investing
+
+def _adj(res):
+    """[(t, close)] using dividend-adjusted closes when Yahoo provides them (total return)."""
+    ts = res.get("timestamp") or []
+    adj = ((res.get("indicators", {}).get("adjclose") or [{}])[0]).get("adjclose")
+    q = (res.get("indicators", {}).get("quote") or [{}])[0].get("close") or []
+    src = adj if adj and len(adj) == len(ts) else q
+    return [(t, c) for t, c in zip(ts, src) if c]
+
+
+def _lin(x, lo, hi):
+    """Map x onto 0-100 between lo (0) and hi (100); works for falling scales too (lo > hi)."""
+    if x is None:
+        return None
+    t = (x - lo) / float(hi - lo)
+    return max(0.0, min(100.0, 100.0 * t))
+
+
+def _max_drawdown(closes):
+    peak, dd = None, 0.0
+    for c in closes:
+        peak = c if peak is None or c > peak else peak
+        dd = min(dd, c / peak - 1)
+    return dd
+
+
+def lt_profile(symbol):
+    """Long-term score (quality, growth, valuation, balance sheet, dividend, trend), buy zone and history."""
+    sym = symbol.upper()
+
+    def load():
+        res = _chart(sym, "range=10y&interval=1d", 3600)
+        meta = res.get("meta", {})
+        adj = _adj(res)
+        t = [x[0] for x in adj]
+        c = [x[1] for x in adj]
+        if len(c) < 60:
+            raise ValueError("not enough history for %s" % sym)
+        raw = [x[4] for x in _rows(res)]
+        price = raw[-1] if raw else c[-1]
+        n = len(c)
+
+        def back(days):
+            target = t[-1] - days * 86400
+            prior = [i for i in range(n) if t[i] <= target]
+            if prior:
+                return prior[-1]
+            return 0 if t[0] - target < 30 * 86400 else None  # history starts a few days late
+        bname = benchmark_for(sym)
+        try:
+            bres = _chart(bname if bname != "SPY" else "SPY", "range=10y&interval=1d", 3600)
+            badj = _adj(bres)
+        except Exception:
+            badj = []
+
+        def bret(days_from, days_to=0):
+            if not badj:
+                return None
+            bt = [x[0] for x in badj]
+            def at(d):
+                target = badj[-1][0] - d * 86400
+                prior = [i for i in range(len(bt)) if bt[i] <= target]
+                return badj[prior[-1]][1] if prior else None
+            a, b = at(days_from), at(days_to)
+            return b / a - 1 if a and b else None
+        i12, i1 = back(365), back(30)
+        mom = (c[i1] / c[i12] - 1) if i12 is not None and i1 is not None else None
+        bmom = bret(365, 30)
+        s200 = sum(c[-200:]) / 200 if n >= 200 else None
+        i3y = back(3 * 365)
+        dd3 = _max_drawdown(c[i3y:]) if i3y is not None else _max_drawdown(c)
+        ath = max(c)
+        dd_now = c[-1] / ath - 1
+        hi52, lo52 = max(raw[-252:]), min(raw[-252:])
+        z200 = price / (sum(raw[-200:]) / 200) - 1 if len(raw) >= 200 else None
+
+        def cagr(years):
+            i = back(int(years * 365.25))
+            if i is None:
+                return None
+            yrs = (t[-1] - t[i]) / 31557600.0
+            return (c[-1] / c[i]) ** (1 / yrs) - 1 if yrs > 0.5 else None
+        hist = {"cagr1": cagr(1), "cagr3": cagr(3), "cagr5": cagr(5), "cagr10": cagr(10), "maxdd3": dd3, "fromATH": dd_now}
+
+        fa = None
+        try:
+            fa = fundamentals(sym)
+        except Exception:
+            fa = None
+        has_fa = bool(fa and fa.get("available"))
+        groups, why = {}, []
+
+        def add(group, label, value, score, fmtv):
+            if score is None:
+                return
+            groups.setdefault(group, []).append(score)
+            why.append({"group": group, "text": "%s %s" % (label, fmtv(value)), "score": round(score), "ok": score >= 50})
+        pctf = lambda v: "%.1f%%" % (100 * v) if v is not None else "n/a"
+        numf = lambda v: "%.2f" % v if v is not None else "n/a"
+        if has_fa:
+            v, h = fa["valuation"], fa["highlights"]
+            roe = h.get("roe")
+            add("Quality", "Return on equity", roe, _lin(roe, 8, 25) if roe is not None else None, lambda x: "%.0f%%" % x)
+            om = h.get("operatingMargin")
+            add("Quality", "Operating margin", om, _lin(om, 5, 30) if om is not None else None, lambda x: "%.0f%%" % x)
+            fcf, rev = h.get("freeCashFlow"), h.get("revenueTTM")
+            fcfm = fcf / rev if fcf is not None and rev else None
+            add("Quality", "Free-cash-flow margin", fcfm, _lin(fcfm, 0, 0.20), pctf)
+            ann = (fa.get("revVsEarnings") or {}).get("annual") or []
+            prof = [x for x in ann if x.get("netIncome") is not None]
+            if prof:
+                share = sum(1 for x in prof if x["netIncome"] > 0) / float(len(prof))
+                add("Quality", "Profitable years", share, 100 * share, lambda x: "%d of %d" % (round(x * len(prof)), len(prof)))
+            revs = [x.get("revenue") for x in ann if x.get("revenue")]
+            if len(revs) >= 3 and revs[0] > 0:
+                g = (revs[-1] / revs[0]) ** (1.0 / (len(revs) - 1)) - 1
+                add("Growth", "Revenue growth a year", g, _lin(g, 0, 0.15), pctf)
+            eps_yoy = [q.get("epsYoY") for q in (fa.get("earnings") or [])[-4:] if q.get("epsYoY") is not None]
+            if eps_yoy:
+                e = sum(eps_yoy) / len(eps_yoy) / 100.0
+                add("Growth", "EPS growth (last 4 quarters)", e, _lin(e, 0, 0.25), pctf)
+            if v.get("peTTM") and v.get("forwardPE"):
+                fg = v["peTTM"] / v["forwardPE"] - 1
+                add("Growth", "Expected EPS growth next year", fg, _lin(fg, 0, 0.15), pctf)
+            add("Valuation", "PEG ratio", v.get("peg"), _lin(v.get("peg"), 3, 1) if v.get("peg") else None, numf)
+            mcap = v.get("marketCap")
+            fy = fcf / mcap if fcf and mcap else None
+            add("Valuation", "Free-cash-flow yield", fy, _lin(fy, 0.01, 0.06), pctf)
+            up = (fa.get("analyst") or {}).get("upside")
+            add("Valuation", "Analyst target upside", up, _lin(up, -10, 30) if up is not None else None, lambda x: "%+.0f%%" % x)
+            de, cash, debt = h.get("debtEquity"), h.get("totalCash"), h.get("totalDebt")
+            if cash and debt is not None and cash > debt:
+                add("Balance sheet", "Net cash", cash - debt, 100.0, lambda x: big_num(x))
+            elif de is not None:
+                add("Balance sheet", "Debt / equity", de, _lin(de, 200, 30), lambda x: "%.0f%%" % x)
+            dy = h.get("dividendYield")
+            try:
+                dyv = float(str(dy).strip("%")) if dy not in (None, "N/A", "") else None
+            except ValueError:
+                dyv = None
+            if dyv:
+                div = money_num(h.get("dividend"))
+                payout = div / h["epsTTM"] if div and h.get("epsTTM") else None
+                sc = _lin(dyv, 0, 4)
+                if payout is not None and payout > 0.7:
+                    sc *= 0.6
+                add("Dividend", "Dividend yield", dyv, sc, lambda x: "%.2f%%%s" % (x, " (payout %.0f%%)" % (100 * payout) if payout else ""))
+        else:
+            c5 = hist["cagr5"] if hist["cagr5"] is not None else hist["cagr3"]
+            add("Growth", "Total return a year (5y)" if hist["cagr5"] is not None else "Total return a year (3y)", c5, _lin(c5, 0, 0.12), pctf)
+        rel = mom - bmom if mom is not None and bmom is not None else None
+        add("Trend", "12-month return vs %s" % ("S&P 500" if bname == "SPY" else bname), rel, _lin(rel, -0.2, 0.2), lambda x: "%+.0f pts" % (100 * x))
+        if s200:
+            add("Trend", "Price vs 200-day average", c[-1] / s200 - 1, 100.0 if c[-1] > s200 else 0.0, pctf)
+        add("Trend", "Worst fall in 3 years", dd3, _lin(dd3, -0.6, -0.2), pctf)
+        W = {"Quality": 25, "Growth": 20, "Valuation": 20, "Balance sheet": 15, "Dividend": 5, "Trend": 15}
+        if has_fa and "Dividend" not in groups:
+            W["Growth"] += W.pop("Dividend")
+        gs = {g: sum(x) / len(x) for g, x in groups.items()}
+        wsum = sum(W[g] for g in gs if g in W)
+        score = round(sum(gs[g] * W[g] for g in gs if g in W) / wsum) if wsum else None
+        if has_fa:
+            band = (None if score is None else "Core quality" if score >= 75 else "Good" if score >= 60 else "Fair" if score >= 45 else "Speculative")
+        else:  # ETFs and non-US listings: judged on track record only
+            band = (None if score is None else "Strong record" if score >= 75 else "Solid record" if score >= 60 else "Mixed record" if score >= 45 else "Weak record")
+
+        # buy zone for accumulating
+        pe_pct = None
+        if has_fa and len(fa.get("earnings") or []) >= 7:
+            q = fa["earnings"]
+            pts = []
+            for k in range(3, len(q)):
+                ttm = sum(x["eps"] for x in q[k - 3:k + 1] if x.get("eps") is not None)
+                ts_q = calendar.timegm(time.strptime(q[k]["date"], "%Y-%m-%d"))
+                prior = [j for j in range(n) if t[j] <= ts_q]
+                if ttm > 0 and prior:
+                    pts.append(raw[min(prior[-1], len(raw) - 1)] / ttm if len(raw) == n else c[prior[-1]] / ttm)
+            pe_now = fa["valuation"].get("peTTM")
+            if len(pts) >= 4 and pe_now:
+                pe_pct = round(100.0 * sum(1 for x in pts if x <= pe_now) / len(pts))
+        reasons = []
+        # on sale = the price itself has come down, not just "below an old peak" after a big run
+        cheap = ((z200 is not None and z200 <= -0.05) or (pe_pct is not None and pe_pct <= 33)
+                 or (dd_now <= -0.15 and (z200 is None or z200 <= 0.05)))
+        dear = (z200 is not None and z200 >= 0.25) or (pe_pct is not None and pe_pct >= 90 and ((fa or {}).get("analyst") or {}).get("upside", 0) < 0)
+        if z200 is not None:
+            reasons.append("%s%% %s its 200-day average" % (abs(round(100 * z200)), "above" if z200 >= 0 else "below"))
+        reasons.append("at its all-time high" if dd_now > -0.01 else "%d%% below its all-time high" % round(-100 * dd_now))
+        if pe_pct is not None:
+            reasons.append("P/E in the %s of its ~2-year range" % ("bottom third" if pe_pct <= 33 else "top 10%" if pe_pct >= 90 else "middle"))
+        if score is not None and score < 45 and has_fa:
+            zone, zwhy = "Speculative", "Weak fundamentals or history: keep it a small satellite position, or research first."
+        elif cheap and (score or 0) >= 60:
+            zone, zwhy = "Accumulate+", "Good business on sale: a good month to add a bit more than usual."
+        elif dear:
+            zone, zwhy = "Stretched", "Price ran ahead of the business: keep buying small, no need to rush."
+        else:
+            zone, zwhy = "Accumulate", "Fair price: keep your regular monthly buy."
+        return {
+            "symbol": sym, "name": meta.get("longName") or meta.get("shortName") or sym, "currency": meta.get("currency"),
+            "price": r(price, 4 if price < 2 else 2), "score": score, "band": band, "groups": {g: round(x) for g, x in gs.items()},
+            "why": why, "zone": zone, "zoneWhy": zwhy, "zoneReasons": reasons, "pePercentile": pe_pct,
+            "z200": r(100 * z200, 1) if z200 is not None else None, "fromATH": r(100 * dd_now, 1),
+            "range52": r(100 * (price - lo52) / (hi52 - lo52), 0) if hi52 > lo52 else None,
+            "history": {k: (r(100 * v, 1) if v is not None else None) for k, v in hist.items()},
+            "fundamentals": has_fa, "benchmark": bname,
+            "sector": (fa or {}).get("sector") if has_fa else None,
+        }
+    return cached(("lt", sym), 3 * 3600, load)
+
+
+def big_num(x):
+    return "%.1fB" % (x / 1e9) if abs(x) >= 1e9 else "%.0fM" % (x / 1e6)
+
+
+def lt_many(symbols):
+    def one(s):
+        try:
+            return lt_profile(s)
+        except Exception as e:
+            return {"symbol": s, "error": str(e)[:200]}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:  # own pool: lt_profile uses POOL inside
+        return list(ex.map(one, symbols))
+
+
+def _irr(flows):
+    """Annual money-weighted return from [(years_from_start, amount)] (negative = money in)."""
+    def npv(rate):
+        return sum(a / (1 + rate) ** y for y, a in flows)
+    lo, hi = -0.99, 5.0
+    if npv(lo) * npv(hi) > 0:
+        return None
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if npv(lo) * npv(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
+def lt_backtest(symbol):
+    """Buy-and-hold (1/3/5/10y) and monthly investing (5y) on dividend-adjusted prices, vs the benchmark."""
+    sym = symbol.upper()
+
+    def run(s):
+        adj = _adj(_chart(s, "range=10y&interval=1d", 3600))
+        t = [x[0] for x in adj]
+        c = [x[1] for x in adj]
+        out = {"lump": {}, "dca": None}
+        for yrs in (1, 3, 5, 10):
+            target = t[-1] - int(yrs * 365.25 * 86400)
+            idx = [i for i in range(len(t)) if t[i] >= target]
+            if not idx or (t[idx[0]] - target) > 20 * 86400:
+                continue
+            i0 = idx[0]
+            span = (t[-1] - t[i0]) / 31557600.0
+            yearly = {}
+            for k in range(i0, len(t)):
+                yearly.setdefault(time.gmtime(t[k]).tm_year, []).append(c[k])
+            worst = min((v[-1] / v[0] - 1 for v in yearly.values() if len(v) > 20), default=None)
+            out["lump"][str(yrs)] = {"total": r(100 * (c[-1] / c[i0] - 1), 1), "cagr": r(100 * ((c[-1] / c[i0]) ** (1 / span) - 1), 1),
+                                     "maxdd": r(100 * _max_drawdown(c[i0:]), 1), "worstYear": r(100 * worst, 1) if worst is not None else None}
+        start = t[-1] - int(5 * 365.25 * 86400)
+        units, invested, flows, seen, path = 0.0, 0.0, [], set(), []
+        for k in range(len(t)):
+            if t[k] < start:
+                continue
+            ym = time.strftime("%Y-%m", time.gmtime(t[k]))
+            if ym not in seen:
+                seen.add(ym)
+                units += 100.0 / c[k]
+                invested += 100.0
+                flows.append(((t[k] - start) / 31557600.0, -100.0))
+            if k % 5 == 0 or k == len(t) - 1:
+                path.append([time.strftime("%Y-%m-%d", time.gmtime(t[k])), round(invested, 2), round(units * c[k], 2)])
+        if invested:
+            value = units * c[-1]
+            irr = _irr(flows + [((t[-1] - start) / 31557600.0, value)])
+            yr = [k for k in range(len(t)) if t[k] >= start]
+            ups = sum(1 for k in yr if k >= 252 and c[k] > c[k - 252])
+            tot = sum(1 for k in yr if k >= 252)
+            out["dca"] = {"months": len(seen), "invested": round(invested, 2), "value": round(value, 2),
+                          "irr": r(100 * irr, 1) if irr is not None else None, "path": path,
+                          "positiveYears": round(100.0 * ups / tot) if tot else None}
+        return out
+
+    def load():
+        b = benchmark_for(sym)
+        me, bench = POOL.map(run, [sym, b if b != sym else "SPY"])
+        return {"symbol": sym, "benchmark": b, "me": me, "bench": bench,
+                "note": "Dividends reinvested (adjusted prices). Monthly plan: 100 invested on the first trading day of each month for 5 years. Ignores fees, FX and taxes."}
+    return cached(("ltbt", sym), 6 * 3600, load)
+
+
+_divs = {"key": None, "items": [], "at": 0}
+
+
+def t212_dividends(max_pages=4):
+    """Dividends paid into the Trading 212 account (read-only)."""
+    key = (T212["key"], T212["env"])
+    with _t212_lock:
+        if _divs["key"] == key and time.time() - _divs["at"] < 3600:
+            return _divs["items"]
+        items, path = [], "/history/dividends?limit=50"
+        for _ in range(max_pages):
+            try:
+                page = t212_get(path.replace("/api/v0", ""))
+            except urllib.error.HTTPError as e:
+                if e.code in (404, 429):
+                    break
+                raise
+            for d in page.get("items", []):
+                ts = _iso_ts(d.get("paidOn") or d.get("paidAt") or d.get("createdAt"))
+                amt = num(d.get("amount"), d.get("amountInEuro"))
+                if ts and amt is not None:
+                    items.append({"symbol": t212_to_yahoo(d.get("ticker") or ""), "ts": ts, "date": _day(ts), "amount": amt,
+                                  "perShare": num(d.get("grossAmountPerShare")), "qty": num(d.get("quantity"))})
+            path = page.get("nextPagePath")
+            if not path:
+                break
+        _divs.update(key=key, items=items, at=time.time())
+        return items
+
+
+def dividend_summary():
+    items = t212_dividends()
+    now = time.time()
+    year = time.gmtime().tm_year
+    months, by_sym = {}, {}
+    for d in items:
+        m = d["date"][:7]
+        months[m] = months.get(m, 0) + d["amount"]
+        by_sym[d["symbol"]] = by_sym.get(d["symbol"], 0) + (d["amount"] if now - d["ts"] < 365 * 86400 else 0)
+    return {"last12": round(sum(d["amount"] for d in items if now - d["ts"] < 365 * 86400), 2),
+            "thisYear": round(sum(d["amount"] for d in items if d["date"].startswith(str(year))), 2),
+            "total": round(sum(d["amount"] for d in items), 2),
+            "months": [{"month": k, "amount": round(v, 2)} for k, v in sorted(months.items())][-24:],
+            "bySymbol": sorted([{"symbol": k, "amount": round(v, 2)} for k, v in by_sym.items() if v], key=lambda x: -x["amount"]),
+            "recent": sorted(items, key=lambda x: -x["ts"])[:12]}
+
+
+# ---------------------------------------------------------------- logos
+
+LOGO_DIR = os.path.join(HERE, ".logo-cache")  # git-ignored; logos are their owners' trademarks
+LOGO_SOURCES = ("https://financialmodelingprep.com/image-stock/%s.png",
+                "https://assets.parqet.com/logos/symbol/%s?format=png")
+_logo_lock = threading.Lock()
+
+
+def _monogram(sym):
+    """A generated badge for symbols without a logo (indices, FX, unknown tickers)."""
+    label = re.sub(r"[^A-Z0-9]", "", sym.upper().split(".")[0].split("=")[0])[:3] or "?"
+    hue = int(hashlib.md5(sym.encode()).hexdigest()[:4], 16) % 360
+    size = 34 if len(label) <= 2 else 26
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" '
+            'fill="hsl(%d,45%%,32%%)"/><text x="32" y="33" text-anchor="middle" dominant-baseline="central" '
+            'font-family="Inter,Arial,sans-serif" font-weight="700" font-size="%d" fill="#fff">%s</text></svg>' % (hue, size, label)).encode()
+
+
+def get_logo(symbol):
+    """(bytes, content_type) from the disk cache, the logo sources, or a monogram."""
+    sym = symbol.upper()
+    if not re.match(r"^[A-Z0-9.\-^=]{1,15}$", sym):
+        return _monogram("?"), "image/svg+xml"
+    if sym.startswith("^") or "=" in sym:
+        return _monogram(sym), "image/svg+xml"
+    os.makedirs(LOGO_DIR, exist_ok=True)
+    safe = re.sub(r"[^A-Z0-9_-]", "_", sym)
+    png, miss = os.path.join(LOGO_DIR, safe + ".png"), os.path.join(LOGO_DIR, safe + ".miss")
+    now = time.time()
+    if os.path.exists(png) and now - os.path.getmtime(png) < 30 * 86400:
+        with open(png, "rb") as f:
+            return f.read(), "image/png"
+    if os.path.exists(miss) and now - os.path.getmtime(miss) < 7 * 86400:
+        return _monogram(sym), "image/svg+xml"
+    with _logo_lock:  # one fetch at a time: be gentle with the free sources
+        for url in LOGO_SOURCES:
+            try:
+                req = urllib.request.Request(url % urllib.parse.quote(sym), headers={"User-Agent": UA, "Accept": "image/*"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    ctype = resp.headers.get("Content-Type", "")
+                    data = resp.read(300000)
+                if ctype.startswith("image/") and data[:8] == b"\x89PNG\r\n\x1a\n":
+                    with open(png, "wb") as f:
+                        f.write(data)
+                    return data, "image/png"
+            except Exception:
+                continue
+            finally:
+                time.sleep(0.15)
+        open(miss, "w").close()
+    return _monogram(sym), "image/svg+xml"
+
+
 # ---------------------------------------------------------------- HTTP
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -1667,18 +2113,61 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("DASH_DEBUG"):
             sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
 
-    def _local_ok(self):
+    def _is_local(self):
         host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        if self.server.allow_any_host:
-            return True
-        if host not in LOCAL_HOSTS:
+        return host in LOCAL_HOSTS and self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def _token_ok(self):
+        tok = getattr(self.server, "phone_token", None)
+        if not tok:
             return False
+        if getattr(self, "_new_cookie", None):
+            return True
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "td_key" and hmac.compare_digest(v.encode(), tok.encode()):
+                return True
+        return False
+
+    def _local_ok(self):
+        """This computer always; other devices (phone mode) only with the secret key, same-origin."""
         origin = self.headers.get("Origin")
-        if origin:
-            oh = urllib.parse.urlparse(origin).hostname or ""
-            if oh not in {"127.0.0.1", "localhost", "::1"}:
+        if self._is_local():
+            if origin and (urllib.parse.urlparse(origin).hostname or "") not in {"127.0.0.1", "localhost", "::1"}:
                 return False
+            return True
+        if not self._token_ok():
+            return False
+        if origin and urllib.parse.urlparse(origin).netloc != (self.headers.get("Host") or ""):
+            return False
         return True
+
+    def _phone_login(self, q):
+        """http://<pc>:8212/?key=SECRET unlocks this device. The key stays in the address so that
+        'Add to Home Screen' keeps it (iPhone home-screen apps don't share Safari's cookies)."""
+        tok = getattr(self.server, "phone_token", None)
+        key = q.get("key")
+        if tok and key and hmac.compare_digest(key.encode(), tok.encode()):
+            self._new_cookie = tok
+            return True
+        return False
+
+    def end_headers(self):
+        tok = getattr(self, "_new_cookie", None)
+        if tok:
+            self.send_header("Set-Cookie", "td_key=%s; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax" % tok)
+            self._new_cookie = None
+        super().end_headers()
+
+    def _locked(self):
+        body = (b"<!DOCTYPE html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;"
+                b"background:#0d0d0d;color:#f0efec;padding:24px'><h2>TraderDash is locked</h2><p>On your computer open the "
+                b"dashboard, tap <b>Use on iPhone</b> at the bottom of the page and scan the QR code with this phone's camera.</p>")
+        self.send_response(403)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_json(self, obj, code=200):
         body = json.dumps(obj).encode()
@@ -1690,13 +2179,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not self._local_ok():
-            return self.send_json({"error": "forbidden host"}, 403)
         u = urllib.parse.urlparse(self.path)
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+        self._new_cookie = None
+        if not self._is_local() and q.get("key"):
+            self._phone_login(q)
+        if not self._local_ok():
+            if not u.path.startswith("/api/") and getattr(self.server, "phone_token", None):
+                return self._locked()
+            return self.send_json({"error": "forbidden host"}, 403)
         try:
             if u.path.startswith("/api/"):
                 return self.api(u.path, q)
+            if u.path.startswith("/logo/"):
+                data, ctype = get_logo(urllib.parse.unquote(u.path[6:]))
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "max-age=86400")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                return self.wfile.write(data)
             return self.static(u.path)
         except PermissionError as e:
             self.send_json({"error": str(e)}, 401)
@@ -1717,6 +2219,11 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "bars")
             elif path == "/api/news":
                 purge(lambda k: k[0] == "news")
+            elif path == "/api/lt":
+                ss = syms(q.get("symbols")) + one
+                purge(lambda k: k[0] == "lt" and k[1] in ss)
+            elif path == "/api/t212/dividends":
+                _divs["at"] = 0
             elif path == "/api/regime":
                 purge(lambda k: k[0] == "regime" or (k[0] == "bars" and k[1] in ("SPY", "QQQ", "^VIX")))
             elif path == "/api/t212/journal":
@@ -1725,8 +2232,18 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] in ("radar", "bars") or (k[0] == "chart" and "range=2y&interval=1d" == k[2]))
             elif path == "/api/t212/portfolio":
                 purge(lambda k: k[0] == "t212")
+        if path == "/api/phone":
+            if not self._is_local():
+                return self.send_json({"error": "Open this from the computer running the dashboard", "onPhone": True}, 403)
+            tok = getattr(self.server, "phone_token", None)
+            port = self.server.server_address[1]
+            ip = lan_ip()
+            return self.send_json({"enabled": bool(tok), "ip": ip, "port": port,
+                                   "url": "http://%s:%d/?key=%s" % (ip, port, tok) if tok and ip else None})
         if path == "/api/universe":
             return self.send_json(UNIVERSE)
+        if path == "/api/lookthrough":
+            return self.send_json(LOOKTHROUGH)
         if path == "/api/quotes":
             return self.send_json(analyse_many(syms(q.get("symbols"))))
         if path == "/api/analysis":
@@ -1758,6 +2275,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(fundamentals(q.get("symbol", "SPY").upper()))
         if path == "/api/radar":
             return self.send_json(radar())
+        if path == "/api/lt":
+            if q.get("symbols"):
+                return self.send_json(lt_many(syms(q.get("symbols"))[:120]))
+            return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
+        if path == "/api/ltbacktest":
+            return self.send_json(lt_backtest(q.get("symbol", "SPY").upper()))
+        if path == "/api/t212/dividends":
+            return self.send_json(dividend_summary())
         if path == "/api/backtest":
             return self.send_json(backtest(q.get("symbol", "SPY").upper()))
         if path == "/api/regime":
@@ -1840,15 +2365,53 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def lan_ip():
+    """This computer's address on the home network (no traffic is sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def access_token(new=False):
+    if not new:
+        try:
+            with open(ACCESS_FILE) as f:
+                tok = json.load(f).get("token")
+            if tok and len(tok) >= 20:
+                return tok
+        except (OSError, ValueError):
+            pass
+    tok = secrets.token_urlsafe(24)
+    fd = os.open(ACCESS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"token": tok}, f)
+    return tok
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Trader Dashboard: stocks, ETFs, news, entries and your Trading 212 portfolio.")
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8212)))
-    p.add_argument("--host", default="127.0.0.1", help="keep 127.0.0.1 unless you know why (your keys live here)")
+    p.add_argument("--phone", action="store_true", help="also serve your phone on the same Wi-Fi (protected by a secret key)")
+    p.add_argument("--new-key", action="store_true", help="with --phone: make a new secret key (logs out phones)")
+    p.add_argument("--host", default=None, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     load_creds()
-    srv = ThreadingHTTPServer((a.host, a.port), Handler)
-    srv.allow_any_host = a.host not in ("127.0.0.1", "localhost", "::1")
-    print("Trader Dashboard on http://%s:%d  (Ctrl+C to stop)" % ("127.0.0.1" if a.host == "0.0.0.0" else a.host, a.port))
+    phone = a.phone or (a.host not in (None, "127.0.0.1", "localhost", "::1"))
+    host = a.host or ("0.0.0.0" if phone else "127.0.0.1")
+    srv = ThreadingHTTPServer((host, a.port), Handler)
+    srv.phone_token = access_token(a.new_key) if phone else None
+    print("Trader Dashboard on http://127.0.0.1:%d  (Ctrl+C to stop)" % a.port)
+    if phone:
+        ip = lan_ip()
+        print("Phone mode ON. On your iPhone (same Wi-Fi), open the dashboard on this computer,")
+        print("click 'Use on iPhone' at the bottom and scan the QR code, or open:")
+        print("    http://%s:%d/?key=%s" % (ip or "<this-computer-ip>", a.port, srv.phone_token))
+        print("Keep that link private: it unlocks your dashboard.")
     print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
     try:
         srv.serve_forever()

@@ -478,3 +478,36 @@ td a.sym:hover { color: var(--accent); }
 }
 .bell-count[hidden] { display: none; }
 main:focus, main:focus-visible { outline: none; }
+.phone-grid { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: center; margin: 8px 0 12px; }
+.qr { background: #fff; border-radius: 12px; padding: 6px; }
+.qr svg { width: 100%; height: auto; display: block; }
+.foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 760px) { .phone-grid { grid-template-columns: 1fr; } .qr { max-width: 240px; } }
+@media (max-width: 760px) { .top { padding-top: max(8px, env(safe-area-inset-top)); } }
+
+/* ---------- logos + long-term mode */
+.logo { width: 28px; height: 28px; border-radius: 8px; background: #fff; object-fit: contain; flex: 0 0 auto; vertical-align: middle; padding: 2px; }
+h1 .logo { width: 36px; height: 36px; border-radius: 10px; margin-right: 4px; vertical-align: -6px; }
+.symwrap { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.symwrap > span { min-width: 0; }
+.mode-seg { margin-left: auto; }
+.mode-seg button { padding: 6px 10px; font-size: 13px; }
+.mode-seg + .bell { margin-left: 0; }
+.mode-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--text-secondary); flex-wrap: wrap; }
+.lt-top { display: flex; gap: 14px; align-items: center; }
+.lt-reasons { margin: 10px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; display: grid; gap: 2px; }
+.lt-top svg { flex: 0 0 auto; }
+details.swing > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 44px; }
+details.swing > summary::-webkit-details-marker { display: none; }
+details.swing > summary::before { content: "▸"; color: var(--accent); }
+details.swing[open] > summary::before { content: "▾"; }
+details > summary { cursor: pointer; }
+.dca { margin-top: 12px; font-size: 13.5px; }
+input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.22); background: var(--surface-2); color: var(--text-primary); text-align: right; }
+.kvt th { color: var(--text-muted); font-size: 11.5px; font-weight: 500; text-transform: uppercase; }
+@media (max-width: 760px) {
+  .mode-seg { display: none; }
+  .logo { width: 24px; height: 24px; }
+  table.rt td.c-weight, table.rt td.c-lts { text-align: left; }
+}
+.mode-seg button { white-space: nowrap; }

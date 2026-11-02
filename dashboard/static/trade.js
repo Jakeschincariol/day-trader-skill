@@ -236,6 +236,9 @@
     try {
       const r = await td.api("/api/regime");
       const icon = { green: "circle-check", amber: "triangle-alert", red: "octagon-alert" }[r.level] || "circle-help";
+      if (td.isLT && td.isLT()) r.label = { green: "Market healthy: keep your monthly plan",
+        amber: "Market mixed: nothing to change for long-term investing, keep your monthly plan",
+        red: "Market weak: stay the course. For long-term buyers these are good months to add quality" }[r.level] || r.label;
       el.innerHTML = compact
         ? `<span class="mood-dot ${r.level}"></span><span class="s">Market</span><b>${r.level === "unknown" ? "–" : r.level}</b>`
         : `<div class="mood ${r.level}"><i data-lucide="${icon}"></i><div><b>${td.esc(r.label)}</b>
@@ -333,6 +336,43 @@
         <p class="muted" style="font-size:12px">${td.esc(j.note)}${j.complete ? "" : " Older orders are still loading."}</p>`;
     } catch (e) { el.innerHTML = `<p class="muted">Journal unavailable: ${td.esc(e.message)}</p>`; }
   }
+
+
+  // ------------------------------------------------------------ use on iPhone (QR code)
+  async function openPhone() {
+    const td = T(), d = dialog();
+    let info;
+    try { info = await td.api("/api/phone"); }
+    catch (e) {
+      d.innerHTML = `<div class="sheet-body"><div class="card-head"><h2 id="sheetTitle">Use on iPhone</h2><button class="rf" data-close aria-label="Close"><i data-lucide="x"></i></button></div>
+        <p>You're already using it on another device. 👍 To add it to your Home Screen: tap <b>Share</b> <i data-lucide="share"></i> → <b>Add to Home Screen</b>.</p></div>`;
+      d.showModal(); return;
+    }
+    let qr = "";
+    if (info.url && window.qrcode) {
+      const q = window.qrcode(0, "M"); q.addData(info.url); q.make();
+      qr = q.createSvgTag({ cellSize: 6, margin: 3, scalable: true });
+    }
+    d.innerHTML = `<div class="sheet-body">
+      <div class="card-head"><h2 id="sheetTitle"><i data-lucide="smartphone"></i>Use on iPhone</h2><button class="rf" data-close aria-label="Close"><i data-lucide="x"></i></button></div>
+      ${info.enabled ? `
+        <div class="phone-grid"><div class="qr">${qr}</div>
+        <ol class="steps" style="font-size:14px;gap:8px">
+          <li>Make sure the iPhone is on the <b>same Wi-Fi</b> as this computer.</li>
+          <li>Open the iPhone <b>Camera</b>, point it at this code and tap the link (opens in Safari).</li>
+          <li>In Safari tap <b>Share</b> → <b>Add to Home Screen</b> → <b>Add</b>. TraderDash now opens like an app.</li>
+          <li>Keep this computer on with the dashboard running while you use it.</li>
+        </ol></div>
+        <p class="muted" style="font-size:12px">Link: <code style="word-break:break-all">${td.esc(info.url)}</code><br>It contains a secret key: don't share it. To log every phone out, restart with <code>--phone --new-key</code>.</p>
+        <p class="muted" style="font-size:12px">Away from home? Install the free <b>Tailscale</b> app on this computer and on the iPhone, sign in to both with the same account, then use this computer's Tailscale address instead of ${td.esc(info.ip || "")}.</p>`
+      : `<p>Phone mode is off. Stop the dashboard (Ctrl+C in its window) and start it again with phone mode:</p>
+        <ul class="steps" style="font-size:14px"><li><b>Windows:</b> double-click <code>dashboard\\start-phone.bat</code>, or run <code>python dashboard/server.py --phone</code></li>
+        <li><b>Mac:</b> double-click <code>dashboard/start-phone.command</code>, or run <code>python3 dashboard/server.py --phone</code></li></ul>
+        <p class="muted" style="font-size:13px">If Windows asks whether Python may use the network, tick <b>Private networks</b> and click Allow. Then come back here and click <b>Use on iPhone</b> again for the QR code.</p>`}
+    </div>`;
+    if (!d.open) d.showModal();
+  }
+  document.addEventListener("click", (e) => { if (e.target.closest("#phoneBtn")) openPhone(); });
 
   window.Trade = { openTicket, sizeLine, openAlerts, addAlert, badge, check, regime, backtest, risk, riskPanel, journal, t212Ticker, account };
   document.addEventListener("DOMContentLoaded", () => { badge(); check(); });
