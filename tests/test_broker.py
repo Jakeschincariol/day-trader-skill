@@ -183,7 +183,8 @@ class Flow(unittest.TestCase):
         self.assertEqual(pf["positions"][0]["shares"], 8)
 
         code, text, _ = run(self.args("show", "--index", "1"))
-        self.assertIn("DONE: placed", text)
+        self.assertIn("DONE: filled", text)                  # the fill is linked to this exact order
+        self.assertEqual(code, 1)
         code, text, _ = run(["log", "--state", self.state, "--now", NOW])
         self.assertIn("1 placed today", text)
         self.assertIn("max loss $46.88", text)
@@ -216,9 +217,14 @@ class Flow(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("READY", text)
         self.assertEqual(run(self.args("approve", "--index", "1", "--reply", "yes sell 8 TSLA", now=late))[0], 0)
-        code, _, _ = run(self.args("result", "--index", "1", "--status", "placed", "--filled-qty", "8",
-                                   "--filled-price", "366.10", "--portfolio", self.pf, now="2026-10-19 15:56"))
-        self.assertEqual(code, 0)
+        code, _, err = run(self.args("result", "--index", "1", "--status", "placed", "--filled-qty", "8",
+                                     "--filled-price", "366.10", "--portfolio", self.pf, now="2026-10-19 15:56"))
+        self.assertEqual(code, 1)                    # placed needs the broker's order id
+        self.assertIn("broker order id is required", err)
+        code, _, err = run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "def456",
+                                     "--filled-qty", "8", "--filled-price", "366.10", "--portfolio", self.pf,
+                                     now="2026-10-19 15:56"))
+        self.assertEqual(code, 0, err)
         with open(self.pf) as fh:
             pf = json.load(fh)
         self.assertEqual((pf["cash"], pf["positions"]), (5015.2, []))
@@ -286,9 +292,11 @@ class Flow(unittest.TestCase):
             {"id": "KO-2", "date": "2026-01-02", "shares": 1, "cost": 70.0}]}]}
         with open(self.pf, "w") as fh:
             json.dump(pf, fh)
-        code, text, _ = run(["fill", "--symbol", "KO", "--side", "sell", "--qty", "2.5", "--price", "90",
-                             "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
-        self.assertEqual(code, 0)
+        write_state(self.state, ko_sell_records("ko-sell-1", "3"))
+        code, text, err = run(["fill", "--broker-id", "ko-sell-1", "--symbol", "KO", "--side", "sell", "--qty", "2.5",
+                               "--price", "90", "--date", TODAY, "--portfolio", self.pf, "--config", self.cfg,
+                               "--state", self.state])
+        self.assertEqual(code, 0, err)
         with open(self.pf) as fh:
             pf = json.load(fh)
         self.assertEqual(pf["cash"], 225.0)
@@ -297,10 +305,210 @@ class Flow(unittest.TestCase):
         self.assertEqual(lots[0]["shares"], 0.5)
         self.assertEqual(lots[0]["cost"], 35.0)
         self.assertEqual(self.state_doc()["orders"][-1]["status"], "filled")
-        code, _, err = run(["fill", "--symbol", "KO", "--side", "sell", "--qty", "5", "--price", "90",
-                            "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
+        code, _, err = run(["fill", "--broker-id", "ko-sell-1", "--symbol", "KO", "--side", "sell", "--qty", "5",
+                            "--price", "90", "--portfolio", self.pf, "--config", self.cfg, "--state", self.state])
         self.assertEqual(code, 1)
+        self.assertIn("more than the 3 shares of order ko-sell-1", err)
         self.assertNotIn("Traceback", err)
+
+
+def write_state(path, records):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump({"orders": records}, fh)
+
+
+def ko_sell_records(broker_id, qty, approved=True, side="sell", bracket=False, kind="exit"):
+    base = {"date": TODAY, "index": 1, "fingerprint": "fp-" + broker_id, "symbol": "KO", "side": side, "qty": qty,
+            "kind": kind, "bracket": bracket, "plain": "%s %s KO" % (side.upper(), qty)}
+    out = []
+    if approved:
+        out.append(dict(base, at=TODAY + "T10:00:00-04:00", status="approved", reply="yes"))
+    out.append(dict(base, at=TODAY + "T10:01:00-04:00", status="placed", broker_order_id=broker_id))
+    return out
+
+
+class FillsAreBound(unittest.TestCase):
+    """Fix 4: a fill only changes the portfolio when it belongs to an approved, placed, identified order."""
+
+    PF = {"cash": 1000.0, "positions": []}
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.pf = os.path.join(self.d, "portfolio.json")
+        self.state = os.path.join(self.d, "state", "broker.json")
+        self.cfg = os.path.join(self.d, "none.json")
+        with open(self.pf, "w") as fh:
+            json.dump(self.PF, fh)
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+
+    def fill(self, *extra, **kw):
+        argv = ["fill", "--symbol", kw.get("symbol", "KO"), "--side", kw.get("side", "buy"),
+                "--qty=" + kw.get("qty", "2"), "--price=" + kw.get("price", "90"), "--date", TODAY, "--portfolio", self.pf,
+                "--config", self.cfg, "--state", self.state] + list(extra)
+        return run(argv)
+
+    def pf_doc(self):
+        with open(self.pf) as fh:
+            return json.load(fh)
+
+    def buy_order(self, bid="ko-buy-1", qty="2", **kw):
+        write_state(self.state, ko_sell_records(bid, qty, side="buy", kind="entry", **kw))
+
+    def assert_untouched(self):
+        self.assertEqual(self.pf_doc(), self.PF)
+
+    def test_a_fill_without_an_order(self):
+        code, _, err = self.fill("--broker-id", "nope-123")
+        self.assertEqual(code, 1)
+        self.assertIn("no order was recorded as placed with broker id nope-123", err)
+        self.assert_untouched()
+
+    def test_a_fill_of_an_order_that_was_not_approved(self):
+        self.buy_order(approved=False)
+        code, _, err = self.fill("--broker-id", "ko-buy-1")
+        self.assertEqual(code, 1)
+        self.assertIn("has no recorded yes", err)
+        self.assert_untouched()
+
+    def test_a_fill_without_a_broker_order_id(self):
+        self.buy_order()
+        for bid in ("", "x", "bad id with spaces"):
+            code, _, err = self.fill("--broker-id", bid)
+            self.assertEqual(code, 1, bid)
+            self.assertIn("broker order id is required", err)
+        with self.assertRaises(SystemExit):          # argparse: --broker-id is required
+            run(["fill", "--symbol", "KO", "--side", "buy", "--qty", "2", "--price", "90",
+                 "--portfolio", self.pf, "--state", self.state])
+        self.assert_untouched()
+
+    def test_a_fill_that_does_not_match_the_order(self):
+        self.buy_order()
+        for kw, why in (({"symbol": "PEP"}, "is for KO"), ({"side": "sell"}, "is a buy"),
+                        ({"qty": "3"}, "more than the 2 shares")):
+            code, _, err = self.fill("--broker-id", "ko-buy-1", **kw)
+            self.assertEqual(code, 1, kw)
+            self.assertIn(why, err)
+        self.assert_untouched()
+
+    def test_nan_infinity_and_bad_numbers(self):
+        self.buy_order()
+        for field in ("qty", "price"):
+            for bad in ("NaN", "nan", "Infinity", "-Infinity", "inf", "0", "-2", "two"):
+                code, _, err = self.fill("--broker-id", "ko-buy-1", **{field: bad})
+                self.assertEqual(code, 1, (field, bad))
+                self.assertIn("must be a finite number above 0", err)
+        self.assert_untouched()
+
+    def test_a_duplicate_fill_and_an_idempotent_retry(self):
+        self.buy_order(qty="4")
+        code, _, err = self.fill("--broker-id", "ko-buy-1", "--fill-id", "f1")
+        self.assertEqual(code, 0, err)
+        once = self.pf_doc()
+        self.assertEqual((once["cash"], once["positions"][0]["shares"]), (820.0, 2))
+        code, text, _ = self.fill("--broker-id", "ko-buy-1", "--fill-id", "f1")     # the same fill again
+        self.assertEqual(code, 0)
+        self.assertIn("Already recorded", text)
+        self.assertEqual(self.pf_doc(), once)
+        with open(self.state) as fh:
+            self.assertEqual(sum(1 for r in json.load(fh)["orders"] if r["status"] == "filled"), 1)
+        code, _, err = self.fill("--broker-id", "ko-buy-1", "--fill-id", "f1", price="91")
+        self.assertEqual(code, 1)                    # same fill id, different numbers
+        self.assertIn("already recorded", err)
+        self.assertEqual(self.pf_doc(), once)
+
+    def test_a_failed_portfolio_write_leaves_nothing_half_done(self):
+        self.buy_order()
+        before = open(self.state).read()
+        real = ticket.write_json
+
+        def failing(path, data):
+            if path == self.pf:
+                raise ticket.TicketError("could not write %s: disk full" % path)
+            return real(path, data)
+
+        ticket.write_json = failing
+        try:
+            code, _, err = self.fill("--broker-id", "ko-buy-1")
+        finally:
+            ticket.write_json = real
+        self.assertEqual(code, 1)
+        self.assertIn("disk full", err)
+        self.assert_untouched()
+        self.assertEqual(open(self.state).read(), before)          # no "filled" record without the portfolio
+
+    def test_a_failed_log_write_is_safe_to_retry(self):
+        self.buy_order()
+        real = ticket.write_json
+
+        def failing(path, data):
+            if path == self.state:
+                raise ticket.TicketError("could not write %s: disk full" % path)
+            return real(path, data)
+
+        ticket.write_json = failing
+        try:
+            self.assertEqual(self.fill("--broker-id", "ko-buy-1")[0], 1)
+        finally:
+            ticket.write_json = real
+        after_first = self.pf_doc()
+        self.assertEqual(after_first["cash"], 820.0)
+        code, _, err = self.fill("--broker-id", "ko-buy-1")          # the retry logs it, without a second buy
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.pf_doc(), after_first)
+
+    def test_bracket_legs_cannot_sell_more_than_the_entry_filled(self):
+        self.buy_order(qty="2", bracket=True)
+        self.assertEqual(self.fill("--broker-id", "ko-buy-1", qty="1")[0], 0)
+        code, _, err = self.fill("--broker-id", "ko-buy-1", "--leg", "stop", side="sell", qty="2", price="85")
+        self.assertEqual(code, 1)
+        self.assertIn("more than the 1 shares the entry filled", err)
+        code, _, err = self.fill("--broker-id", "ko-buy-1", qty="0.5")
+        self.assertIn("must be whole shares", err)
+        code, _, err = self.fill("--broker-id", "ko-buy-1", "--leg", "stop", side="sell", qty="1", price="85")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.pf_doc()["positions"], [])
+
+    def test_result_placed_needs_a_broker_id_and_a_failed_fill_keeps_it_unplaced(self):
+        d = self.d
+        orders = os.path.join(d, "orders.json")
+        shutil.copy(ORDERS_PATH, orders)
+        risk = os.path.join(d, "risk.json")
+        cfg = os.path.join(d, "config.json")
+        shutil.copy(CFG_PATH, cfg)
+        with redirect_stdout(io.StringIO()):
+            check.main(["--orders", orders, "--config", cfg, "--portfolio", self.cfg, "--prices", self.cfg,
+                        "--state", self.state, "--now", NOW, "--out", risk])
+        common = ["--orders", orders, "--config", cfg, "--risk", risk, "--state", self.state, "--now", NOW]
+        self.assertEqual(run(["approve", "--index", "1", "--reply", "yes"] + common)[0], 0)
+        code, _, err = run(["result", "--index", "1", "--status", "placed"] + common)
+        self.assertEqual(code, 1)
+        self.assertIn("broker order id is required", err)
+        code, _, err = run(["result", "--index", "1", "--status", "placed", "--broker-id", "abc123",
+                            "--filled-qty", "9", "--filled-price", "364.20", "--portfolio", self.pf] + common)
+        self.assertEqual(code, 1)                    # 9 shares on an 8-share order
+        self.assertIn("more than the 8 shares", err)
+        with open(self.state) as fh:
+            self.assertEqual([r["status"] for r in json.load(fh)["orders"]], ["approved"])
+        self.assert_untouched()
+
+    def test_flatten_never_sells_more_than_the_position(self):
+        with open(self.pf, "w") as fh:
+            json.dump({"cash": 0, "positions": [{"ticker": "KO", "shares": 3}]}, fh)
+        orders = os.path.join(self.d, "orders.json")
+        code, _, err = run(["flatten", "--symbol", "KO", "--qty", "5", "--orders", orders, "--portfolio", self.pf,
+                            "--plan", self.cfg, "--config", self.cfg, "--now", NOW])
+        self.assertEqual(code, 1)
+        self.assertIn("more than the 3 KO shares", err)
+        self.assertFalse(os.path.exists(orders))
+        for bad in ("NaN", "inf", "-3"):
+            self.assertEqual(run(["flatten", "--symbol", "KO", "--qty=" + bad, "--orders", orders, "--portfolio",
+                                  self.pf, "--plan", self.cfg, "--config", self.cfg, "--now", NOW])[0], 1, bad)
+        code, text, _ = run(["flatten", "--symbol", "KO", "--qty", "3", "--orders", orders, "--portfolio", self.pf,
+                             "--plan", self.cfg, "--config", self.cfg, "--now", NOW])
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

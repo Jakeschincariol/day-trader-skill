@@ -175,10 +175,31 @@ def load_config(path):
 
 
 def _f(x):
-    try:
-        return float(x)
-    except (TypeError, ValueError):
+    """A finite float, or None. NaN, Infinity, booleans and junk strings are not numbers here."""
+    if isinstance(x, bool):
         return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+# config numbers: each must be a finite number >= 0 when set (None or absent = the default / off)
+CONFIG_NUMBERS = ("budget", "cash_buffer_pct", "max_position_pct", "max_order_usd", "min_order_usd",
+                  "max_loss_per_trade_usd", "min_reward_risk")
+
+
+def check_config(c, budget=None):
+    """Fail closed: a limit that is NaN, Infinity, negative or not a number would switch itself off."""
+    for k in CONFIG_NUMBERS:
+        if c.get(k) is None:
+            continue
+        v = _f(c[k])
+        if v is None or v < 0:
+            raise SizeError("config %s must be a finite number, 0 or more, got %r" % (k, c[k]))
+    if budget is not None and (_f(budget) is None or _f(budget) <= 0):
+        raise SizeError("--budget must be a finite number above 0, got %r" % (budget,))
 
 
 def parse_weights(data):
@@ -204,10 +225,9 @@ def parse_weights(data):
         raise SizeError("weights must be a list or an object")
     out = []
     for r in rows:
-        try:
-            w = float(r["weight"])
-        except (TypeError, ValueError):
-            raise SizeError("weight for %s is not a number: %r" % (r["ticker"], r["weight"]))
+        w = _f(r["weight"])
+        if w is None:
+            raise SizeError("weight for %s is not a finite number: %r" % (r["ticker"], r["weight"]))
         out.append({"ticker": str(r["ticker"]).strip().upper(), "name": r["name"] or "", "weight": w})
     return out
 
@@ -233,10 +253,10 @@ def load_prices(path):
     prices = data.get("prices", data) if isinstance(data, dict) else {}
     out = {}
     for t, p in prices.items():
-        try:
-            out[str(t).upper()] = float(p)
-        except (TypeError, ValueError):
-            continue
+        v = _f(p)
+        if v is None or v <= 0:
+            continue                       # NaN, Infinity, 0, negative or junk: not a price
+        out[str(t).upper()] = v
     return out
 
 
@@ -311,6 +331,11 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     today  New York date (YYYY-MM-DD); a plan for another day is refused"""
     c = dict(DEFAULTS)
     c.update(cfg or {})
+    check_config(c, budget)
+    for name, v in (("--limit", limit), ("the fresh price", price), ("the portfolio cash", cash)):
+        if v is not None and (_f(v) is None or (name != "the portfolio cash" and _f(v) <= 0)):
+            raise SizeError("%s must be a finite number%s, got %r"
+                            % (name, "" if name == "the portfolio cash" else " above 0", v))
     if not isinstance(plan, dict):
         raise SizeError("the plan is not a JSON object")
     sym = str(plan.get("symbol") or "").strip().upper()
@@ -604,6 +629,7 @@ def whole_shares(dollars, prices, order, cap, cash):
 
 def size(rows, cfg, budget=None, prices=None, whole=None, cents=False, top=None):
     """Weights mode. Pure function: weights + rules -> the full sizing result (a dict)."""
+    check_config(cfg, budget)
     budget = float(budget if budget is not None else (cfg.get("budget") or 0))
     if budget <= 0:
         raise SizeError("no budget: pass --budget or set \"budget\" in trader/config.json")
@@ -763,10 +789,13 @@ def write_orders(path, orders, cfg, source="", now_utc=None):
         "source": source,
         "orders": orders,
     }
+    try:
+        blob = json.dumps(doc, indent=2, allow_nan=False)
+    except ValueError as e:
+        raise SizeError("refusing to write an order with a number that is not finite: %s" % e)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2)
-        fh.write("\n")
+        fh.write(blob + "\n")
     os.replace(tmp, path)
 
 
@@ -803,14 +832,18 @@ def run_plan(a, cfg):
     cash = None
     if a.portfolio and os.path.exists(a.portfolio):
         pf = read_json(a.portfolio, "portfolio")
-        cash = _f(pf.get("cash")) if isinstance(pf, dict) else None
+        raw = pf.get("cash") if isinstance(pf, dict) else None
+        cash = _f(raw)
+        if raw is not None and cash is None:
+            raise SizeError("%s has a cash value that is not a finite number: %r" % (a.portfolio, raw))
     s = size_trade(plan, cfg, a.budget, limit, price, cash, today)
     order = bracket_order(s)
     if order and a.write:
         src = "trader/plan.json (%s %s %s)" % (s["symbol"], s["setup"] or "plan", s["date"] or today)
         write_orders(a.write, [order], cfg, src, now)
     if a.json:
-        print(json.dumps({"sizing": s, "orders": [order] if order else [], "notes": notes}, indent=2))
+        print(json.dumps({"sizing": s, "orders": [order] if order else [], "notes": notes}, indent=2,
+                         allow_nan=False))
     else:
         print(plan_report(s, order, notes))
         if order and a.write:
@@ -836,7 +869,7 @@ def run_weights(a, cfg):
     if a.write:
         write_orders(a.write, orders, cfg, source, parse_now(a.now))
     if a.json:
-        print(json.dumps({"result": result, "orders": orders}, indent=2))
+        print(json.dumps({"result": result, "orders": orders}, indent=2, allow_nan=False))
     else:
         print(report(result, orders, source))
         if a.write:
@@ -872,7 +905,7 @@ def main(argv=None):
         if a.top or a.whole_shares or a.cents:
             raise SizeError("--top, --whole-shares and --cents work with --weights or --targets")
         return run_plan(a, cfg)
-    except SizeError as e:
+    except (SizeError, ValueError, TypeError, OverflowError, ZeroDivisionError) as e:
         print("size.py: %s" % e, file=sys.stderr)
         return 1
 

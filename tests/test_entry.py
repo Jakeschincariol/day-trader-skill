@@ -68,6 +68,7 @@ def no_breakout(d=None):
         q["close"][i] = min(q["close"][i], 362.00)
         q["high"][i] = min(q["high"][i], 362.10)
         q["open"][i] = min(q["open"][i], 362.00)
+        q["low"][i] = min(q["low"][i], q["open"][i], q["close"][i])      # keep the bar coherent (low <= high)
     return d
 
 
@@ -599,6 +600,48 @@ class SkillDoc(unittest.TestCase):
             self.assertIn(must, low)
         for never in ("\u2014", "tick " + "by tick", "real " + "time", "pro" + "fit"):
             self.assertNotIn(never, low)
+
+
+class BadNumbers(unittest.TestCase):
+    """Fix 3 in trader-entry: a bad bar or level never produces a signal."""
+
+    def bar(self, field, value, i=8):
+        d = doc()
+        d["chart"]["result"][0]["indicators"]["quote"][0][field][i] = value
+        return d
+
+    def test_bad_ohlc_and_volume(self):
+        for field, bad in (("close", float("nan")), ("high", float("inf")), ("low", float("-inf")),
+                           ("open", 0), ("close", -364.18), ("high", "abc"), ("volume", -5),
+                           ("volume", float("nan")), ("high", 300.0)):
+            with self.assertRaises(entry.EntryError, msg="%s=%r" % (field, bad)):
+                chart(self.bar(field, bad))
+
+    def test_bad_levels(self):
+        for bad in (float("nan"), float("inf"), 0, -1, "abc"):
+            with self.assertRaises(entry.EntryError, msg=repr(bad)):
+                at("2026-10-19 10:15", setup="level", level=bad)
+        for bad in (float("nan"), float("inf"), 0, -1):
+            with self.assertRaises(entry.EntryError, msg=repr(bad)):
+                at("2026-10-19 10:15", min_volume_x=bad)
+
+    def test_cli_level_nan(self):
+        code, _, err = run(["check", "TSLA", "--offline", TSLA, "--now", "2026-10-19 10:15", "--setup", "level",
+                            "--level", "nan"])
+        self.assertEqual(code, 1)
+        self.assertIn("finite", err)
+        self.assertNotIn("Traceback", err)
+
+    def test_a_bad_bar_in_the_file_is_one_plain_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "TSLA.json")
+            with open(p, "w") as fh:
+                json.dump(self.bar("close", float("nan")), fh)
+            code, _, err = run(["check", "TSLA", "--offline", p, "--now", "2026-10-19 10:15", "--write",
+                                os.path.join(d, "entry.json")])
+            self.assertEqual(code, 1)
+            self.assertIn("not a finite number above 0", err)
+            self.assertFalse(os.path.exists(os.path.join(d, "entry.json")))
 
 
 if __name__ == "__main__":

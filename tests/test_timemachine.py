@@ -610,5 +610,27 @@ class Cli(unittest.TestCase):
         self.assertEqual(again, text)
 
 
+class BadNumbers(unittest.TestCase):
+    """Fix 3 in trader-timemachine: no NaN or Infinity reaches the replay pool or the plan."""
+
+    def test_bad_bars_stop_the_run(self):
+        for field, bad in (("close", float("nan")), ("high", float("inf")), ("low", float("-inf")),
+                           ("open", 0), ("close", -1.0), ("high", "abc"), ("volume", -5), ("low", 999.0)):
+            def poison(r, field=field, bad=bad):
+                r["indicators"]["quote"][0][field][100] = bad
+            with self.assertRaises(tm.TMError, msg="%s=%r" % (field, bad)):
+                machine(text=edited(poison), replays=50)
+
+    def test_bad_plan_numbers(self):
+        for key in ("entry", "stop", "target"):
+            for bad in ("NaN", float("nan"), float("inf"), "-Infinity", 0, -1, "abc", True):
+                with self.assertRaises(tm.TMError, msg="%s=%r" % (key, bad)):
+                    plan(**{key: bad})
+
+    def test_nan_is_never_written(self):
+        with self.assertRaises(tm.TMError):
+            tm._dumps({"x": float("nan")}, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

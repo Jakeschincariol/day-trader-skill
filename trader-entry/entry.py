@@ -54,6 +54,7 @@ import argparse
 import datetime
 import gzip
 import json
+import math
 import os
 import re
 import sys
@@ -324,11 +325,42 @@ def parse_chart(text, sym):
         if t is None or c is None:
             continue
         o, h, lo = at("open", i), at("high", i), at("low", i)
-        bars.append({"t": int(t), "o": float(c if o is None else o), "h": float(c if h is None else h),
-                     "l": float(c if lo is None else lo), "c": float(c), "v": int(at("volume", i) or 0)})
+        bars.append(check_bar(sym, t, c if o is None else o, c if h is None else h, c if lo is None else lo, c,
+                              at("volume", i)))
     return {"symbol": str(meta.get("symbol") or sym).upper(), "meta": meta, "bars": bars,
             "prev_close": meta.get("previousClose") or meta.get("chartPreviousClose"),
             "data_time": meta.get("regularMarketTime")}
+
+
+def finite(x):
+    """A finite float, or None. NaN, Infinity, booleans and junk strings are not numbers here."""
+    if isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def check_bar(sym, t, o, h, lo, c, v):
+    """One bar, checked: a whole timestamp, finite prices above 0, low <= open, close <= high,
+    a volume that is a finite number 0 or more. A bad bar stops the check (no signal from bad data)."""
+    ts = finite(t)
+    if ts is None or ts != int(ts) or ts <= 0:
+        raise EntryError("the %s chart has a bad timestamp %r" % (sym, t))
+    when = "the %s bar at %s" % (sym, to_eastern(utc_of(ts)).strftime("%Y-%m-%d %H:%M"))
+    px = [finite(x) for x in (o, h, lo, c)]
+    if any(x is None or x <= 0 for x in px):
+        raise EntryError("%s has a price that is not a finite number above 0 (open %r, high %r, low %r, close %r)"
+                         % (when, o, h, lo, c))
+    ov, hv, lv, cv = px
+    if hv < lv or not (lv - 1e-9 <= cv <= hv + 1e-9) or not (lv - 1e-9 <= ov <= hv + 1e-9):
+        raise EntryError("%s is not coherent: open %s, high %s, low %s, close %s" % (when, ov, hv, lv, cv))
+    vol = 0.0 if v is None else finite(v)
+    if vol is None or vol < 0:
+        raise EntryError("%s has a volume that is not a finite number, 0 or more: %r" % (when, v))
+    return {"t": int(ts), "o": ov, "h": hv, "l": lv, "c": cv, "v": int(vol)}
 
 
 def read_text(path):
@@ -418,6 +450,10 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
         raise EntryError("--setup is orb or level")
     if setup == "level" and level is None:
         raise EntryError("--setup level needs --level PRICE (for example a 20-day high)")
+    if level is not None and (finite(level) is None or finite(level) <= 0):
+        raise EntryError("the level must be a finite price above 0, got %r" % (level,))
+    if min_volume_x is not None and (finite(min_volume_x) is None or finite(min_volume_x) <= 0):
+        raise EntryError("--min-volume-x must be a finite number above 0, got %r" % (min_volume_x,))
     n_or = or_minutes * 60 // step
     local = to_eastern(now_utc)
     day = local.date()
@@ -570,12 +606,15 @@ def entry_doc(res, now_utc):
 
 
 def write_json(path, doc):
+    try:
+        blob = json.dumps(doc, indent=2, allow_nan=False)
+    except ValueError as e:
+        raise EntryError("refusing to write %s with a number that is not finite: %s" % (path, e))
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2)
-        fh.write("\n")
+        fh.write(blob + "\n")
 
 
 # ---------------------------------------------------------------- words
@@ -786,10 +825,10 @@ def _opts(a, cfg):
         raise EntryError("v2 plans longs only: no short entries. Watch for a buy (--side buy) instead.")
     if a.setup == "orb" and a.level is not None:
         raise EntryError("--level is for --setup level (an orb's level is its range high)")
-    if a.min_volume_x is not None and a.min_volume_x <= 0:
-        raise EntryError("--min-volume-x must be above 0")
-    if a.level is not None and a.level <= 0:
-        raise EntryError("--level must be a price above 0")
+    if a.min_volume_x is not None and not (finite(a.min_volume_x) or 0) > 0:
+        raise EntryError("--min-volume-x must be a finite number above 0")
+    if a.level is not None and not (finite(a.level) or 0) > 0:
+        raise EntryError("--level must be a finite price above 0")
     return {"setup": a.setup, "or_minutes": a.or_minutes, "interval": a.interval, "level": a.level,
             "min_volume_x": a.min_volume_x, "cfg": cfg}
 
@@ -813,7 +852,7 @@ def cmd_check(a):
     if a.write:
         write_json(a.write, entry_doc(res, now))
     if a.json:
-        print(json.dumps(public(res), indent=2))
+        print(json.dumps(public(res), indent=2, allow_nan=False))
     else:
         for line in describe(res):
             print(line)
@@ -890,7 +929,8 @@ def cmd_watchlist(a):
         except EntryError as e:
             rows.append((sym, None, str(e)))
     if a.json:
-        print(json.dumps([{"symbol": s, "result": public(r) if r else None, "error": e} for s, r, e in rows], indent=2))
+        print(json.dumps([{"symbol": s, "result": public(r) if r else None, "error": e} for s, r, e in rows], indent=2,
+                         allow_nan=False))
     else:
         print("%-6s  %-9s  %-8s  %-8s  %-9s  %-9s  %s" % ("SYMBOL", "STATUS", "TIME", "PRICE", "LEVEL", "LAST", "VS LEVEL"))
         for s, r, e in rows:
@@ -948,7 +988,7 @@ def main(argv=None):
         return 1
     try:
         return {"check": cmd_check, "watch": cmd_watch, "watchlist": cmd_watchlist}[a.cmd](a)
-    except EntryError as e:
+    except (EntryError, ValueError) as e:
         print("entry.py: %s" % e, file=sys.stderr)
         return 1
     except KeyboardInterrupt:

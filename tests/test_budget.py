@@ -370,5 +370,65 @@ class WeightsMode(unittest.TestCase):
             self.assertIn("no weights file", err)
 
 
+BAD = ("NaN", float("nan"), float("inf"), "-Infinity", "abc", True)
+
+
+class BadNumbers(unittest.TestCase):
+    """Fix 3 in trader-budget: no NaN or Infinity reaches the sizing; no order comes out of bad numbers."""
+
+    def test_plan_prices(self):
+        for key in ("entry", "stop", "target"):
+            for bad in BAD + (0, -364.18):
+                with self.assertRaises(size.SizeError, msg="%s=%r" % (key, bad)):
+                    size.size_trade(plan(**{key: bad}), cfg(), today=TODAY)
+
+    def test_risk_limits_and_budget(self):
+        for key in ("max_loss_per_trade_usd", "max_position_pct", "max_order_usd", "budget", "cash_buffer_pct",
+                    "min_reward_risk"):
+            for bad in BAD + (-50,):
+                with self.assertRaises(size.SizeError, msg="%s=%r" % (key, bad)):
+                    size.size_trade(plan(), cfg(**{key: bad}), today=TODAY)
+        for bad in (float("nan"), float("inf"), 0, -5000):
+            with self.assertRaises(size.SizeError, msg=bad):
+                size.size_trade(plan(), cfg(), budget=bad, today=TODAY)
+
+    def test_price_limit_and_cash(self):
+        for bad in (float("nan"), float("inf"), 0, -1):
+            with self.assertRaises(size.SizeError):
+                size.size_trade(plan(), cfg(), price=bad, today=TODAY)
+            with self.assertRaises(size.SizeError):
+                size.size_trade(plan(), cfg(), limit=bad, today=TODAY)
+        with self.assertRaises(size.SizeError):
+            size.size_trade(plan(), cfg(), cash=float("nan"), today=TODAY)
+
+    def test_prices_file_and_weights(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "prices.json")
+            with open(p, "w") as fh:
+                fh.write('{"prices": {"KO": NaN, "BAC": Infinity, "AAPL": -1, "AXP": 0, "GOOGL": 353.78}}')
+            self.assertEqual(size.load_prices(p), {"GOOGL": 353.78})
+        for bad in ("NaN", "Infinity", "x"):
+            with self.assertRaises(size.SizeError):
+                size.parse_weights({"KO": bad})
+
+    def test_cli_fails_closed_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = os.path.join(d, "config.json")
+            with open(c, "w") as fh:
+                fh.write('{"budget": 5000, "max_loss_per_trade_usd": NaN}')
+            out = os.path.join(d, "orders.json")
+            err = io.StringIO()
+            with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                code = size.main(["--plan", PLAN, "--config", c, "--now", NOW, "--portfolio", os.path.join(d, "x"),
+                                  "--write", out])
+            self.assertEqual(code, 1)
+            self.assertIn("max_loss_per_trade_usd must be a finite number", err.getvalue())
+            self.assertFalse(os.path.exists(out))
+            with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                self.assertEqual(size.main(["--plan", PLAN, "--config", CFG, "--budget", "nan", "--now", NOW,
+                                            "--portfolio", os.path.join(d, "x"), "--write", out]), 1)
+            self.assertFalse(os.path.exists(out))
+
+
 if __name__ == "__main__":
     unittest.main()
