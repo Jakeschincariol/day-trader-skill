@@ -612,6 +612,18 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                     elif min_rr:
                         later.append("reward:risk: no target to measure it against (min_reward_risk %s)"
                                      % _num(min_rr))
+            # A market order fills at the last price, not the plan's entry: when the fresh
+            # price is already through the stop or the target, the trade is over before it
+            # starts. The checks above compare against ref (the higher of plan and price),
+            # so a fallen price hides behind the plan's entry. A stale price stays ignored:
+            # live is None for it, as above.
+            if typ == "market" and live is not None:
+                if stop and ((long and live <= stop + CENT) or (not long and live >= stop - CENT)):
+                    later.append("stop: the last price %s is already at or %s the stop %s"
+                                 % (_p(live), "below" if long else "above", _p(stop)))
+                if target and ((long and live >= target - CENT) or (not long and live <= target + CENT)):
+                    later.append("target: the last price %s is already at or %s the target %s"
+                                 % (_p(live), "above" if long else "below", _p(target)))
             daily = _f(c.get("max_daily_loss_usd"))
             if daily and max_loss is not None:
                 used = loss_today + batch_loss
