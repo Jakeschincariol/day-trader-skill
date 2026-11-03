@@ -143,7 +143,11 @@ The 10:10 bar closes above it: entry 364.18 at 10:15 AM (bar 8), stop 358.32
   Price at 4:00 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
   Average R: +0.034
 History: the same rule on each of those 59 real sessions fired 33 times:
-13 target, 15 stop, 5 neither. Average R -0.062.   (with --fill close --cost-bps 0)
+13 target, 15 stop, 5 neither. Average R -0.113.
+  Fills: at the open of the bar after the signal close; ... costs 2 bps a side, taken off every R.
+Baseline: a blind entry at the same bars on the other sessions, ...: 1,914 trades, average R -0.041.
+  Setup minus blind: -0.071 R a trade. The setup's average R -0.113, 95 % range -0.425 to +0.206 (bootstrap, seed 19).
+Too few trades to tell: 33 trades, and at least 100 are needed before a gap between the setup and a blind entry means much.
 Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
 45.1 % of the replays hit neither by 4:00 PM; the price at 4:00 PM decides those.
 ```

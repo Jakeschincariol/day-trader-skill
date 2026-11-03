@@ -561,6 +561,14 @@ class Baseline(unittest.TestCase):
             self.assertIn(line, text)
         self.assertEqual(machine(replays=300)["baseline"], b)   # same seed, same numbers
 
+    def test_the_reel_with_real_fills(self):
+        doc = machine(replays=100)
+        h, b = doc["history"], doc["baseline"]
+        self.assertEqual((h["triggered"], h["target"], h["stop"], h["close"], h["avg_R"]), (33, 13, 15, 5, -0.113))
+        self.assertEqual((b["trades"], b["avg_R"], b["edge_R"], b["setup_ci"]), (1914, -0.041, -0.071, [-0.425, 0.206]))
+        old = machine(replays=100, **LEGACY)["baseline"]
+        self.assertEqual((old["avg_R"], old["edge_R"]), (0.005, -0.068))
+
     def test_costs_only_make_the_old_accounting_worse(self):
         h = machine(replays=100, fill="close", cost_bps=2)["history"]
         self.assertEqual(h["triggered"], 33)

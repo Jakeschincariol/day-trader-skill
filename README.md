@@ -106,8 +106,10 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
    the same rule on those 59 real sessions: it fired 33 times, 13 hit the
    target, 15 the stop, 5 neither (filled at the signal close with no costs;
    by default the history now fills at the next bar's open and takes 2 bps a
-   side off). It also compares those trades with a blind entry at the same
-   times, and says plainly that 33 trades are too few to tell the two apart.
+   side off: the same 13, 15 and 5, but an average of -0.113R a trade, not
+   -0.062R). It also enters blind at the same times on the other sessions
+   (1,914 trades, -0.041R): the setup came out 0.071R a trade worse, and 33
+   trades are too few to tell the two apart.
    Its verdict: close to a coin flip. That is
    the point of looking before you risk a dollar.
 6. **`/trader-budget`** with a $5,000 account and a $50 max loss per trade:
