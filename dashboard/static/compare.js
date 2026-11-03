@@ -90,8 +90,8 @@
     const anyF = picks.some((p) => p.f);
     return [
       { id: "fit", name: "Fit with my portfolio", rows: fit ? [
-        { label: "You already own (incl. inside ETFs)", get: (p) => fit.expNow[p.sym], fmt: (v) => p1(v).replace("+", ""), better: "low", hint: "lower adds more diversity" },
-        { label: `After buying ${fit.amountLabel}`, get: (p) => fit.expAfter[p.sym], fmt: (v) => p1(v).replace("+", ""), better: "low", flag: (v) => v > 10 },
+        { label: "You own today (incl. inside ETFs)", get: (p) => fit.expNow[p.sym], fmt: (v) => p1(v).replace("+", ""), better: "low", hint: "lower adds more diversity" },
+        { label: `Your share if you invest ${fit.amountLabel}`, get: (p) => fit.expAfter[p.sym], fmt: (v) => p1(v).replace("+", ""), better: "low", flag: (v) => v > 10, hint: "after this purchase · change the amount above" },
         { label: "Moves with your portfolio (correlation)", get: (p) => R && R.portfolio ? R.portfolio.fit[p.sym]?.corr : null, fmt: x2, better: "low", hint: "1 = moves exactly like it" },
         { label: `Portfolio swings if you add ${R && R.portfolio ? R.portfolio.addPct : 10}%`, get: (p) => R && R.portfolio ? R.portfolio.fit[p.sym]?.volAfter : null, fmt: (v) => v == null ? "–" : v.toFixed(1) + "%", better: "low", hint: R && R.portfolio ? `today ${R.portfolio.volNow}%` : "" },
         { label: "Same theme as your holdings", get: (p) => fit.sameTheme[p.sym] ? 1 : 0, fmt: (v) => (v ? "yes" : "no"), better: "low" },
@@ -241,7 +241,8 @@
     }
     const weights = {};
     pos.forEach((p) => { weights[p.symbol] = (weights[p.symbol] || 0) + p.v / total; });
-    return { expNow, expAfter, sameTheme, weights, total, amountLabel: td.fmt(amount, 0) };
+    const ccy = t ? t.currency : (td.settings().ccy || "USD");
+    return { expNow, expAfter, sameTheme, weights, total, amount, amountLabel: td.money(amount, ccy).replace(/[.,]00(?=\D*$)/, "") };
   }
 
   // ------------------------------------------------------------ charts (ECharts)
@@ -352,7 +353,8 @@
       const a = sec.secScore[top.i], b = sec.secScore[second.i];
       if (a != null && b != null && Math.abs(a - b) > gapVal) { gapVal = Math.abs(a - b); gapSec = sec.name; }
     }
-    const hard = (p) => p.flags.filter((f) => /Speculative|debt|more than it earns|Earnings in [0-3] day/.test(f)).concat(fit && fit.expAfter[p.sym] > 10 ? [`You'd own ${fit.expAfter[p.sym].toFixed(0)}% of your portfolio in ${p.sym}`] : []);
+    const hard = (p) => p.flags.filter((f) => /Speculative|debt|more than it earns|Earnings in [0-3] day/.test(f)).concat(fit && fit.expAfter[p.sym] > 10
+      ? [`If you invest ${fit.amountLabel}: ${p.sym} would be ${fit.expAfter[p.sym].toFixed(0)}% of your portfolio (you own ${fit.expNow[p.sym].toFixed(1)}% today). Keep one company under about 10%, or invest less.`] : []);
     const who = mode === "lt" ? "a long-term investor" : "a swing trade";
     const headline = close
       ? `Too close to call (${top.s} vs ${second.s}): split it, or decide on ${gapSec || "what matters most to you"}.`
