@@ -40,7 +40,8 @@ python3 "${CLAUDE_SKILL_DIR}/timemachine.py" chart --from           # ASCII fan 
 ```
 
 Other flags: `--replays N`, `--seed N` (default 19), `--window N` (default 2
-bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
+bars), `--fill next-open|close` (history fills, default next-open),
+`--cost-bps N` (history costs a side, default 2), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 `--now "2026-10-19 10:15"` (New York time) to pin the clock.
 
 ## What it reads and writes
@@ -70,7 +71,21 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    counts as -1R here. A real fill can be worse.
 4. **The history.** The plan's own rule (the same opening range, stop rule
    and target R) runs again on every one of those past sessions. That is
-   what really happened, not a simulation.
+   what really happened, not a simulation. The signal is a bar's CLOSE, so
+   nobody can buy at it: the fill is the OPEN of the next bar. A next open
+   already past the stop or the target is a bracket the broker rejects, so
+   that day is left out and counted. A bar that opens past the stop fills at
+   that open, worse than -1R. Costs (2 bps a side by default) come off every
+   R. `--fill close --cost-bps 0` gives the old accounting.
+4b. **The baseline.** The same trades with the setup taken out: for each
+   history trade, a blind entry at the same bar on every other past session,
+   breakout or not, with the same stop width, target R, fills and costs. It
+   prints the setup's average R with a bootstrap 95 % range, the setup minus
+   the blind entry, and how often a random set of as many blind trades did as
+   well. Under 100 history trades the line says "Too few trades to tell". The
+   replays above cannot tell a setup from a blind entry (every bar is drawn
+   on its own, whatever happened earlier that day); this line is the only
+   place the setup itself is tested.
 5. **The verdict** is one line from the numbers. It looks only at the
    replays that hit one side, and asks how often the target came first. A
    bigger target needs to win less often to break even: 1 in (1 + R). That
@@ -103,8 +118,9 @@ grid). A live in-progress bar is never used.
 2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
    flat-by time, so "neither" means still open at the time you would get out.
 3. Tell the user, in this order: the four odds, the median and the 5 to 95
-   range of the price at the close, the average R, the history line, then the
-   verdict line and any line under it exactly as printed. Say the seed.
+   range of the price at the close, the average R, the history line and its
+   fills, the baseline lines, then the verdict line and any line under it
+   exactly as printed. Say the seed.
 4. If the verdict is a coin flip or close to break-even, say so plainly. Do
    not dress it up. If the history and the replays disagree, say that too.
 5. Say once that this is built from the last 60 days and is not a prediction.
@@ -127,7 +143,7 @@ The 10:10 bar closes above it: entry 364.18 at 10:15 AM (bar 8), stop 358.32
   Price at 4:00 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
   Average R: +0.034
 History: the same rule on each of those 59 real sessions fired 33 times:
-13 target, 15 stop, 5 neither. Average R -0.062.
+13 target, 15 stop, 5 neither. Average R -0.062.   (with --fill close --cost-bps 0)
 Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
 45.1 % of the replays hit neither by 4:00 PM; the price at 4:00 PM decides those.
 ```

@@ -104,7 +104,11 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
    previous 59 sessions (seed 19, so anyone can repeat it): target first
    29.4 %, stop first 25.5 %, still open at the close 45.1 %. It also re-ran
    the same rule on those 59 real sessions: it fired 33 times, 13 hit the
-   target, 15 the stop, 5 neither. Its verdict: close to a coin flip. That is
+   target, 15 the stop, 5 neither (filled at the signal close with no costs;
+   by default the history now fills at the next bar's open and takes 2 bps a
+   side off). It also compares those trades with a blind entry at the same
+   times, and says plainly that 33 trades are too few to tell the two apart.
+   Its verdict: close to a coin flip. That is
    the point of looking before you risk a dollar.
 6. **`/trader-budget`** with a $5,000 account and a $50 max loss per trade:
    50 / 5.86 = 8 shares ($2,913.44). If the stop fills at 358.32, the loss is
@@ -171,7 +175,10 @@ Alpaca's MCP server defaults to its paper account. Keys live in environment
 variables, never in the chat.
 
 **The Time Machine is a simulation, not a prediction.** It is built from the
-stock's own last 60 days of 5-minute bars. The future can do things those 60
+stock's own last 60 days of 5-minute bars. The 10,000 replays draw every bar
+on its own, so they say how far the price tends to wander, not whether the
+setup helps: only the history and its blind-entry baseline test the setup,
+and 60 days rarely give enough trades to tell. The future can do things those 60
 days never did: an earnings report, a halt, a headline. Treat its odds as a
 reality check, never as a promise.
 

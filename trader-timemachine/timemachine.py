@@ -38,7 +38,19 @@ How the replays work (the reel's sim.py, same algorithm, same random draws):
      between the 1st and 99th percentile.
   6. History: the plan's own rule (an opening-range breakout with the same
      opening range, stop rule and target R) re-run on every one of those past
-     full sessions, first close beyond the range = entry, same stop-first rule.
+     full sessions. The first close beyond the range is the signal; the stop and
+     the target are set from it, as trader-exit does. With --fill next-open (the
+     default) the order fills at the OPEN of the next bar, since nobody can buy
+     at a close they have only just seen; a next open past the stop or the target
+     is a bracket the broker rejects, so it is left out; a bar that opens past
+     the stop or the target fills at that open. --cost-bps (default 2 a side)
+     comes off every R. R stays in units of the planned risk, the risk the
+     position was sized to. --fill close --cost-bps 0 is the old accounting.
+  7. Baseline: the same trades with the setup taken out. For each history trade,
+     a blind entry at the same bar on every other past session, breakout or not,
+     with the same stop width, target R, fills and costs. Then the setup's
+     average R with a bootstrap 95 % range, and how often a random set of as
+     many blind trades did as well. Under 100 trades it says too few to tell.
 
 The verdict line looks at the replays that hit one side (target or stop) and
 compares the target's share of them, target / (target + stop), with the share
@@ -94,6 +106,10 @@ HIST_BINS = 24
 COIN_FLIP = 0.05     # verdict thresholds, see the docstring
 STRONG = 0.15
 MANY_NEITHER = 0.40
+FILLS = ("next_open", "close")
+DEFAULT_COST_BPS = 2.0   # a side: half the spread plus slippage on a liquid stock, a guess to measure, not a fact
+BASELINE_DRAWS = 10000
+MIN_TRADES = 100     # fewer history trades than this: "too few to tell"
 EPOCH = datetime.datetime(1970, 1, 1)
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET, from https://www.nyse.com/markets/hours-calendars (read 2026-10-13)
@@ -448,37 +464,95 @@ def rule_stop(rule, oh, ol, entry, long):
     return cents_away(entry * (1 - frac) if long else entry * (1 + frac), long)
 
 
-def history_replay(sessions, rule, last, side="buy"):
-    """The plan's rule on every past full session: entry = the first bar after the
-    opening range to close beyond it (up to the --until bar), then stop first, then
-    target, bar by bar, else the close at --until."""
+def cost_r(fill, risk, cost_bps):
+    """A round trip's costs (cost_bps a side, on the fill price) in R."""
+    return 2.0 * cost_bps / 10000.0 * fill / risk
+
+
+def walk(bars, stop, target, long, gaps):
+    """Bar by bar from the fill: (outcome, exit price), or (None, None) when neither
+    side is touched. The stop is checked before the target in every bar. With gaps,
+    a bar that OPENS past the stop fills at that open (worse than the stop), and one
+    that opens past the target fills at that open (the limit gets the better price)."""
+    for b in bars:
+        if long:
+            if gaps and b["o"] <= stop:
+                return "stop", b["o"]
+            if b["l"] <= stop:
+                return "stop", stop
+            if gaps and b["o"] >= target:
+                return "target", b["o"]
+            if b["h"] >= target:
+                return "target", target
+        else:
+            if gaps and b["o"] >= stop:
+                return "stop", b["o"]
+            if b["h"] >= stop:
+                return "stop", stop
+            if gaps and b["o"] <= target:
+                return "target", b["o"]
+            if b["l"] <= target:
+                return "target", target
+    return None, None
+
+
+def one_trade(D, kk, signal, stop, target, last, long, fill, cost_bps):
+    """One trade on one past session, from the signal bar kk. Returns the trade dict,
+    or a skip reason ("no_bar", "rejected").
+
+    fill "next_open": the signal is the CLOSE of bar kk, so the order can only fill
+    at the OPEN of bar kk+1. A next open at or past the stop or the target is a
+    bracket the broker rejects: skipped. Gaps fill at the open.
+    fill "close": the old accounting, filled at the signal close itself, stop and
+    target at their exact prices (for comparing with earlier runs).
+
+    R is in units of the planned risk (signal minus stop), the risk the position
+    was sized to, so a worse fill or a gap shows up as a worse R."""
+    risk = (signal - stop) if long else (stop - signal)
+    if fill == "close":
+        e, gaps = signal, False
+    else:
+        if kk + 1 > last:
+            return "no_bar"
+        e, gaps = round(D[kk + 1]["o"], 2), True
+        if not ((stop < e < target) if long else (target < e < stop)):
+            return "rejected"
+    oc, x = walk(D[kk + 1:last + 1], stop, target, long, gaps)
+    if oc is None:
+        x = D[last]["c"]
+    gross = ((x - e) if long else (e - x)) / risk
+    cost = cost_r(e, risk, cost_bps)
+    return {"bar": kk, "signal": signal, "entry": e, "stop": stop, "target": target, "outcome": oc or "close",
+            "exit": round(x, 2), "risk": round(risk, 4), "cost_R": round(cost, 4), "R": round(gross - cost, 2)}
+
+
+def history_replay(sessions, rule, last, side="buy", fill="next_open", cost_bps=0.0):
+    """The plan's rule on every past full session: the signal is the first bar after
+    the opening range to close beyond it (up to the --until bar); the stop and the
+    target are set from that close, as trader-exit does; the fill follows `fill`
+    (see one_trade); then stop first, then target, bar by bar, else the close at
+    --until, less the costs."""
     long = side == "buy"
     n = rule["or_minutes"] // 5
     trades = []
+    skipped = {"no_bar": 0, "rejected": 0}
     for d, D in sessions:
         oh, ol = opening_range(D, n)
         kk = next((i for i in range(n, last + 1) if (D[i]["c"] > oh if long else D[i]["c"] < ol)), None)
         if kk is None:
             continue
-        e = round(D[kk]["c"], 2)
-        s = rule_stop(rule, oh, ol, e, long)
-        risk = (e - s) if long else (s - e)
+        p = round(D[kk]["c"], 2)
+        s = rule_stop(rule, oh, ol, p, long)
+        risk = (p - s) if long else (s - p)
         if risk <= 0:
             continue
-        t = round(e + rule["target_r"] * risk, 2) if long else round(e - rule["target_r"] * risk, 2)
-        oc = None
-        for b in D[kk + 1:last + 1]:
-            if (b["l"] <= s) if long else (b["h"] >= s):
-                oc = "stop"
-                break
-            if (b["h"] >= t) if long else (b["l"] <= t):
-                oc = "target"
-                break
-        cl = D[last]["c"]
-        R = ((t - e) if long else (e - t)) / risk if oc == "target" else -1.0 if oc == "stop" else \
-            ((cl - e) if long else (e - cl)) / risk
-        trades.append({"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "stop": s, "target": t,
-                       "outcome": oc or "close", "R": round(R, 2)})
+        t = round(p + rule["target_r"] * risk, 2) if long else round(p - rule["target_r"] * risk, 2)
+        tr = one_trade(D, kk, p, s, t, last, long, fill, cost_bps)
+        if isinstance(tr, str):
+            skipped[tr] += 1
+            continue
+        tr = dict(tr, date=d, time=clock12(OPEN_MIN + 5 * (kk + 1)))
+        trades.append(tr)
     return {
         "sessions": len(sessions), "triggered": len(trades),
         "target": sum(1 for x in trades if x["outcome"] == "target"),
@@ -486,8 +560,83 @@ def history_replay(sessions, rule, last, side="buy"):
         "close": sum(1 for x in trades if x["outcome"] == "close"),
         "green": sum(1 for x in trades if x["R"] > 0),
         "avg_R": round(statistics.mean(x["R"] for x in trades), 3) if trades else None,
+        "fill": fill, "cost_bps": cost_bps, "skipped": skipped,
         "rule": rule, "trades": trades,
     }
+
+
+# ---------------------------------------------------------------- the blind-entry baseline
+
+def mean_ci(xs, rng, draws):
+    """Bootstrap 95 % range of the mean of xs."""
+    n = len(xs)
+    means = sorted(sum(xs[rng.randrange(n)] for _ in range(n)) / n for _ in range(draws))
+    return pct(means, 0.025), pct(means, 0.975)
+
+
+def baseline(sessions, history, last, side="buy", fill="next_open", cost_bps=0.0, seed=19, draws=BASELINE_DRAWS):
+    """The control: the same trades with the setup taken out. For every trade in the
+    history, enter blind at the same bar on every OTHER past session, whether or not
+    anything broke out, with the same stop width (as a fraction of the price), the
+    same target R, the same fills and the same costs. If the setup carries an edge,
+    its trades should beat these.
+
+    Then: the setup's average R with a bootstrap 95 % range, and how often a random
+    set of as many blind trades (drawn with replacement) did as well or better."""
+    long = side == "buy"
+    trades = history["trades"]
+    rs = []
+    skipped = {"no_bar": 0, "rejected": 0}
+    for tr in trades:
+        kk = tr["bar"]
+        frac = tr["risk"] / tr["signal"]
+        r_t = history["rule"]["target_r"]
+        for d, D in sessions:
+            if d == tr["date"]:
+                continue
+            p = round(D[kk]["c"], 2)
+            s = cents_away(p * (1 - frac) if long else p * (1 + frac), long)
+            risk = (p - s) if long else (s - p)
+            if risk <= 0:
+                continue
+            t = round(p + r_t * risk, 2) if long else round(p - r_t * risk, 2)
+            ct = one_trade(D, kk, p, s, t, last, long, fill, cost_bps)
+            if isinstance(ct, str):
+                skipped[ct] += 1
+                continue
+            rs.append(ct["R"])
+    out = {"trades": len(rs), "skipped": skipped, "draws": draws, "seed": seed,
+           "setup_trades": len(trades), "min_trades": MIN_TRADES}
+    if not trades or not rs:
+        return dict(out, avg_R=None, setup_avg_R=None)
+    setup = [x["R"] for x in trades]
+    s_avg = sum(setup) / len(setup)
+    b_avg = sum(rs) / len(rs)
+    rng = random.Random(seed)
+    lo, hi = mean_ci(setup, rng, draws)
+    n = len(setup)
+    beat = sum(1 for _ in range(draws) if sum(rs[rng.randrange(len(rs))] for _ in range(n)) / n >= s_avg - 1e-12)
+    return dict(out, avg_R=round(b_avg, 3), setup_avg_R=round(s_avg, 3), edge_R=round(s_avg - b_avg, 3),
+                setup_ci=[round(lo, 3), round(hi, 3)], blind_as_good=round(beat / float(draws), 4))
+
+
+def baseline_verdict(b):
+    """One line: does the setup beat a blind entry, or is there too little to tell?"""
+    if not b or b.get("setup_avg_R") is None:
+        return None
+    n = b["setup_trades"]
+    if n < b.get("min_trades", MIN_TRADES):
+        return ("Too few trades to tell: %d trades, and at least %d are needed before a gap between the setup "
+                "and a blind entry means much." % (n, b.get("min_trades", MIN_TRADES)))
+    share = b["blind_as_good"]
+    if b["edge_R"] > 0 and share <= 0.05:
+        return ("The setup beat a blind entry: random sets of %d blind trades did as well in only %.1f %% of "
+                "%s draws." % (n, 100 * share, "{:,}".format(b["draws"])))
+    if b["edge_R"] < 0 and share >= 0.95:
+        return ("The setup did worse than a blind entry: random sets of %d blind trades did as well or better in "
+                "%.1f %% of %s draws." % (n, 100 * share, "{:,}".format(b["draws"])))
+    return ("No clear difference from a blind entry: random sets of %d blind trades did as well or better in "
+            "%.1f %% of %s draws." % (n, 100 * share, "{:,}".format(b["draws"])))
 
 
 # ---------------------------------------------------------------- the plan
@@ -676,12 +825,18 @@ def verdict_notes(mc):
     return notes
 
 
-def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo"):
+def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo",
+                 fill="next_open", cost_bps=DEFAULT_COST_BPS):
     """Chart JSON text + a normalized plan -> the timemachine.json document."""
     if not 1 <= replays <= 1000000:
         raise TMError("--replays must be between 1 and 1,000,000")
     if not 0 <= window <= 10:
         raise TMError("--window must be between 0 and 10 bars")
+    fill = str(fill).replace("-", "_")
+    if fill not in FILLS:
+        raise TMError("--fill must be next-open or close, not %r" % fill)
+    if not 0 <= cost_bps <= 100:
+        raise TMError("--cost-bps must be between 0 and 100 (basis points a side)")
     sym = plan["symbol"]
     result = chart_result(text, sym)
     meta, bars, dropped = parse_bars(result, now_utc)
@@ -727,9 +882,13 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
               band_times=[clock24(OPEN_MIN + 5 * (j + 1)) for j in range(k, last + 1)])
     rule = resolve_rule(plan, entry_day)
     plan_out = {kk: v for kk, v in plan.items() if v is not None}
+    base = None
     if rule:
         plan_out["stop_rule"] = rule["stop_rule"]
-        history = history_replay(sessions, rule, last, plan["side"])
+        history = history_replay(sessions, rule, last, plan["side"], fill, cost_bps)
+        if history["triggered"]:
+            base = baseline(sessions, history, last, plan["side"], fill, cost_bps, seed)
+            base["verdict"] = baseline_verdict(base)
     else:
         history = {"sessions": len(sessions), "triggered": 0, "rule": None, "trades": [],
                    "note": "skipped: the history replay knows the opening-range breakout (orb) only, "
@@ -745,6 +904,7 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         "plan": plan_out,
         "mc": mc,
         "history": history,
+        "baseline": base,
         "verdict": verdict(mc),
         "verdict_notes": verdict_notes(mc),
         "warnings": warn,
@@ -798,8 +958,29 @@ def report(doc):
                             h["target"], h["stop"], h["close"], h["avg_R"]))
         else:
             lines.append("History: the same rule never fired in those %d sessions." % h["sessions"])
+        if h.get("fill") == "close":
+            lines.append("  Fills: at the signal bar's close, stop and target at their exact prices "
+                         "(the old accounting), costs %g bps a side." % h.get("cost_bps", 0))
+        elif h.get("fill"):
+            lines.append("  Fills: at the open of the bar after the signal close; a bar that opens past the stop "
+                         "or the target fills at that open; costs %g bps a side, taken off every R." % h["cost_bps"])
+        sk = h.get("skipped") or {}
+        if sk.get("rejected") or sk.get("no_bar"):
+            lines.append("  Left out %d signal(s): %d opened past the stop or the target on the next bar (a "
+                         "bracket the broker rejects), %d had no bar left to fill on."
+                         % (sk.get("rejected", 0) + sk.get("no_bar", 0), sk.get("rejected", 0), sk.get("no_bar", 0)))
     else:
         lines.append("History: " + h.get("note", "skipped."))
+    b = doc.get("baseline")
+    if b and b.get("setup_avg_R") is not None:
+        lines += [
+            "Baseline: a blind entry at the same bars on the other sessions, with no breakout needed, the same "
+            "stop width, target R, fills and costs: %s trades, average R %+.3f."
+            % ("{:,}".format(b["trades"]), b["avg_R"]),
+            "  Setup minus blind: %+.3f R a trade. The setup's average R %+.3f, 95 %% range %+.3f to %+.3f "
+            "(bootstrap, seed %d)." % (b["edge_R"], b["setup_avg_R"], b["setup_ci"][0], b["setup_ci"][1], b["seed"]),
+            b["verdict"],
+        ]
     lines += ["", doc["verdict"]] + list(doc.get("verdict_notes") or []) + [""]
     for w in doc.get("warnings") or []:
         lines.append("Note: " + w + ".")
@@ -874,7 +1055,7 @@ def compute(a):
         text, source = read_offline(a.offline, plan["symbol"]), "offline"
     else:
         text, source = fetch_chart(plan["symbol"]), "yahoo"
-    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source)
+    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source, a.fill, a.cost_bps)
 
 
 def cmd_run(a):
@@ -929,6 +1110,10 @@ def main(argv=None):
         p.add_argument("--seed", type=int, default=19)
         p.add_argument("--window", type=int, default=2, help="draw from the same time of day +- this many bars")
         p.add_argument("--until", help="end each replay at this time (default 16:00, the close)")
+        p.add_argument("--fill", default="next-open", choices=["next-open", "close"],
+                       help="history fills: at the next bar's open (default) or the old signal-close accounting")
+        p.add_argument("--cost-bps", type=float, default=DEFAULT_COST_BPS,
+                       help="history costs in basis points a side (default %g)" % DEFAULT_COST_BPS)
         p.add_argument("--offline", metavar="FILE", help="a saved Yahoo chart JSON (.json or .json.gz), no network")
         p.add_argument("--now", help='pretend it is this time ("2026-10-19 10:15" New York, or ISO with Z)')
 
