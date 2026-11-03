@@ -1,9 +1,9 @@
-@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url("/vendor/fonts/inter-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url("/vendor/fonts/inter-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url("/vendor/fonts/inter-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url("/vendor/fonts/inter-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url("/vendor/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-weight: 600; font-display: swap; src: url("/vendor/fonts/jetbrains-mono-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url("/vendor/fonts/inter-400.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url("/vendor/fonts/inter-500.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url("/vendor/fonts/inter-600.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-display: swap; src: url("/vendor/fonts/inter-700.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url("/vendor/fonts/mono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 600; font-display: swap; src: url("/vendor/fonts/mono-600.woff2") format("woff2"); }
 
 :root {
   color-scheme: dark;

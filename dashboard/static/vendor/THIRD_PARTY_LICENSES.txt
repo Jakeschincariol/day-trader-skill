@@ -568,7 +568,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ==================================================================
-JetBrains Mono via Fontsource 5.1.1 (fonts/jetbrains-mono-*)
+JetBrains Mono via Fontsource 5.1.1 (fonts/mono-*)
 ==================================================================
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
