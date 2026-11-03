@@ -298,7 +298,8 @@
     if (p.flags.length >= 3) v.push(`${p.flags.length} red flags`);
     if (p.D.ndEbitda != null && p.D.ndEbitda > 4) v.push("too much debt");
     if (fit && !isFund(p) && fit.expNow[p.sym] > 15) v.push(`you already own ${fit.expNow[p.sym].toFixed(0)}% of your portfolio in it`);
-    if (R && R.years < 3) v.push("less than 3 years of history");
+    const hy = R && R.stats[p.sym] ? R.stats[p.sym].historyYears : null;
+    if (hy != null && hy < 1) v.push("less than a year of price history");
     return v;
   }
   function rankLT(picks, R, fit) {
@@ -318,6 +319,9 @@
       sc -= 5 * x.p.flags.length;
       if (x.p.a.earnings && x.p.a.earnings.days <= 10) sc -= 5;
       if (x.p.l.zone === "Stretched") sc -= 5;
+      const hy = R && R.stats[x.p.sym] ? R.stats[x.p.sym].historyYears : null;
+      x.young = hy != null && hy < 3;
+      if (x.young) sc -= 5; // a short track record makes every number less reliable
       x.rank = Math.round(sc);
     });
     ok.sort((a, b) => (b.rank - a.rank) || ((st(b).maxdd ?? -99) - (st(a).maxdd ?? -99)) || (isFund(b.p) - isFund(a.p)));
@@ -363,7 +367,7 @@
     if (D.fwdGrowth != null && D.fwdGrowth > 5) out.push(`Earnings expected to grow ${D.fwdGrowth.toFixed(0)}% next year`);
     if (st.sortino != null && o.every((y) => (y.sortino ?? -9) < st.sortino)) out.push(`Best return for its downside risk (Sortino ${st.sortino})`);
     if (x.terms && x.terms.fit > 0.5 && R && R.portfolio) out.push("Adds the least overlap with your portfolio");
-    if (st.cagrBase != null) out.push(`${st.cagrBase > 0 ? "+" : ""}${st.cagrBase}% a year over 5 years in ${R.base}`);
+    if (st.cagrBase != null) out.push(`${st.cagrBase > 0 ? "+" : ""}${st.cagrBase}% a year over the last ${R.years} years in ${R.base}`);
     if (x.p.l.zone === "Accumulate+") out.push("Good business currently on sale");
     return out.slice(0, 3).map(td.esc);
   }
@@ -373,27 +377,29 @@
     const ok = picks.filter((p) => !vetoes(p, R, fit).length);
     const risk = (p) => 0.4 * (st(p).vol ?? 50) + 0.4 * Math.abs(st(p).maxdd ?? 60) + 0.2 * (st(p).beta ?? 1.5) * 20;
     const coreOk = ok.filter((p) => isFund(p) || (p.l.score ?? 0) >= 55);
-    if (coreOk.length < 1 || picks.length < 2) return { why: "No pick is solid enough to be the calm core (needs a long-term score of 55+, or a broad fund)." };
+    if (picks.length < 2 || !ok.length) return { why: "No pick passes the basic checks, so no pair." };
+    if (coreOk.length < 1) coreOk.push(...ok.filter((p) => (p.l.score ?? 0) >= 45)); // no strong core: use the steadiest acceptable one, flagged below
+    if (coreOk.length < 1) return { why: "No pick is solid enough to be the core (needs a long-term score of 45+, or a broad fund)." };
     const funds = coreOk.filter(isFund);
     const core = (funds.length ? funds : coreOk).slice().sort((a, b) => risk(a) - risk(b))[0];
-    const sats = ok.filter((p) => p !== core && (p.l.score ?? 50) >= 45 && p.flags.length <= 2 && (st(p).vol ?? 0) >= 1.25 * (st(core).vol ?? 0))
+    const sats = ok.filter((p) => p !== core && (p.l.score ?? 50) >= 45 && p.flags.length <= 2 && (st(p).vol ?? 0) >= 1.15 * (st(core).vol ?? 0))
       .sort((a, b) => expectedReturn(b, R) - expectedReturn(a, R));
-    if (!sats.length) return { core, why: "None of the others swings clearly more than the core (needs 25%+ more volatility and acceptable quality), so a pair adds little: use the single pick." };
+    if (!sats.length) return { core, why: "None of the others swings clearly more than the core (needs 15%+ more volatility and acceptable quality), so a pair adds little: use the single pick." };
     const sat = sats[0];
-    const key = [core.sym, sat.sym].sort();
-    const c = R.corr[key.join("|")];
+    const pk = R.corr[`${core.sym}|${sat.sym}`] !== undefined || (R.pairBlend && R.pairBlend[`${core.sym}|${sat.sym}`]) ? [core.sym, sat.sym] : [sat.sym, core.sym];
+    const c = R.corr[pk.join("|")];
     if (c != null && c > 0.85) return { core, sat, why: `${core.sym} and ${sat.sym} move almost the same way (correlation ${c}): a pair doesn't spread risk. Use the single pick.` };
-    if ((st(core).vol > 40 || st(core).beta > 1.5) && (st(sat).vol > 40 || st(sat).beta > 1.5)) return { core, sat, why: "Both are very volatile: there's no calm core here. Consider pairing with a broad ETF (e.g. VWRL.L or CSPX.L)." };
+    const hot = (st(core).vol > 40 || st(core).beta > 1.5) && (st(sat).vol > 40 || st(sat).beta > 1.5);
     if (!st(sat).recovered && Math.abs(st(sat).maxdd ?? 0) > 70) return { core, sat, why: `${sat.sym} fell over 70% and hasn't recovered: too risky as a satellite.` };
     const P = PROFILES[profile];
     const loss = Math.abs(st(sat).crashes?.["2022 bear market"] ?? st(sat).maxdd ?? 50) / 100 || 0.5;
     let w = Math.min(P.sat, P.L / loss);
     w = Math.max(0.1, Math.round(w * 20) / 20);
     const capped = w < P.sat - 1e-9;
-    const pb = R.pairBlend && R.pairBlend[key.join("|")];
-    const wFirst = key[0] === core.sym ? 1 - w : w;
+    const pb = R.pairBlend && R.pairBlend[pk.join("|")];
+    const wFirst = pk[0] === core.sym ? 1 - w : w;
     const near = pb ? Object.keys(pb).sort((a, b) => Math.abs(+a - wFirst) - Math.abs(+b - wFirst))[0] : null;
-    return { core, sat, w, capped, corr: c, blend: near ? pb[near] : null, P };
+    return { core, sat, w, capped, corr: c, blend: near ? pb[near] : null, P, hot };
   }
 
   function pickHtml(picks, R, fit, mode, amount) {
@@ -410,12 +416,11 @@
       const top = ok[0], second = ok[1];
       const lead = second ? top.rank - second.rank : 99;
       const winsCore = top.terms && ok.length > 1 ? ["er", "sortino", "dd"].filter((k) => ok.every((y) => y === top || (top.terms[k] ?? 0) >= (y.terms[k] ?? 0))).length : 3;
-      const conf = !second ? "Medium" : lead >= 12 && !top.p.flags.length && (mode !== "lt" || (top.p.l.score ?? 0) >= 65) && winsCore >= 2 ? "High" : lead >= 6 ? "Medium" : "Low";
+      const conf = !second ? "Medium" : lead >= 12 && !top.young && !top.p.flags.length && (mode !== "lt" || (top.p.l.score ?? 0) >= 65) && winsCore >= 2 ? "High" : lead >= 6 ? "Medium" : "Low";
       const st = (R && R.stats[top.p.sym]) || {};
-      single = conf === "Low"
-        ? `<div class="pick-head"><b>No clear winner</b> (${top.p.sym} ${top.rank} vs ${second.p.sym} ${second.rank}). Splitting between them is reasonable.</div>`
-        : `<div class="pick-head good">${td.logo(top.p.sym, 34)}<div><span class="muted" style="font-size:12px">${mode === "lt" ? "Best risk-adjusted odds" : "Best swing setup"}</span><br><b style="font-size:22px">${td.esc(top.p.sym)}</b> <span class="badge ${conf === "High" ? "b-strongbuy" : "b-hold"}">${conf} confidence</span></div></div>
+      single = `${conf === "Low" ? `<p class="sec" style="font-size:13px;margin:0 0 8px">Close call (${top.p.sym} ${top.rank} vs ${second.p.sym} ${second.rank}): splitting between them is also reasonable.</p>` : ""}<div class="pick-head good">${td.logo(top.p.sym, 34)}<div><span class="muted" style="font-size:12px">${conf === "Low" ? "Slight edge" : mode === "lt" ? "Best risk-adjusted odds" : "Best swing setup"}</span><br><b style="font-size:22px">${td.esc(top.p.sym)}</b> <span class="badge ${conf === "High" ? "b-strongbuy" : conf === "Low" ? "e-wait" : "b-hold"}">${conf} confidence</span></div></div>
           <ul class="reasons" style="margin:10px 0">${reasonsFor(top, R, ok.filter((y) => y !== top)).map((r) => `<li>${r}</li>`).join("")}</ul>
+          ${top.young ? `<p class="muted" style="font-size:12.5px;margin:0 0 6px">Note: ${td.esc(top.p.sym)} has only ${R.stats[top.p.sym].historyYears} years of price history, so its risk numbers are less reliable.</p>` : ""}
           ${top.p.flags.filter((f) => !/of your portfolio/.test(f)).length ? `<ul class="tk-warn">${top.p.flags.filter((f) => !/of your portfolio/.test(f)).slice(0, 2).map((f) => `<li>${td.esc(f)}</li>`).join("")}</ul>` : ""}
           ${sizeNote(top.p, fit, amount, m)}
           ${amount && st.crashes && st.crashes["2022 bear market"] != null && mode === "lt" ? `<p class="sec" style="font-size:13px;margin:6px 0">If 2022 repeated, ${m(amount)} in ${td.esc(top.p.sym)} would have dropped to about ${m(amount * (1 + st.crashes["2022 bear market"] / 100))}. Typical 12 months: ${td.pct(st.median12m, 0)}.</p>` : ""}
@@ -437,8 +442,10 @@
         </div>
         <div class="seg" id="pickProf" style="margin:10px 0">${Object.entries(PROFILES).map(([k, v]) => `<button type="button" data-p="${k}" class="${k === profile ? "on" : ""}">${v.label} ${Math.round(100 * (1 - v.sat))}/${Math.round(100 * v.sat)}</button>`).join("")}</div>
         ${amount ? sizeNote(pp.sat, fit, amount * pp.w, m) : ""}
+        ${pp.hot ? `<p class="tk-warn" style="list-style:none;margin:8px 0">⚠ High-risk pair: both swing a lot (${td.esc(pp.core.sym)} ${R.stats[pp.core.sym].vol}%, ${td.esc(pp.sat.sym)} ${R.stats[pp.sat.sym].vol}% a year), so there's no truly calm core. For a steadier mix, use a broad ETF such as VWRL.L or CSPX.L as the core instead.</p>` : ""}
         ${pp.capped ? `<p class="muted" style="font-size:12.5px;margin:0 0 6px">The satellite is held to ${Math.round(100 * pp.w)}% (not ${Math.round(100 * pp.P.sat)}%) so a 2022-style fall in it costs at most about ${Math.round(100 * pp.P.L)}% of your amount.</p>` : ""}
-        ${b ? `<div class="ret-grid"><div class="perf-tile"><div class="k">This mix, a year (5y)</div><div class="v num ${td.cls(b.cagr)}">${td.pct(b.cagr, 1)}</div></div>
+        ${b && R.years < 3 ? `<p class="tk-warn" style="list-style:none;margin:8px 0">⚠ Only ${R.years} years of shared history (since ${R.from}), because ${R.symbols.filter((x) => (R.stats[x].historyYears ?? 9) < 3).map(td.esc).join(", ")} listed recently. These figures come from one short period and are probably too optimistic: don't expect them to repeat.</p>` : ""}
+        ${b ? `<div class="ret-grid"><div class="perf-tile"><div class="k">This mix, a year (${R.years}y)</div><div class="v num ${td.cls(b.cagr)}">${td.pct(b.cagr, 1)}</div></div>
           <div class="perf-tile"><div class="k">Worst fall</div><div class="v num down">${td.pct(b.maxdd, 0)}</div></div>
           <div class="perf-tile"><div class="k">Worst 12 months</div><div class="v num down">${td.pct(b.worst12m, 0)}</div>${amount ? `<div class="b">about ${m(amount * b.worst12m / 100)}</div>` : ""}</div>
           <div class="perf-tile"><div class="k">Typical 12 months</div><div class="v num ${td.cls(b.median12m)}">${td.pct(b.median12m, 0)}</div>${amount ? `<div class="b">about ${m(amount * b.median12m / 100)}</div>` : ""}</div>
@@ -563,7 +570,7 @@
       if (a != null && b != null && Math.abs(a - b) > gapVal) { gapVal = Math.abs(a - b); gapSec = sec.name; }
     }
     const hard = (p) => p.flags.filter((f) => /Speculative|debt|more than it earns|Earnings in [0-3] day/.test(f)).concat(fit && fit.expAfter[p.sym] > 10
-      ? [`If you invest ${fit.amountLabel}: ${p.sym} would be ${fit.expAfter[p.sym].toFixed(0)}% of your portfolio (you own ${fit.expNow[p.sym].toFixed(1)}% today). Keep one company under about 10%, or invest less.`] : []);
+      ? [`${fit.amountLabel} would make ${p.sym} ${fit.expAfter[p.sym].toFixed(0)}% of your portfolio (aim for under ~10%)`] : []);
     const who = mode === "lt" ? "a long-term investor" : "a swing trade";
     const headline = close
       ? `Too close to call (${top.s} vs ${second.s}): split it, or decide on ${gapSec || "what matters most to you"}.`
@@ -587,22 +594,7 @@
     const rs = R ? R.stats : {};
     const bestCagr = R ? Math.max(...R.symbols.map((s) => rs[s].cagr)) : null;
     body.innerHTML = `
-      <div class="card cmp-verdict">
-        <h2 style="margin:0 0 4px">${td.esc(headline)}</h2>
-        <p class="muted" style="margin:0 0 12px;font-size:13px">${mode === "lt" ? "Long-term weights: quality 20, growth 15, valuation 15, risk 15, fit 15, health 10, track record 10, analysts 5" : "Swing weights: momentum 35, risk 20, signal backtest 20, events 10, fit 10, valuation 5"}${$("#cmpInc").checked && mode === "lt" ? ", dividends 10" : ""}. Switch Long-term / Swing in the header.</p>
-        <div class="cmp-cards" style="--n:${cols}">${picks.map((p, i) => `<div class="cmp-card" style="--c:${COLORS[i]}">
-          <div class="cand-top">${td.logo(p.sym, 34)}<div style="flex:1;min-width:0"><a class="sym" href="#/stock/${encodeURIComponent(p.sym)}">${td.esc(p.sym)}</a><span class="nm">${td.esc(p.a.name || "")}</span></div>${window.TChart.ring(sc[i].score ?? 0, 60, "Comparison score")}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${window.LT ? window.LT.bandBadge(p.l.band) + " " + window.LT.zoneBadge(p.l.zone) : ""}</div>
-          <div class="num" style="font-size:18px;font-weight:600">${td.priceStr(p.a.price, p.a.currency)} <span class="${td.cls(p.a.changePct)}" style="font-size:13px">${td.pct(p.a.changePct)}</span></div>
-          <p class="sec" style="font-size:12.5px;margin:6px 0">${td.esc(bestWorst(i))}</p>
-          <p class="muted" style="font-size:11.5px;margin:0">based on ${sc[i].checks} of ${sc[i].all} checks${p.f ? "" : " (no company fundamentals: track record & risk only)"}</p>
-          ${p.flags.length || hard(p).length ? `<ul class="tk-warn" style="margin-top:8px">${[...new Set(hard(p).concat(p.flags))].map((f) => `<li>${td.esc(f)}</li>`).join("")}</ul>` : `<p class="tk-ok" style="margin-top:8px">✓ No red flags found</p>`}
-        </div>`).join("")}</div>
-        ${mixed ? `<p class="muted" style="font-size:12.5px">You're comparing a company with a fund (or a non-US listing): company-only checks show "–" for the fund and don't count against it.</p>` : ""}
-      </div>
-      <div class="card pick-card" style="margin-top:16px"><div class="card-head"><h2><i data-lucide="sparkles"></i>Pick for me</h2><button class="btn sm" type="button" id="pickSave"><i data-lucide="bookmark-plus"></i> Save this pick</button></div>
-        <div id="pickBox">${pickHtml(picks, R, fit, mode, amount)}</div>
-        <p class="muted" style="font-size:12px;margin:10px 0 0">Based on the last 5 years and current analyst data. Past results don't predict future returns. Nobody knows which will be most profitable. This is information, not advice.</p></div>
+      <a class="cmp-jump" href="#" id="cmpJump"><i data-lucide="arrow-down-circle"></i> The result and "Pick for me" are at the end, after all the details. Jump there</a>
       ${R ? `<div class="grid g2" style="margin-top:16px">
         <div class="card"><h2>Growth of 100 (dividends in)</h2><div id="cmpNorm" class="cmp-chart"></div><p class="muted" style="font-size:12px">${R.from} → ${R.to}, log scale. Dashed: S&P 500 · dotted: the same money split equally, rebalanced monthly.</p></div>
         <div class="card"><h2>Falls from the peak</h2><div id="cmpDD" class="cmp-chart"></div><p class="muted" style="font-size:12px">How deep each fell and how long it stayed under water: could you have held through it?</p></div>
@@ -622,9 +614,28 @@
       ${secHtml}
       <div class="card" style="margin-top:16px"><h2>Latest news</h2><div class="grid g${cols === 3 ? "3" : "2"}">${picks.map((p, i) => `<div><h3 class="h3" style="color:${COLORS[i]}">${td.esc(p.sym)}</h3>
         ${p.news.slice(0, 4).map((n) => `<a class="news-item" style="padding:8px 0;background:none;border:0;border-bottom:1px solid var(--grid);border-radius:0" href="${/^https?:/.test(n.link) ? td.esc(n.link) : "#"}" target="_blank" rel="noopener noreferrer"><div><div class="t" style="font-size:13.5px">${td.esc(n.title)}</div><div class="m">${td.esc(n.publisher || "")} ${(n.tags || []).map((t) => `<span class="tag ${/legal|deal/.test(t) ? "earn" : ""}">#${td.esc(t)}</span>`).join("")}</div></div></a>`).join("") || `<p class="muted">No recent headlines.</p>`}</div>`).join("")}</div></div>
+      <div id="cmpResult" class="cmp-result-anchor"></div>
+      <div class="card cmp-verdict" style="margin-top:16px">
+        <h2 style="margin:0 0 4px">${td.esc(headline)}</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">${mode === "lt" ? "Long-term weights: quality 20, growth 15, valuation 15, risk 15, fit 15, health 10, track record 10, analysts 5" : "Swing weights: momentum 35, risk 20, signal backtest 20, events 10, fit 10, valuation 5"}${$("#cmpInc").checked && mode === "lt" ? ", dividends 10" : ""}. Switch Long-term / Swing in the header.</p>
+        <div class="cmp-cards" style="--n:${cols}">${picks.map((p, i) => `<div class="cmp-card" style="--c:${COLORS[i]}">
+          <div class="cand-top">${td.logo(p.sym, 34)}<div style="flex:1;min-width:0"><a class="sym" href="#/stock/${encodeURIComponent(p.sym)}">${td.esc(p.sym)}</a><span class="nm">${td.esc(p.a.name || "")}</span></div>${window.TChart.ring(sc[i].score ?? 0, 60, "Comparison score")}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${window.LT ? window.LT.bandBadge(p.l.band) + " " + window.LT.zoneBadge(p.l.zone) : ""}</div>
+          <div class="num" style="font-size:18px;font-weight:600">${td.priceStr(p.a.price, p.a.currency)} <span class="${td.cls(p.a.changePct)}" style="font-size:13px">${td.pct(p.a.changePct)}</span></div>
+          <p class="sec" style="font-size:12.5px;margin:6px 0">${td.esc(bestWorst(i))}</p>
+          <p class="muted" style="font-size:11.5px;margin:0">based on ${sc[i].checks} of ${sc[i].all} checks${p.f ? "" : " (no company fundamentals: track record & risk only)"}</p>
+          ${p.flags.length || hard(p).length ? `<ul class="tk-warn" style="margin-top:8px">${[...new Set(hard(p).concat(p.flags))].map((f) => `<li>${td.esc(f)}</li>`).join("")}</ul>` : `<p class="tk-ok" style="margin-top:8px">✓ No red flags found</p>`}
+        </div>`).join("")}</div>
+        ${R && R.years < 4.5 ? `<p class="muted" style="font-size:12.5px">Risk and return rows use the ${R.years} years all picks share (${R.from} → ${R.to}), because ${R.symbols.filter((x) => (R.stats[x].historyYears ?? 9) < 4.5).map(T().esc).join(", ")} listed more recently.</p>` : ""}
+        ${mixed ? `<p class="muted" style="font-size:12.5px">You're comparing a company with a fund (or a non-US listing): company-only checks show "–" for the fund and don't count against it.</p>` : ""}
+      </div>
+      <div class="card pick-card" style="margin-top:16px"><div class="card-head"><h2><i data-lucide="sparkles"></i>Pick for me</h2><button class="btn sm" type="button" id="pickSave"><i data-lucide="bookmark-plus"></i> Save this pick</button></div>
+        <div id="pickBox">${pickHtml(picks, R, fit, mode, amount)}</div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0">Based on the last ${R ? R.years : 5} years of shared prices and current analyst data. Past results don't predict future returns. Nobody knows which will be most profitable. This is information, not advice.</p></div>
       <div class="card" style="margin-top:16px"><h2>Your saved picks</h2><div id="pickLog"></div></div>
       <p class="muted" style="font-size:12px;margin-top:12px">Past returns don't predict future ones. Company fundamentals come from Nasdaq.com (Zacks) for US listings only. ETF look-through weights are approximate. Returns ignore fees and tax${R && R.base ? "; the home-currency row converts with daily FX rates" : " and FX"}. This is a decision aid, not financial advice.</p>`;
     chartsInit(R, picks);
+    $("#cmpJump", body).addEventListener("click", (e) => { e.preventDefault(); $("#cmpResult", body).scrollIntoView({ behavior: "smooth" }); });
     const wire = () => $$("#pickProf button", body).forEach((b) => b.addEventListener("click", () => {
       td.store.set("settings", Object.assign(td.settings(), { pickProfile: b.dataset.p }));
       $("#pickBox", body).innerHTML = pickHtml(picks, R, fit, mode, amount); wire();

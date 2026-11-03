@@ -582,3 +582,7 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
 .pair-amt b { font-size: 20px; }
 @media (max-width: 1000px) { .pick-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .pair-grid { grid-template-columns: 1fr; } }
+.cmp-jump { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; background: rgba(74,149,238,.10); border: 1px solid rgba(74,149,238,.35); color: var(--text-primary); font-size: 14px; }
+.cmp-jump:hover { text-decoration: none; background: rgba(74,149,238,.18); }
+.cmp-jump svg.lucide { width: 18px; height: 18px; color: var(--accent); }
+.cmp-result-anchor { scroll-margin-top: 80px; }

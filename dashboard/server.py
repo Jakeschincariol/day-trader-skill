@@ -2353,6 +2353,7 @@ def compare_risk(symbols, bench="SPY", base=None, portfolio=None, add_frac=0.1):
             "median12m": r(100 * sorted(roll)[len(roll) // 2], 1) if roll else None,
             "positiveMonths": round(100.0 * sum(1 for a, _ in mr if a > 0) / len(mr)) if mr else None,
             "crashes": crashes, "currency": ccy,
+            "historyYears": round((time.time() - calendar.timegm(time.strptime(min(own), "%Y-%m-%d"))) / 31557600.0, 1) if own else None,
         }
     corr = {"%s|%s" % (a, b): r(_corr(rets[a], rets[b]), 2) for i, a in enumerate(syms) for b in syms[i + 1:]}
     # split the money equally, rebalanced every month
