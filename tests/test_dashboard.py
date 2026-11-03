@@ -317,6 +317,38 @@ class Vendor(unittest.TestCase):
             self.assertIn(name, text)
 
 
+class Projection(unittest.TestCase):
+    """The 10-year plan simulator (runs in the browser; checked here with node)."""
+
+    def run_js(self, expr):
+        import shutil, subprocess, json
+        if not shutil.which("node"):
+            self.skipTest("node not installed")
+        js = os.path.join(ROOT, "dashboard", "static", "projection.js")
+        code = "global.window={};require(%s);const P=window.Projection;console.log(JSON.stringify(%s))" % (json.dumps(js), expr)
+        return json.loads(subprocess.check_output(["node", "-e", code], timeout=60))
+
+    def test_no_growth_no_swings_gives_back_the_deposits(self):
+        a = '{etfRet:0,etfVol:0,stkRet:0,stkVol:0,corr:0.75,infl:0}'
+        r = self.run_js("P.simulate({start:2500,monthly:1200,years:10,etf:50,raise:0,a:%s},200)" % a)
+        self.assertAlmostEqual(r["pct"][10]["p50"], 2500 + 120 * 1200, places=6)
+        self.assertEqual(r["deposits"][10], 2500 + 120 * 1200)
+
+    def test_steady_return_matches_the_formula(self):
+        a = '{etfRet:6,etfVol:0,stkRet:6,stkVol:0,corr:0.75,infl:0}'
+        r = self.run_js("P.simulate({start:0,monthly:100,years:10,etf:100,raise:0,a:%s},50)" % a)
+        m = 0.06 / 12
+        self.assertAlmostEqual(r["pct"][10]["p50"], 100 * ((1 + m) ** 120 - 1) / m, delta=1)
+
+    def test_an_etf_core_narrows_the_range(self):
+        a = '{etfRet:7.5,etfVol:15,stkRet:11,stkVol:42,corr:0.75,infl:2.5}'
+        o = "{start:2500,monthly:1200,years:10,raise:0,a:%s,etf:%d}"
+        stocks = self.run_js("P.simulate(%s,2000)" % (o % (a, 0)))["pct"][10]
+        mixed = self.run_js("P.simulate(%s,2000)" % (o % (a, 50)))["pct"][10]
+        self.assertGreater(mixed["p10"], stocks["p10"])
+        self.assertLess(mixed["p90"], stocks["p90"])
+
+
 class Rules(unittest.TestCase):
     def ind(self, closes, vol=1e6, last_vol=None):
         bars = fake_bars(closes, vol)["bars"]

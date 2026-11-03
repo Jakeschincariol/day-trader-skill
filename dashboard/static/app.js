@@ -714,6 +714,7 @@
         <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio value</span><span style="color:var(--text-muted)"><i class="dash"></i>Money invested (cost of shares held)</span><span style="color:var(--series-2)"><i class="dash"></i>Same money in a world index fund (VWRL)</span><span><i style="background:rgba(12,163,12,.4);height:10px"></i>Gain</span><span><i style="background:rgba(208,59,59,.4);height:10px"></i>Loss</span></div>
         <div id="phWarn" class="muted" style="font-size:12px;margin-top:6px"></div>
       </div>
+      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="telescope"></i>10-year plan</h2><span class="muted" style="font-size:12.5px">what monthly investing could grow to</span></div><div id="projBox">${skeleton(5)}</div></div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
         <div class="grid" style="align-content:start">
@@ -826,6 +827,11 @@
       <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+    if (window.Projection && $("#projBox")) {
+      const etfVal = positions.filter((p) => /ETF|MUTUALFUND/i.test((p.q && p.q.type) || "")).reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0);
+      const posVal = positions.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0);
+      window.Projection.render($("#projBox"), { value: total, ccy, etfPct: posVal ? 100 * etfVal / posVal : 0 });
+    }
     stamp("pos");
 
     if (!positions.length) {

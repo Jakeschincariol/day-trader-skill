@@ -586,3 +586,17 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
 .cmp-jump:hover { text-decoration: none; background: rgba(74,149,238,.18); }
 .cmp-jump svg.lucide { width: 18px; height: 18px; color: var(--accent); }
 .cmp-result-anchor { scroll-margin-top: 80px; }
+
+/* 10-year plan */
+.proj-ctl { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; align-items: end; margin-bottom: 12px; }
+.proj-range input[type=range] { width: 100%; height: 28px; accent-color: var(--accent); }
+.proj-tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 12px; }
+.proj-h { font-size: 14px; margin: 16px 0 6px; }
+.proj-on td { background: rgba(74,149,238,.10); }
+.proj-adv { margin-top: 12px; }
+.proj-adv summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; margin-bottom: 10px; }
+.proj-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.proj-tbl th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.proj-tbl td { padding: 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.proj-tbl .r { text-align: right; }
+@media (max-width: 600px) { .proj-tbl { font-size: 12px; } .proj-tbl th, .proj-tbl td { padding: 6px 4px; } }
