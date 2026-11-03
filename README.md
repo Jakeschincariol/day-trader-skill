@@ -129,7 +129,8 @@ Russell 2000 (M2K), their full-size versions, the Micro Nikkei (MNK) in the
 Tokyo, European and US sessions, and Micro/Mini-DAX and Euro Stoxx 50 on Eurex. It runs on your own computer next to IB Gateway, checks
 every completed 5-minute bar for a volume surge breakout, sizes the trade in
 euros to your max loss, checks margin and a daily loss limit, sends one
-bracket order and is flat by the close. `observe` only notifies, `paper`
+bracket order (in the future itself, or in the matching IBKR index CFD while
+the signal keeps the future's real volume) and is flat by the close. `observe` only notifies, `paper`
 trades a paper account (it refuses a live one), and `live` needs a sentence
 you type into the config yourself. A backtest on real IBKR bars comes first.
 The full guide is in `trader-futures/SKILL.md`, in Dutch in

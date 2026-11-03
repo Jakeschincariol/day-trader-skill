@@ -119,6 +119,22 @@ class Broker(object):
                     return r
         return None
 
+    def rates_eur(self):
+        """{currency: EUR per 1 unit} from the account's own exchange rates.
+        IBKR's ExchangeRate value is base-currency units per unit of `currency`."""
+        raw = {}
+        for v in self.ib.accountValues(self.acct):
+            if v.tag == "ExchangeRate" and v.currency not in ("", "BASE"):
+                r = _f(v.value)
+                if r:
+                    raw[v.currency] = r
+        if self.base == "EUR":
+            return {k: v for k, v in raw.items() if k != "EUR"}
+        eur = raw.get("EUR")
+        if not eur:
+            return {}
+        return {k: v / eur for k, v in raw.items() if k != "EUR"}
+
     def daily_pnl_eur(self):
         """Today's P&L (realized + open) in EUR, as IBKR reports it."""
         if self._pnl is None:
@@ -148,6 +164,30 @@ class Broker(object):
         over = {"multiplier": _f(c.multiplier) or spec["multiplier"], "tick": _f(pick.minTick) or spec["tick"],
                 "local_symbol": c.localSymbol, "expiry": c.lastTradeDateOrContractMonth}
         return c, over
+
+    def resolve_cfd(self, cspec):
+        """The IBKR index CFD contract (e.g. IBUS500) and its real tick."""
+        details = self.ib.reqContractDetails(self.ib_mod.CFD(cspec["symbol"], exchange="SMART",
+                                                             currency=cspec["currency"]))
+        if not details:
+            raise BrokerError("IBKR knows no CFD %s in %s. CFDs are traded through Interactive Brokers Ireland "
+                              "accounts: check that the CFD trading permission is on (Client Portal > Settings > "
+                              "Trading Permissions > CFDs)." % (cspec["symbol"], cspec["currency"]))
+        d = details[0]
+        return d.contract, {"tick": _f(d.minTick) or cspec["tick"], "local_symbol": d.contract.localSymbol
+                            or cspec["symbol"], "multiplier": _f(d.contract.multiplier) or 1.0}
+
+    def quote_mid(self, contract):
+        """Live midpoint (or last price) of a contract, None when IBKR has no quote."""
+        try:
+            t = self.ib.reqTickers(contract)[0]
+        except Exception:
+            return None
+        for v in (t.midpoint(), t.marketPrice(), t.last, t.close):
+            v = _f(v)
+            if v and v > 0:
+                return v
+        return None
 
     # ------------------------------------------------------------ data
 

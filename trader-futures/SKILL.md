@@ -10,7 +10,9 @@ description: >-
   max loss per trade, checks margin, a daily loss limit, trades per day and a
   cooldown, sends one bracket order (limit entry, stop, target), and is flat
   by the close. Runs by itself on the user's computer through IB Gateway, in
-  observe, paper or live mode; paper is the default and live needs a sentence
+  observe, paper or live mode, executed in the future itself or in the
+  matching IBKR index CFD (IBUS500, IBUST100, IBUS30, IBDE40, IBEU50, IBJP225)
+  while the signal keeps the future's real volume; paper is the default and live needs a sentence
   the user types in the config. Backtests on real IBKR bars, writes an
   Excel-ready trade journal. Use when the user says "futures", "index
   futures", "MES", "ES", "NQ", "DAX future", "autotrader", "trade
@@ -31,6 +33,7 @@ that closes everything and stops for the day, and never a position overnight.
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/futures.py" specs                                   # the contracts it knows
 python3 "${CLAUDE_SKILL_DIR}/futures.py" backtest --contract MES --bars trader/mes-5m.csv --out trader/backtest.csv
+python3 "${CLAUDE_SKILL_DIR}/futures.py" backtest --contract MES --bars trader/mes-5m.csv --execute cfd   # as IBUS500
 python3 "${CLAUDE_SKILL_DIR}/futures.py" signal   --contract MES --bars trader/mes-5m.csv --now "2026-11-03 16:30"   # Dutch time
 python3 "${CLAUDE_SKILL_DIR}/ib_tools.py" status                                 # IB Gateway must run
 python3 "${CLAUDE_SKILL_DIR}/ib_tools.py" download --contract MES --days 60 --out trader/mes-5m.csv
@@ -82,6 +85,35 @@ are the mirror image and are off unless the user adds "short" to
 - a position the user opened by hand in the same contract blocks new entries
   and is never touched by the autotrader.
 
+## Future or CFD
+
+`"execute_as": "future"` (default) trades the future. `"execute_as": "cfd"`
+(for all contracts, or per contract in `contract_overrides`) keeps the signal
+on the future's real exchange volume and sends the order to the matching IBKR
+index CFD (Interactive Brokers Ireland):
+
+| future (signal) | CFD (order) | currency | IBKR fee per order |
+| --- | --- | --- | --- |
+| MES, ES | IBUS500 | USD | 0.005 %, min $1 |
+| MNQ, NQ | IBUST100 | USD | 0.010 %, min $1 |
+| MYM | IBUS30 | USD | 0.005 %, min $1 |
+| MNK | IBJP225 | JPY | 0.010 %, min 40 yen |
+| FDXS, FDXM | IBDE40 | EUR | 0.005 %, min EUR 1 |
+| FSXE, FESX | IBEU50 | EUR | 0.010 %, min EUR 1 |
+
+M2K has no IBKR CFD. How it works: the plan (limit, stop, target) is made
+on the future, then moved by the live basis (CFD midpoint minus future
+midpoint, both from IBKR at that moment) and rounded to the CFD's tick; no
+live CFD quote, no trade. One CFD unit moves 1 unit of its currency per index
+point, so sizing is much finer than a contract (IBUS500: $1 a point, MES: $5);
+the size is capped by `max_cfd_units`. The loss at the stop includes stop
+slippage and the IBKR fee on entry and exit. Margin on index CFDs is set by the
+EU leverage limit (1:20 on major indices), so a CFD needs more margin than a
+micro future for the same exposure; the margin rule still applies. Retail CFD
+clients in the EU have negative balance protection. For the same exposure the
+CFD fees are higher than a micro future's commission: compare with
+`futures.py backtest --execute cfd` against `--execute future`.
+
 ## Modes
 
 | mode | connection | orders | account it accepts |
@@ -128,7 +160,9 @@ nobody can guess.
 
 1. IBKR account with **futures trading permission** (Settings > Account
    Settings > Trading Permissions: Futures, for the US and/or Eurex).
-   MNK is a CME contract: the US futures permission covers it.
+   MNK is a CME contract: the US futures permission covers it. For
+   `"execute_as": "cfd"` also turn on **CFDs** there; the futures market data
+   is still needed for the signal.
 2. **Market data**: real-time data for CME (and CBOT for MYM) and/or Eurex,
    requested in the Client Portal. The paper account gets the live
    account's data only when "share market data with paper account" is on.

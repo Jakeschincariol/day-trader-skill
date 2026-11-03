@@ -343,11 +343,12 @@ class TestBacktest(unittest.TestCase):
 class FakeBroker(object):
     """Behaves like ibkr.Broker on the synthetic MES fixture."""
 
-    def __init__(self, account="DU1234567", pnl=0.0):
+    def __init__(self, account="DU1234567", pnl=0.0, basis=-12.3, cfd_quote=True):
         self.acct = account
         self.all = bars()
-        self.pos = 0
+        self.positions = {}
         self.orders, self.flattens = [], []
+        self.basis, self.cfd_quote = basis, cfd_quote
         self.pnl = pnl
         self.now = None
         self.exit_px = None
@@ -355,6 +356,26 @@ class FakeBroker(object):
     def account_info(self):
         return {"account": self.acct, "paper": self.acct.startswith("DU"), "base": "EUR",
                 "net_liq": 10000.0, "available": 10000.0}
+
+    @property
+    def pos(self):
+        return self.positions.get("MESZ6", 0)
+
+    @pos.setter
+    def pos(self, v):
+        self.positions["MESZ6"] = v
+
+    def rates_eur(self):
+        return {"USD": 1 / 1.08, "JPY": 1 / 170.0}
+
+    def resolve_cfd(self, cs):
+        return "IBUS500", {"tick": 0.1, "local_symbol": "IBUS500", "multiplier": 1.0}
+
+    def quote_mid(self, c):
+        px = [b for b in self.all if b["t"] + fx.BAR <= self.now][-1]["c"]
+        if c == "IBUS500":
+            return px + self.basis if self.cfd_quote else None
+        return px
 
     def resolve(self, spec, today, roll):
         return "MESZ6", {"multiplier": 5.0, "tick": 0.25, "local_symbol": "MESZ6", "expiry": "20261218"}
@@ -372,19 +393,22 @@ class FakeBroker(object):
         return 10000.0
 
     def margin_eur(self, c, action, qty):
+        if c == "IBUS500":                     # CFD: 5 % of the value (ESMA 1:20 on major indices)
+            return 0.05 * self.quote_mid(c) * qty / 1.08
         return 1500.0 * qty
 
     def position(self, c):
-        return self.pos
+        return self.positions.get(c, 0)
 
     def place_bracket(self, c, plan, qty, timeout):
-        self.orders.append((plan, qty))
-        self.pos = qty if plan["action"] == "BUY" else -qty
+        self.orders.append((plan, qty, c))
+        self.positions[c] = qty if plan["action"] == "BUY" else -qty
         return {"status": "filled", "qty": qty, "avg": plan["limit"] - 0.5}
 
     def flatten(self, c):
-        self.flattens.append(self.pos)
-        closed, self.pos = self.pos, 0
+        closed = self.positions.get(c, 0)
+        self.flattens.append(closed)
+        self.positions[c] = 0
         return {"closed": closed, "avg": 6920.0}
 
     def exit_fill(self, c, since):
@@ -456,8 +480,8 @@ class TestAutotrader(unittest.TestCase):
         t = ny("2026-10-30", "10:30") + datetime.timedelta(seconds=5)
         self.step(e, b, t)
         self.assertEqual(len(b.orders), 1)
-        plan, qty = b.orders[0]
-        self.assertEqual((plan["action"], qty, plan["stop"], plan["target"]), ("BUY", 2, 6915.0, 6922.75))
+        plan, qty, where = b.orders[0]
+        self.assertEqual((plan["action"], qty, plan["stop"], plan["target"], where), ("BUY", 2, 6915.0, 6922.75, "MESZ6"))
         # the same bar never orders twice
         self.step(e, b, t + datetime.timedelta(seconds=30))
         self.assertEqual(len(b.orders), 1)
@@ -523,6 +547,114 @@ class TestAutotrader(unittest.TestCase):
         e.setup()
         self.step(e, b, ny("2026-10-30", "10:30") + datetime.timedelta(seconds=5))
         self.assertEqual(b.orders, [])
+
+
+class TestCfd(unittest.TestCase):
+    def setUp(self):
+        sig = fx.evaluate(bars(), ny("2026-10-30", "10:30"), MES)
+        self.plan, _ = fx.make_plan(sig, MES)
+
+    def test_mapping(self):
+        self.assertEqual(fx.cfd_spec(fx.spec_for("MES"))["symbol"], "IBUS500")
+        self.assertEqual(fx.cfd_spec(fx.spec_for("MNQ"))["symbol"], "IBUST100")
+        self.assertEqual(fx.cfd_spec(fx.spec_for("MNK"))["currency"], "JPY")
+        self.assertEqual(fx.cfd_spec(fx.spec_for("FDXS"))["symbol"], "IBDE40")
+        with self.assertRaises(fx.FuturesError):
+            fx.cfd_spec(fx.spec_for("M2K"))                       # no Russell CFD at IBKR
+        cs = fx.cfd_spec(fx.spec_for("MNK"))
+        self.assertEqual([v["session"] for v in fx.sessions(cs)], ["tokyo", "europe", "us"])
+
+    def test_translate_by_basis(self):
+        p = fx.translate_plan(self.plan, -12.3, 0.1)
+        self.assertEqual((p["limit"], p["stop"], p["target"]), (6905.5, 6902.7, 6910.4))
+        self.assertAlmostEqual(p["risk_points"], 2.8)
+        self.assertEqual(p["future_plan"]["stop"], 6915.0)
+
+    def test_fees(self):
+        cs = fx.cfd_spec(fx.spec_for("MES"))
+        self.assertAlmostEqual(fx.cfd_fee(cs, 6900.0, 10), 3.45)      # 0.005 % of $69,000
+        self.assertEqual(fx.cfd_fee(cs, 6900.0, 1), 1.0)              # the $1 minimum
+        jp = fx.cfd_spec(fx.spec_for("MNK"))
+        self.assertEqual(fx.cfd_fee(jp, 51000.0, 1), 40.0)            # 0.010 % = 5.1 yen: the 40 yen minimum
+        self.assertAlmostEqual(fx.cfd_fee(jp, 51000.0, 10), 51.0)     # 0.010 % of 510,000 yen
+
+    def test_size_cfd_usd(self):
+        cs = fx.cfd_spec(fx.spec_for("MES"))
+        p = fx.translate_plan(self.plan, -12.3, 0.1)
+        s = fx.size(p, cs, {"max_loss_per_trade_eur": 100, "max_cfd_units": 50}, rates={"USD": 1 / 1.08})
+        # (2.8 + 0.5) x $1 = $3.30 a unit; 30 units = $99 + fees $20.7 = too much; 27 fits
+        self.assertEqual(s["unit"], "CFD units")
+        self.assertEqual(s["qty"], 27)
+        self.assertLessEqual(s["max_loss_eur"], 100)
+        s10 = fx.size(p, cs, {"max_loss_per_trade_eur": 100, "max_cfd_units": 10}, rates={"USD": 1 / 1.08})
+        self.assertEqual((s10["qty"], s10["bound_by"]), (10, "max CFD units"))
+
+    def test_size_cfd_yen(self):
+        jp = fx.cfd_spec(fx.spec_for("MNK"))
+        plan = {"direction": "long", "limit": 51000.0, "stop": 50960.0, "risk_points": 40.0, "stop_slip_points": 10.0}
+        s = fx.size(plan, jp, {"max_loss_per_trade_eur": 100, "max_cfd_units": 100}, rates={"JPY": 1 / 170.0})
+        # 50 points x 1 yen = 50 yen a unit (EUR 0.29); fees 0.01 % x 51,000 x qty twice
+        self.assertGreater(s["qty"], 100 - 1)
+        self.assertLessEqual(s["max_loss_eur"], 100)
+        too_small = fx.size(plan, jp, {"max_loss_per_trade_eur": 0.2}, rates={"JPY": 1 / 170.0})
+        self.assertEqual(too_small["qty"], 0)
+
+    def test_backtest_as_cfd(self):
+        res = fx.backtest(bars(), MES, eurusd=1.08, execute="cfd")
+        t = res["trades"][0]
+        self.assertEqual(t["qty"], 10)                                # capped at max_cfd_units
+        # 5.5 points x 10 = $55 - 2 x 0.005 % fees ($3.46 each) = $48.08 / 1.08
+        self.assertEqual(t["pnl_eur"], 44.52)
+
+    def test_autotrader_trades_the_cfd(self):
+        d = tempfile.mkdtemp()
+        try:
+            b = FakeBroker()
+            cfg = fx.load_config(None)
+            cfg["contracts"] = ["MES"]
+            cfg["contract_overrides"] = {"MES": {"execute_as": "cfd"}}
+            msgs = []
+            clock = {"t": ny("2026-10-30", "09:00")}
+            e = at.Engine(b, cfg, "paper", d, lambda t, x="", priority="", push=True: msgs.append(t + " | " + x),
+                          clock=lambda: clock["t"])
+            e.setup()
+            clock["t"] = b.now = ny("2026-10-30", "10:30") + datetime.timedelta(seconds=5)
+            e.tick()
+            self.assertEqual(len(b.orders), 1)
+            plan, qty, where = b.orders[0]
+            self.assertEqual(where, "IBUS500")
+            self.assertEqual((plan["limit"], plan["stop"], plan["target"], qty), (6905.5, 6902.7, 6910.4, 10))
+            self.assertEqual(b.positions.get("MESZ6", 0), 0)          # the future itself is never traded
+            self.assertTrue(any("basis -12.30" in m for m in msgs))
+            clock["t"] = b.now = ny("2026-10-30", "15:55") + datetime.timedelta(seconds=1)
+            e.tick()
+            self.assertEqual(b.flattens, [10])                        # flattened in the CFD
+            b.exit_px = 6906.0
+            e.tick()
+            with open(os.path.join(d, "journal.csv"), encoding="utf-8-sig") as fh:
+                rows = list(csv.reader(fh, delimiter=";"))
+            self.assertEqual(rows[1][rows[0].index("contract")], "IBUS500 CFD")
+        finally:
+            shutil.rmtree(d)
+
+    def test_no_cfd_quote_no_trade(self):
+        d = tempfile.mkdtemp()
+        try:
+            b = FakeBroker(cfd_quote=False)
+            cfg = fx.load_config(None)
+            cfg["contracts"] = ["MES"]
+            cfg["execute_as"] = "cfd"
+            clock = {"t": ny("2026-10-30", "09:00")}
+            msgs = []
+            e = at.Engine(b, cfg, "paper", d, lambda t, x="", priority="", push=True: msgs.append(t + " | " + x),
+                          clock=lambda: clock["t"])
+            e.setup()
+            clock["t"] = b.now = ny("2026-10-30", "10:30") + datetime.timedelta(seconds=5)
+            e.tick()
+            self.assertEqual(b.orders, [])
+            self.assertTrue(any("no live quote" in m for m in msgs))
+        finally:
+            shutil.rmtree(d)
 
 
 class TestCli(unittest.TestCase):

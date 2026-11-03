@@ -137,10 +137,23 @@ class Engine(object):
             spec = fx.spec_for(key, self.cfg)
             c, over = self.b.resolve(spec, today, roll)
             spec.update(over)
-            self.contracts[spec["key"]] = {"spec": spec, "contract": c}
-            lines.append("%s %s (expiry %s), %s %s per point, tick %s, sessions: %s" % (
+            item = {"spec": spec, "contract": c,
+                    "exec": {"spec": spec, "contract": c, "kind": "future"}}
+            kind = spec.get("execute_as") or self.cfg.get("execute_as") or "future"
+            line = "%s %s (expiry %s), %s %s per point, tick %s, sessions: %s" % (
                 spec["key"], over.get("local_symbol", ""), over.get("expiry", ""), spec["currency"],
-                spec["multiplier"], spec["tick"], fx.windows_text(spec)))
+                spec["multiplier"], spec["tick"], fx.windows_text(spec))
+            if kind == "cfd":
+                cs = fx.cfd_spec(spec)
+                cc, cover = self.b.resolve_cfd(cs)
+                cs.update(cover)
+                item["exec"] = {"spec": cs, "contract": cc, "kind": "cfd"}
+                line += "\n  signal from %s, orders in the CFD %s (%s, tick %s)" % (
+                    spec["key"], cs["symbol"], cs["currency"], cs["tick"])
+            elif kind != "future":
+                raise SystemExit('execute_as must be "future" or "cfd", not %r' % kind)
+            self.contracts[spec["key"]] = item
+            lines.append(line)
         r = self.cfg["risk"]
         acct = info["account"]
         masked = acct[:2] + "*" * max(0, len(acct) - 5) + acct[-3:]
@@ -184,9 +197,11 @@ class Engine(object):
         return "ok"
 
     def manage(self, key, item, now, pnl):
-        spec, c = item["spec"], item["contract"]
+        spec, c = item["spec"], item["contract"]          # the future: bars and signal
+        xs, xc = item["exec"]["spec"], item["exec"]["contract"]   # what the orders go to
+        cfd = item["exec"]["kind"] == "cfd"
         st = self.state.data
-        pos = self.b.position(c) if self.mode != "observe" else 0
+        pos = self.b.position(xc) if self.mode != "observe" else 0
         rec = st["open_trades"].get(key)
         # a trade we opened has closed (stop, target or flatten)
         if rec and pos == 0:
@@ -198,7 +213,7 @@ class Engine(object):
             flat_t = fx.parse_time(rec["flat_by_utc"]) if rec.get("flat_by_utc") else fx.at_local(
                 fx.session_day(now, spec), spec["flat_by"], spec)
             if now >= flat_t:
-                res = self.b.flatten(c)
+                res = self.b.flatten(xc)
                 self.notify("%s flat by %s (end of the %s session)" % (key, fx.dutch(flat_t), rec.get("session", "")),
                             "closed %s at %s" % (res.get("closed"), res.get("avg")))
                 return
@@ -228,17 +243,28 @@ class Engine(object):
             self.notify(head + ": no trade", why, push=False)
             return
         eurusd = self.b.eurusd() or self.cfg["risk"]["eurusd"]
-        sized = fx.size(plan, spec, self.cfg["risk"], eurusd)
+        rates = fx.fallback_rates(self.cfg["risk"], eurusd, self.b.rates_eur())
+        if cfd:
+            fut_px = self.b.quote_mid(c) or done[-1]["c"]
+            cfd_px = self.b.quote_mid(xc)
+            if not cfd_px:
+                self.notify(head + ": no trade", "no live quote for the CFD %s" % xs["symbol"])
+                return
+            plan = fx.translate_plan(plan, cfd_px - fut_px, xs["tick"])
+        sized = fx.size(plan, xs, self.cfg["risk"], eurusd, rates)
         margin = None
         if sized["qty"] >= 1:
-            m = self.b.margin_eur(c, plan["action"], sized["qty"])
+            m = self.b.margin_eur(xc, plan["action"], sized["qty"])
             avail = self.b.available_eur()
             if m is not None and avail:
                 margin = {"init_eur": m, "available_eur": avail}
         ok, reasons = fx.risk_check(plan, sized, spec, self.risk_state(pnl, {key: pos}), now, self.cfg["risk"], margin)
-        text = ("%s %d %s limit %s, stop %s, target %s, max loss EUR %.2f\nvolume %.1fx usual"
-                % (plan["action"], sized["qty"], spec.get("local_symbol", key), plan["limit"], plan["stop"],
-                   plan["target"], sized["max_loss_eur"], sig["metrics"]["rvol"]))
+        text = ("%s %d %s%s limit %s, stop %s, target %s, max loss EUR %.2f\nvolume %.1fx usual"
+                % (plan["action"], sized["qty"], xs.get("local_symbol", xs["symbol"] if cfd else key),
+                   " CFD" if cfd else "", plan["limit"], plan["stop"], plan["target"], sized["max_loss_eur"],
+                   sig["metrics"]["rvol"]))
+        if cfd:
+            text += " (basis %+.2f to the future)" % plan["basis"]
         if not ok:
             self.notify(head + ": BLOCKED", text + "\n" + "; ".join(reasons))
             return
@@ -247,15 +273,15 @@ class Engine(object):
             return
         st["trades"] += 1               # counts on submit, so a rejected order still uses a slot
         self.state.save()
-        res = self.b.place_bracket(c, plan, sized["qty"], int(self.cfg.get("entry_timeout_s", 60)))
+        res = self.b.place_bracket(xc, plan, sized["qty"], int(self.cfg.get("entry_timeout_s", 60)))
         if res["status"] == "filled":
             st["open_trades"][key] = {"qty": res["qty"] if plan["action"] == "BUY" else -res["qty"],
                                       "entry": res["avg"], "stop": plan["stop"], "target": plan["target"],
                                       "risk_eur": sized["max_loss_eur"] * res["qty"] / sized["qty"],
                                       "direction": plan["direction"], "signal": sig["slot"],
                                       "entered_at": self.clock().isoformat(), "rvol": sig["metrics"]["rvol"],
-                                      "eurusd": eurusd, "session": sig["session"],
-                                      "flat_by_utc": sig["flat_by_utc"]}
+                                      "eurusd": eurusd, "rates": rates, "session": sig["session"],
+                                      "flat_by_utc": sig["flat_by_utc"], "kind": item["exec"]["kind"]}
             self.state.save()
             self.notify(head + ": IN %s" % ("PAPER" if self.mode == "paper" else "LIVE"),
                         text.replace("limit %s" % plan["limit"], "filled %s" % res["avg"]), priority="high")
@@ -263,7 +289,8 @@ class Engine(object):
             self.notify(head + ": no fill", res.get("detail", res["status"]))
 
     def record_close(self, key, item, rec, now):
-        spec, c = item["spec"], item["contract"]
+        spec, c = item["exec"]["spec"], item["exec"]["contract"]
+        cfd = item["exec"]["kind"] == "cfd"
         st = self.state.data
         since = fx.parse_time(rec["entered_at"])
         fill = self.b.exit_fill(c, since)
@@ -273,8 +300,9 @@ class Engine(object):
         pnl_eur = None
         if exit_px is not None:
             gross = (exit_px - rec["entry"]) * sgn * spec["multiplier"] * qty
-            comm = (fill.get("commission") or 0.0) + qty * self.cfg["risk"]["commission_per_side"]
-            pnl_eur = round(fx.to_eur(gross - comm, spec["currency"], rec.get("eurusd")), 2)
+            entry_fee = fx.cfd_fee(spec, rec["entry"], qty) if cfd else qty * self.cfg["risk"]["commission_per_side"]
+            comm = (fill.get("commission") or 0.0) + entry_fee     # exit fills' real commission + the entry's
+            pnl_eur = round(fx.to_eur(gross - comm, spec["currency"], rec.get("eurusd"), rec.get("rates")), 2)
         reason = "target" if exit_px is not None and (exit_px - rec["target"]) * sgn >= -spec["tick"] else (
             "stop" if exit_px is not None and (exit_px - rec["stop"]) * sgn <= spec["tick"] else "closed")
         row = {"date": st["date"], "session": rec.get("session"), "direction": rec["direction"],
@@ -283,7 +311,8 @@ class Engine(object):
                "exit_reason": reason, "points": round((exit_px - rec["entry"]) * sgn, 6) if exit_px is not None else None,
                "pnl_eur": pnl_eur, "risk_eur": round(rec["risk_eur"], 2),
                "r": round(pnl_eur / rec["risk_eur"], 2) if pnl_eur is not None and rec["risk_eur"] else None,
-               "rvol": rec.get("rvol"), "contract": spec.get("local_symbol", key), "mode": self.mode}
+               "rvol": rec.get("rvol"), "contract": spec.get("local_symbol", key) + (" CFD" if cfd else ""),
+               "mode": self.mode}
         append_journal(self.journal, row)
         if pnl_eur is not None and pnl_eur < 0:
             st["last_loss"][key] = now.isoformat()
@@ -297,7 +326,7 @@ class Engine(object):
             self.notify("observe mode: " + why)
             return
         for key, item in self.contracts.items():
-            res = self.b.flatten(item["contract"])
+            res = self.b.flatten(item["exec"]["contract"])
             if res.get("closed"):
                 self.notify("%s flattened: %s" % (key, why), "closed %s at %s" % (res["closed"], res.get("avg")),
                             priority="high")

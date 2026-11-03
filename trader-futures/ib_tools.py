@@ -34,13 +34,18 @@ def cmd_status(a):
     info = b.account_info()
     print("account %s (%s), base currency %s" % (info["account"], "PAPER" if info["paper"] else "LIVE", info["base"]))
     print("net liquidation %s, available funds %s" % (info["net_liq"], info["available"]))
-    print("today's P&L EUR %s, EUR/USD %s" % (b.daily_pnl_eur(), b.eurusd()))
+    print("today's P&L EUR %s, EUR/USD %s, EUR per unit: %s" % (b.daily_pnl_eur(), b.eurusd(), b.rates_eur()))
     today = datetime.date.today()
     for key in cfg.get("contracts") or ["MES"]:
         spec = fx.spec_for(key, cfg)
         c, over = b.resolve(spec, today, int(cfg.get("roll_days", 8)))
         print("%s -> %s, expiry %s, %s per point, tick %s, position %d" % (
             key, over["local_symbol"], over["expiry"], over["multiplier"], over["tick"], b.position(c)))
+        if (spec.get("execute_as") or cfg.get("execute_as")) == "cfd":
+            cs = fx.cfd_spec(spec)
+            cc, co = b.resolve_cfd(cs)
+            print("   orders in CFD %s (%s), tick %s, quote %s, position %d" % (
+                cs["symbol"], cs["currency"], co["tick"], b.quote_mid(cc), b.position(cc)))
     b.disconnect()
     return 0
 

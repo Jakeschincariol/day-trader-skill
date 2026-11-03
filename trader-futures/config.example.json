@@ -1,12 +1,20 @@
 {
   "futures": {
-    "contracts": ["MES"],
+    "contracts": [
+      "MES"
+    ],
+    "execute_as": "future",
+    "contract_overrides": {},
     "paper": true,
     "live_confirm": "",
     "roll_days": 8,
     "entry_timeout_s": 60,
-    "ibkr": {"port": 4002},
-    "notify": {"ntfy_topic": ""},
+    "ibkr": {
+      "port": 4002
+    },
+    "notify": {
+      "ntfy_topic": ""
+    },
     "strategy": {
       "rvol_min": 2.5,
       "baseline_days": 10,
@@ -20,7 +28,9 @@
       "target_r": 2.0,
       "slippage_ticks": 2,
       "stop_slippage_ticks": 2,
-      "directions": ["long"]
+      "directions": [
+        "long"
+      ]
     },
     "risk": {
       "max_loss_per_trade_eur": 100,
@@ -30,7 +40,8 @@
       "max_open_positions": 1,
       "cooldown_after_loss_min": 30,
       "max_margin_pct": 50,
-      "commission_per_side": 0.62
+      "commission_per_side": 0.62,
+      "max_cfd_units": 10
     }
   }
 }

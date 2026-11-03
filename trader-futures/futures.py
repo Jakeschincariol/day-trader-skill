@@ -101,6 +101,21 @@ SPECS = {
              "window": ["09:15", "17:00"], "flat_by": "17:25"},
 }
 
+# IBKR index CFDs (Interactive Brokers Ireland), the future whose volume gives
+# the signal -> the CFD the order goes to. One CFD unit moves 1 unit of its
+# currency per index point. Fees: % of the trade value per order, with a
+# minimum per order (IBKR's fixed CFD pricing, checked 2026-11-03).
+CFDS = {
+    "IBUS500": {"currency": "USD", "fee_pct": 0.005, "fee_min": 1.0, "tick": 0.1, "name": "US 500"},
+    "IBUST100": {"currency": "USD", "fee_pct": 0.010, "fee_min": 1.0, "tick": 0.1, "name": "US Tech 100"},
+    "IBUS30": {"currency": "USD", "fee_pct": 0.005, "fee_min": 1.0, "tick": 1.0, "name": "US 30"},
+    "IBDE40": {"currency": "EUR", "fee_pct": 0.005, "fee_min": 1.0, "tick": 0.1, "name": "Germany 40"},
+    "IBEU50": {"currency": "EUR", "fee_pct": 0.010, "fee_min": 1.0, "tick": 1.0, "name": "Euro 50"},
+    "IBJP225": {"currency": "JPY", "fee_pct": 0.010, "fee_min": 40.0, "tick": 1.0, "name": "Japan 225"},
+}
+FUTURE_TO_CFD = {"MES": "IBUS500", "ES": "IBUS500", "MNQ": "IBUST100", "NQ": "IBUST100", "MYM": "IBUS30",
+                 "MNK": "IBJP225", "FDXS": "IBDE40", "FDXM": "IBDE40", "FSXE": "IBEU50", "FESX": "IBEU50"}
+
 STRATEGY = {
     "rvol_min": 2.5,
     "baseline_days": 10,
@@ -125,11 +140,13 @@ RISK = {
     "max_daily_loss_eur": 250.0,
     "max_trades_per_day": 3,
     "max_contracts": 2,
+    "max_cfd_units": 10,
     "max_open_positions": 1,
     "cooldown_after_loss_min": 30,
     "max_margin_pct": 50.0,
     "commission_per_side": 0.62,     # IBKR tiered, micro index futures incl. exchange fees (approx.)
     "eurusd": 1.08,                  # USD per EUR, offline fallback only
+    "eurjpy": 170.0,                 # JPY per EUR, offline fallback only
 }
 
 
@@ -453,6 +470,7 @@ def make_plan(sig, spec, strategy=None):
     return {"direction": sig["direction"], "action": "BUY" if long_ else "SELL",
             "entry_ref": entry_ref, "limit": limit, "stop": stop, "target": target,
             "risk_points": round(risk_pts, 10), "target_r": s["target_r"],
+            "stop_slip_points": s["stop_slippage_ticks"] * tick,
             "signal_bar": sig["bar_time"]}, None
 
 
@@ -470,28 +488,113 @@ def pick_contract(months, today, roll_days):
     return live[0]
 
 
-def to_eur(amount, currency, eurusd):
+def to_eur(amount, currency, eurusd=None, rates=None):
+    """`rates`: {currency: EUR per 1 unit}, e.g. from the IBKR account. Without
+    it USD uses `eurusd` (USD per EUR)."""
     if currency == "EUR":
         return amount
+    if rates and rates.get(currency):
+        return amount * rates[currency]
     if currency == "USD":
         if not eurusd or eurusd <= 0:
             raise FuturesError("no EUR/USD rate")
         return amount / eurusd
-    raise FuturesError("currency %s not supported" % currency)
+    raise FuturesError("no exchange rate for %s" % currency)
 
 
-def size(plan, spec, risk=None, eurusd=None):
-    """Whole contracts so the loss at the stop (plus stop slippage and both
-    commissions) stays within max_loss_per_trade_eur. Returns a dict; qty 0
-    comes with the reason."""
+def fallback_rates(risk, eurusd=None, rates=None):
+    """EUR per unit for USD and JPY: the live rates when given, else the config's."""
+    out = {"USD": 1.0 / (eurusd or risk["eurusd"]), "JPY": 1.0 / risk["eurjpy"]}
+    out.update({k: v for k, v in (rates or {}).items() if v})
+    return out
+
+
+# ---------------------------------------------------------------- CFDs
+
+def cfd_spec(spec, cfg=None):
+    """The CFD a future's signal is executed in: the future's sessions and
+    windows, the CFD's symbol, currency, tick and fees, 1 per point per unit."""
+    over = (spec.get("cfd") if isinstance(spec.get("cfd"), dict) else {}) or {}
+    sym = over.get("symbol") or (spec.get("cfd") if isinstance(spec.get("cfd"), str) else None) \
+        or FUTURE_TO_CFD.get(spec["key"])
+    if not sym:
+        raise FuturesError("%s has no IBKR index CFD to trade it with; keep \"execute_as\": \"future\""
+                           % spec["key"])
+    c = dict(CFDS.get(sym, {}))
+    c.update(over)
+    v = dict(spec)
+    v.update({"key": spec["key"], "symbol": sym, "exchange": "SMART", "currency": c.get("currency", "USD"),
+              "multiplier": 1.0, "tick": c.get("tick", 0.1), "fee_pct": c.get("fee_pct", 0.01),
+              "fee_min": c.get("fee_min", 1.0), "name": "%s CFD (%s)" % (c.get("name", sym), sym),
+              "kind": "cfd", "future": spec["key"]})
+    v.pop("trading_class", None)
+    return v
+
+
+def cfd_fee(cspec, price, qty):
+    """IBKR CFD commission for one order, in the CFD's currency."""
+    return max(cspec["fee_min"], cspec["fee_pct"] / 100.0 * abs(price) * qty)
+
+
+def translate_plan(plan, basis, tick):
+    """Move a plan made on the future's prices to the CFD: same distances in
+    points, shifted by basis = CFD price - future price, rounded to the CFD tick."""
+    long_ = plan["direction"] == "long"
+    p = dict(plan)
+    p["entry_ref"] = round_tick(plan["entry_ref"] + basis, tick)
+    p["limit"] = round_tick(plan["limit"] + basis, tick, "up" if long_ else "down")
+    p["stop"] = round_tick(plan["stop"] + basis, tick, "down" if long_ else "up")
+    p["target"] = round_tick(plan["target"] + basis, tick, "down" if long_ else "up")
+    p["risk_points"] = round(abs(p["limit"] - p["stop"]), 10)
+    p["basis"] = round(basis, 4)
+    p["future_plan"] = {k: plan[k] for k in ("limit", "stop", "target")}
+    return p
+
+
+def size_cfd(plan, cspec, risk=None, eurusd=None, rates=None):
+    """Whole CFD units so the loss at the stop (plus stop slippage and the
+    IBKR fees on entry and exit) fits max_loss_per_trade_eur."""
     r = dict(RISK)
     r.update(risk or {})
-    s = dict(STRATEGY)
+    rates = fallback_rates(r, eurusd, rates)
+    slip = plan.get("stop_slip_points", 0.0)
+    per_unit = plan["risk_points"] + slip
+    price, ccy = plan["limit"], cspec["currency"]
+
+    def total(q):
+        return to_eur(q * per_unit * cspec["multiplier"] + cfd_fee(cspec, price, q) + cfd_fee(cspec, plan["stop"], q),
+                      ccy, rates=rates)
+
+    per_eur = to_eur(per_unit * cspec["multiplier"], ccy, rates=rates)
+    qty = int(math.floor(r["max_loss_per_trade_eur"] / per_eur + EPS)) if per_eur > 0 else 0
+    bound = "max loss per trade"
+    if qty > r["max_cfd_units"]:
+        qty, bound = int(r["max_cfd_units"]), "max CFD units"
+    while qty > 0 and total(qty) > r["max_loss_per_trade_eur"] + EPS:
+        qty -= 1
+        bound = "max loss per trade"
+    out = {"qty": qty, "risk_per_contract_eur": round(per_eur, 2),
+           "max_loss_eur": round(total(qty), 2) if qty else 0.0, "bound_by": bound, "currency": ccy,
+           "unit": "CFD units"}
+    if qty < 1:
+        out["reason"] = ("one CFD unit risks EUR %.2f at the stop with fees, more than your max loss per trade "
+                         "EUR %.2f" % (total(1), r["max_loss_per_trade_eur"]))
+    return out
+
+
+def size(plan, spec, risk=None, eurusd=None, rates=None):
+    """Whole contracts so the loss at the stop (plus stop slippage and both
+    commissions) stays within max_loss_per_trade_eur. Returns a dict; qty 0
+    comes with the reason. A CFD spec is sized with size_cfd."""
+    if spec.get("kind") == "cfd":
+        return size_cfd(plan, spec, risk, eurusd, rates)
+    r = dict(RISK)
+    r.update(risk or {})
     eurusd = eurusd or r["eurusd"]
     mult, tick = spec["multiplier"], spec["tick"]
-    stop_slip = s["stop_slippage_ticks"] * tick
+    stop_slip = plan.get("stop_slip_points", STRATEGY["stop_slippage_ticks"] * tick)
     per_ccy = (plan["risk_points"] + stop_slip) * mult + 2 * r["commission_per_side"]
-    per_eur = to_eur(per_ccy, spec["currency"], eurusd)
+    per_eur = to_eur(per_ccy, spec["currency"], eurusd, fallback_rates(r, eurusd, rates))
     qty = int(math.floor(r["max_loss_per_trade_eur"] / per_eur + EPS))
     bound = "max loss per trade"
     if qty > r["max_contracts"]:
@@ -551,19 +654,24 @@ def risk_check(plan, sized, spec, state, now, risk=None, margin=None):
 
 # ---------------------------------------------------------------- backtest
 
-def backtest(bars, spec, strategy=None, risk=None, eurusd=None):
+def backtest(bars, spec, strategy=None, risk=None, eurusd=None, execute="future"):
     """Replay every session in `bars` with the exact live rules.
     Entry: the bar after the signal, if its open is at or better than the limit
     (otherwise the trade is missed, as a live limit order would be).
     Exit: stop, target or flat-by. A bar that touches both stop and target is
     counted as the stop. Stop exits pay `stop_slippage_ticks`. Commissions are
-    included. Returns {"trades": [...], "summary": {...}}."""
+    included. execute="cfd" trades the matching IBKR index CFD instead: the
+    signal and the prices stay the future's (the basis between the two is left
+    out), the size is in CFD units and the costs are IBKR's CFD fees.
+    Returns {"trades": [...], "summary": {...}}."""
     s = dict(STRATEGY)
     s.update(strategy or {})
     r = dict(RISK)
     r.update(risk or {})
     eurusd = eurusd or r["eurusd"]
+    rates = fallback_rates(r, eurusd)
     mult, tick = spec["multiplier"], spec["tick"]
+    xspec = cfd_spec(spec) if execute == "cfd" else spec
     trades, missed = [], 0
     # one segment per session per local day, replayed in time order; the daily
     # limits (trades, loss, cooldown) run per Dutch calendar day across sessions
@@ -596,7 +704,7 @@ def backtest(bars, spec, strategy=None, risk=None, eurusd=None):
             if not plan:
                 k += 1
                 continue
-            sized = size(plan, spec, r, eurusd)
+            sized = size(plan, xspec, r, eurusd, rates)
             ok, _ = risk_check(plan, sized, spec, state, now, r)
             if not ok or k + 1 >= len(ids):
                 k += 1
@@ -634,9 +742,11 @@ def backtest(bars, spec, strategy=None, risk=None, eurusd=None):
                 exit_px, why_exit, exit_t, j = last["c"], "end of data", last["t"], len(ids) - 1
             qty = sized["qty"]
             pts = (exit_px - entry) * sgn
-            gross = pts * mult * qty
-            net = gross - 2 * r["commission_per_side"] * qty
-            net_eur = to_eur(net, spec["currency"], eurusd)
+            if execute == "cfd":
+                net = pts * qty - cfd_fee(xspec, entry, qty) - cfd_fee(xspec, exit_px, qty)
+            else:
+                net = pts * mult * qty - 2 * r["commission_per_side"] * qty
+            net_eur = to_eur(net, xspec["currency"], eurusd, rates)
             risk_eur = sized["max_loss_eur"]
             trades.append({"date": dday, "session": v["session"], "direction": plan["direction"],
                            "signal": dutch(bars[i]["t"]), "entry_time": dutch(nb["t"]),
@@ -778,10 +888,11 @@ def cmd_signal(a, cfg):
 def cmd_backtest(a, cfg):
     spec = spec_for(a.contract, cfg)
     bars = load_bars_csv(a.bars)
-    res = backtest(bars, spec, cfg["strategy"], cfg["risk"], a.eurusd)
+    execute = a.execute or spec.get("execute_as") or cfg.get("execute_as") or "future"
+    res = backtest(bars, spec, cfg["strategy"], cfg["risk"], a.eurusd, execute)
     sm = res["summary"]
-    print("Backtest %s (%s), %d bars, %s to %s, sessions: %s" % (
-        spec["key"], spec["name"], len(bars), dutch(bars[0]["t"], "%Y-%m-%d"), dutch(bars[-1]["t"], "%Y-%m-%d"),
+    print("Backtest %s (%s)%s, %d bars, %s to %s, sessions: %s" % (
+        spec["key"], spec["name"], " executed as %s" % cfd_spec(spec)["name"] if execute == "cfd" else "", len(bars), dutch(bars[0]["t"], "%Y-%m-%d"), dutch(bars[-1]["t"], "%Y-%m-%d"),
         windows_text(spec)))
     print("  trades %d on %d days, missed entries %d" % (sm["trades"], sm["days"], sm["missed_entries"]))
     if sm["trades"]:
@@ -810,6 +921,7 @@ def main(argv=None):
     b.add_argument("--bars", required=True)
     b.add_argument("--out")
     b.add_argument("--eurusd", type=float)
+    b.add_argument("--execute", choices=["future", "cfd"], help="trade the future itself or its IBKR index CFD")
     a = p.parse_args(argv)
     try:
         cfg = load_config(a.config)

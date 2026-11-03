@@ -74,6 +74,39 @@ long (kopen); short staat uit.
 - `max_margin_pct` (50): de margin van een trade mag maximaal de helft van je beschikbare ruimte zijn;
 - een positie die je zelf met de hand opent, laat hij met rust, maar zolang die er staat opent hij in dat contract niets.
 
+## Future of CFD
+
+Je kiest zelf of hij de future zelf handelt of de bijbehorende **CFD bij
+IBKR**. Het signaal komt in beide gevallen uit het echte beursvolume van de
+future, alleen de order gaat naar de CFD:
+
+| signaal (future) | order (CFD bij IBKR) | kosten per order |
+| --- | --- | --- |
+| MES | IBUS500 (S&P 500) | 0,005 %, min. $ 1 |
+| MNQ | IBUST100 (Nasdaq-100) | 0,010 %, min. $ 1 |
+| MYM | IBUS30 (Dow) | 0,005 %, min. $ 1 |
+| MNK | IBJP225 (Nikkei, in yen) | 0,010 %, min. ¥ 40 |
+| FDXS | IBDE40 (DAX) | 0,005 %, min. € 1 |
+| FSXE | IBEU50 (Euro Stoxx 50) | 0,010 %, min. € 1 |
+
+Aanzetten in `trader\config.json`: `"execute_as": "cfd"` voor alles, of per
+markt `"contract_overrides": {"MES": {"execute_as": "cfd"}}`.
+
+Hoe het werkt: het plan (instap, stop, koersdoel) wordt op de future gemaakt
+en daarna verschoven met het actuele verschil tussen CFD en future (de
+"basis", live opgevraagd bij IBKR), afgerond op de stapgrootte van de CFD.
+Is er geen live CFD-koers, dan geen trade.
+
+Verschillen met de future:
+- **fijnere positiegrootte**: 1 CFD beweegt 1 dollar (of euro of yen) per indexpunt, tegen $ 5 bij MES. Het maximum staat in `max_cfd_units` (standaard 10);
+- **geen negatief saldo**: als particuliere CFD-klant in de EU kun je niet meer verliezen dan je inleg;
+- **meer margin**: de hefboom op index-CFD's is in de EU begrensd (1:20 op grote indices);
+- **hogere kosten** voor dezelfde blootstelling: in het testvoorbeeld $ 6,90 per trade voor 10 IBUS500, tegen $ 2,48 voor 2 MES. Vergelijk het zelf met de backtest:
+  `python trader-futures\futures.py backtest --contract MES --bars trader\mes-5m.csv --execute cfd`
+
+Voor CFD's moet je in de Client Portal ook de handelsrechten voor **CFD's**
+aanzetten. Het futures-data-abonnement blijft nodig voor het signaal.
+
 ## Eenmalig instellen
 
 1. **IBKR-rekening** met handelsrechten voor **futures**: in de Client
