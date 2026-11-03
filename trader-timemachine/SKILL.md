@@ -157,6 +157,35 @@ side. It did in 53.6 %. The replays came out close to a coin flip, and the
 real history was slightly worse than even. That is the honest answer for this setup, and it is what
 the user should hear before `/trader-budget` sizes 8 shares.
 
+## The bigger test: backtest.py
+
+One stock's 60 days give about 30 trades, too few to tell. `backtest.py` runs
+the same rule, fills and costs on every S&P 500 stock (or `--symbols FILE`)
+and compares each trade with its blind entry, with 95 % ranges that resample
+whole days (trades on the same day move together).
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" fetch      # 60 days of 5-min bars per stock, cached in trader/cache/60d5m
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" run        # 1R and 2R, with and without costs, the old accounting
+```
+
+The run of 2026-11-03 (496 stocks, 2026-08-10 to 2026-11-02, out by 3:55 PM,
+15-minute range, stop at the midpoint, long only):
+
+| variant | trades | average R (95 %) | blind entry | breakout adds (95 %) |
+| --- | --- | --- | --- | --- |
+| 1R, next open, 2 bps | 15,415 | -0.125 (-0.174 to -0.075) | -0.077 | -0.047 (-0.095 to +0.004) |
+| 2R, next open, 2 bps | 15,418 | -0.131 (-0.200 to -0.061) | -0.085 | -0.047 (-0.118 to +0.026) |
+| 1R, next open, no costs | 15,415 | -0.064 (-0.113 to -0.015) | -0.018 | -0.047 (-0.094 to +0.005) |
+| 1R, signal close, no costs (old) | 15,499 | -0.065 (-0.115 to -0.016) | -0.015 | -0.050 (-0.098 to +0.001) |
+
+On these stocks and these days the rule lost money after costs, and the
+breakout did no better than a blind entry at the same bar (slightly worse,
+not clearly). Costs alone took about 0.06R a trade: the midpoint stop is
+tight. Say this when the user asks whether the setup works. Sixty days are
+one stretch of one market, so it is a first look, not a verdict for every
+year, and it says nothing about small, fast "stocks in play".
+
 ## Rules
 
 - Every number comes from the run. Never round a coin flip up into an edge.

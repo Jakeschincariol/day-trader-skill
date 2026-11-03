@@ -180,7 +180,10 @@ variables, never in the chat.
 stock's own last 60 days of 5-minute bars. The 10,000 replays draw every bar
 on its own, so they say how far the price tends to wander, not whether the
 setup helps: only the history and its blind-entry baseline test the setup,
-and 60 days rarely give enough trades to tell. The future can do things those 60
+and 60 days rarely give enough trades to tell. Run on all S&P 500 stocks over
+the 60 days to November 2 2026 (15,415 trades, `trader-timemachine/backtest.py`),
+the opening-range breakout averaged -0.125R a trade after 2 bps of costs a
+side, and did no better than a blind entry at the same bar. The future can do things those 60
 days never did: an earnings report, a halt, a headline. Treat its odds as a
 reality check, never as a promise.
 
@@ -212,7 +215,7 @@ trader-scanner/     SKILL.md, scan.py
 trader-news/        SKILL.md, news.py
 trader-entry/       SKILL.md, entry.py
 trader-exit/        SKILL.md, exit.py
-trader-timemachine/ SKILL.md, timemachine.py
+trader-timemachine/ SKILL.md, timemachine.py, backtest.py
 trader-risk/        SKILL.md, check.py
 trader-budget/      SKILL.md, size.py, config.example.json, targets.example.json
 trader-broker/      SKILL.md, ticket.py, claude_desktop_config.example.json
