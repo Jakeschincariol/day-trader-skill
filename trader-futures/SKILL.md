@@ -3,7 +3,7 @@ name: trader-futures
 description: >-
   Index Futures Autotrader. Trades index futures only (Micro E-mini S&P 500
   MES, Micro Nasdaq-100 MNQ, Micro Dow MYM, Micro Russell M2K, their full-size
-  versions, Micro Nikkei MNK in the Tokyo session, Micro/Mini-DAX and Euro Stoxx 50 on Eurex) through Interactive
+  versions, Micro Nikkei MNK in the Tokyo, European and US sessions, Micro/Mini-DAX and Euro Stoxx 50 on Eurex) through Interactive
   Brokers, with one strategy: the volume surge breakout on 5-minute bars (a
   bar with 2.5x the usual volume for its time of day that breaks the last
   hour's range, closes strong and above VWAP). Sizes every trade in EUR to a
@@ -31,7 +31,7 @@ that closes everything and stops for the day, and never a position overnight.
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/futures.py" specs                                   # the contracts it knows
 python3 "${CLAUDE_SKILL_DIR}/futures.py" backtest --contract MES --bars trader/mes-5m.csv --out trader/backtest.csv
-python3 "${CLAUDE_SKILL_DIR}/futures.py" signal   --contract MES --bars trader/mes-5m.csv --now "2026-11-03 10:30"
+python3 "${CLAUDE_SKILL_DIR}/futures.py" signal   --contract MES --bars trader/mes-5m.csv --now "2026-11-03 16:30"   # Dutch time
 python3 "${CLAUDE_SKILL_DIR}/ib_tools.py" status                                 # IB Gateway must run
 python3 "${CLAUDE_SKILL_DIR}/ib_tools.py" download --contract MES --days 60 --out trader/mes-5m.csv
 python3 "${CLAUDE_SKILL_DIR}/ib_tools.py" flatten  --contract MES
@@ -43,8 +43,8 @@ python3 "${CLAUDE_SKILL_DIR}/autotrader.py" --mode paper                        
 
 On every completed 5-minute bar inside the entry window (US index futures
 09:45-15:30 New York time = 15:45-21:30 Dutch time; Eurex 09:15-17:00
-Frankfurt time; Micro Nikkei MNK 09:15-15:00 Tokyo time = 01:15-07:00 Dutch
-winter time, 02:15-08:00 summer time), a LONG signal needs all five:
+Frankfurt time; Micro Nikkei MNK in three sessions, see below), a LONG signal
+needs all five:
 
 1. volume at least 2.5x the average of the same 5-minute slot over the last
    10 sessions (sessions with under half the busiest session's volume are left
@@ -58,7 +58,8 @@ winter time, 02:15-08:00 summer time), a LONG signal needs all five:
 The plan: a LIMIT entry 2 ticks above the signal close (if the market runs
 away, no fill, no chase; it waits 60 seconds), a stop one tick under the
 signal bar's midpoint (at least 4 ticks, at most 1.5x ATR, otherwise no
-trade), a target at 2R, and flat by 15:55 New York (17:25 Frankfurt, 15:25 Tokyo). Shorts
+trade), a target at 2R, and flat by the end of the session the trade was opened in (15:55 New York,
+17:25 Frankfurt, or the MNK session's flat-by). Shorts
 are the mirror image and are off unless the user adds "short" to
 `strategy.directions`. Every number is in `trader/config.json`.
 
@@ -143,16 +144,34 @@ nobody can guess.
 7. `ib_tools.py download --days 60`, then `futures.py backtest` on that file.
 8. A week or more in `observe`, then weeks in `paper`, then decide.
 
-## The Micro Nikkei (MNK)
+## The Micro Nikkei (MNK) and sessions
 
 MNK is $0.50 per Nikkei point with a tick of 5 points ($2.50), quoted in USD
-on CME Globex. It trades almost around the clock, but its volume is in the
-Tokyo session, so its window is 09:15-15:00 Tokyo time: the middle of the
-Dutch night. The computer and IB Gateway have to stay on. MNK is a younger
-and thinner contract than MES: expect wider spreads and more slippage, and
-judge it on a backtest of its own bars (`ib_tools.py download --contract MNK`).
-With MES and MNK both in `contracts`, the daily loss limit and the trade count
-are shared per Dutch calendar day.
+on CME Globex, and it trades almost around the clock. It is traded in three
+sessions, each with its own VWAP, its own volume baseline per 5-minute slot
+(a 03:00 bar is compared with earlier 03:00 bars, never with the US open), and
+its own flat-by, so a trade never runs from one session into the next or into
+CME's daily maintenance break:
+
+| session | entry window (local) | flat by | Dutch time (winter / summer) |
+| --- | --- | --- | --- |
+| tokyo | 09:15-15:00 Tokyo | 15:25 | 01:15-07:00, flat 07:25 / 02:15-08:00, flat 08:25 |
+| europe | 09:15-15:00 Frankfurt | 15:25 | 09:15-15:00, flat 15:25 (same all year) |
+| us | 09:45-15:30 New York | 15:55 | 15:45-21:30, flat 21:55 |
+
+In the weeks when the US and Europe change the clocks on different dates
+(March, late October) the US session starts an hour earlier for us and
+overlaps the end of the European one; `max_open_positions` still allows one
+position at a time. Pick the sessions per contract in the config:
+`"contract_overrides": {"MNK": {"sessions": ["tokyo", "us"]}}`; any contract
+can get sessions this way. All times the tools print are Dutch time.
+
+MNK is a younger and thinner contract than MES: expect wider spreads and more
+slippage outside Tokyo hours, and judge it on a backtest of its own bars
+(`ib_tools.py download --contract MNK`): the backtest reports every trade with
+its session, so it shows which sessions earn their keep. With MES and MNK both
+in `contracts`, the daily loss limit and the trade count are shared per Dutch
+calendar day.
 
 ## Files
 

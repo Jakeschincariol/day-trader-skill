@@ -138,9 +138,9 @@ class Engine(object):
             c, over = self.b.resolve(spec, today, roll)
             spec.update(over)
             self.contracts[spec["key"]] = {"spec": spec, "contract": c}
-            lines.append("%s %s (expiry %s), %s %s per point, tick %s" % (
+            lines.append("%s %s (expiry %s), %s %s per point, tick %s, sessions: %s" % (
                 spec["key"], over.get("local_symbol", ""), over.get("expiry", ""), spec["currency"],
-                spec["multiplier"], spec["tick"]))
+                spec["multiplier"], spec["tick"], fx.windows_text(spec)))
         r = self.cfg["risk"]
         acct = info["account"]
         masked = acct[:2] + "*" * max(0, len(acct) - 5) + acct[-3:]
@@ -192,12 +192,16 @@ class Engine(object):
         if rec and pos == 0:
             self.record_close(key, item, rec, now)
             rec = None
-        # flat by the close: only positions this autotrader opened
-        day = fx.session_day(now, spec)
-        if rec and pos != 0 and now >= fx.at_local(day, spec["flat_by"], spec):
-            res = self.b.flatten(c)
-            self.notify("%s flat by %s" % (key, spec["flat_by"]), "closed %s at %s" % (res.get("closed"), res.get("avg")))
-            return
+        # flat by the end of the session it was opened in: only positions this
+        # autotrader opened
+        if rec and pos != 0:
+            flat_t = fx.parse_time(rec["flat_by_utc"]) if rec.get("flat_by_utc") else fx.at_local(
+                fx.session_day(now, spec), spec["flat_by"], spec)
+            if now >= flat_t:
+                res = self.b.flatten(c)
+                self.notify("%s flat by %s (end of the %s session)" % (key, fx.dutch(flat_t), rec.get("session", "")),
+                            "closed %s at %s" % (res.get("closed"), res.get("avg")))
+                return
         # a new completed bar? Ask IBKR only when one is due, and not more than
         # every 20 seconds (IBKR's historical-data pacing rules)
         due = now.replace(minute=now.minute - now.minute % 5, second=0, microsecond=0) - fx.BAR
@@ -219,7 +223,7 @@ class Engine(object):
         if sig["status"] != "signal":
             return
         plan, why = fx.make_plan(sig, spec, self.cfg["strategy"])
-        head = "%s %s signal %s" % (key, sig["direction"].upper(), sig["slot"])
+        head = "%s %s signal %s (%s session)" % (key, sig["direction"].upper(), sig["slot"], sig["session"])
         if not plan:
             self.notify(head + ": no trade", why, push=False)
             return
@@ -250,7 +254,8 @@ class Engine(object):
                                       "risk_eur": sized["max_loss_eur"] * res["qty"] / sized["qty"],
                                       "direction": plan["direction"], "signal": sig["slot"],
                                       "entered_at": self.clock().isoformat(), "rvol": sig["metrics"]["rvol"],
-                                      "eurusd": eurusd}
+                                      "eurusd": eurusd, "session": sig["session"],
+                                      "flat_by_utc": sig["flat_by_utc"]}
             self.state.save()
             self.notify(head + ": IN %s" % ("PAPER" if self.mode == "paper" else "LIVE"),
                         text.replace("limit %s" % plan["limit"], "filled %s" % res["avg"]), priority="high")
@@ -272,8 +277,8 @@ class Engine(object):
             pnl_eur = round(fx.to_eur(gross - comm, spec["currency"], rec.get("eurusd")), 2)
         reason = "target" if exit_px is not None and (exit_px - rec["target"]) * sgn >= -spec["tick"] else (
             "stop" if exit_px is not None and (exit_px - rec["stop"]) * sgn <= spec["tick"] else "closed")
-        row = {"date": st["date"], "direction": rec["direction"], "signal": rec["signal"],
-               "entry_time": fx.local(since, spec).strftime("%H:%M"), "exit_time": fx.local(now, spec).strftime("%H:%M"),
+        row = {"date": st["date"], "session": rec.get("session"), "direction": rec["direction"],
+               "signal": rec["signal"], "entry_time": fx.dutch(since), "exit_time": fx.dutch(now),
                "qty": qty, "entry": rec["entry"], "stop": rec["stop"], "target": rec["target"], "exit": exit_px,
                "exit_reason": reason, "points": round((exit_px - rec["entry"]) * sgn, 6) if exit_px is not None else None,
                "pnl_eur": pnl_eur, "risk_eur": round(rec["risk_eur"], 2),

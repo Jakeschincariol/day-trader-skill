@@ -76,7 +76,9 @@ class TestSignal(unittest.TestCase):
         sig = fx.evaluate(bars(), ny("2026-10-30", "10:30"), MES)
         self.assertEqual(sig["status"], "signal")
         self.assertEqual(sig["direction"], "long")
-        self.assertEqual(sig["slot"], "10:25")
+        self.assertEqual(sig["slot"], "15:25")         # shown in Dutch time (NY is 5 hours behind that week)
+        self.assertEqual(sig["session"], "us")
+        self.assertEqual(sig["flat_by_utc"], ny("2026-10-30", "15:55").isoformat())
         self.assertGreaterEqual(sig["metrics"]["rvol"], 2.5)
 
     def test_quiet_bar_does_not_fire(self):
@@ -95,7 +97,7 @@ class TestSignal(unittest.TestCase):
     def test_forming_bar_is_ignored(self):
         # at 10:29 the surge bar (10:25-10:30) has not closed yet
         sig = fx.evaluate(bars(), ny("2026-10-30", "10:29"), MES)
-        self.assertEqual(sig["slot"], "10:20")
+        self.assertEqual(sig["slot"], "15:20")
         self.assertNotEqual(sig["status"], "signal")
 
     def test_short_off_by_default_on_by_config(self):
@@ -170,6 +172,49 @@ class TestNikkei(unittest.TestCase):
         for k in ("limit", "stop", "target"):
             self.assertEqual(plan[k] % 5.0, 0.0, k)
         self.assertEqual((plan["limit"], plan["stop"]), (51120.0, 51055.0))
+
+    def test_three_sessions(self):
+        mnk = self.MNK
+        self.assertEqual([v["session"] for v in fx.sessions(mnk)], ["tokyo", "europe", "us"])
+
+        def at(zone, hm, day="2026-11-04"):
+            h, m = map(int, hm.split(":"))
+            return datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time(h, m),
+                                             tzinfo=fx.tz(zone)).astimezone(UTC)
+        self.assertEqual(fx.session_for(mnk, at("Asia/Tokyo", "10:00"))["session"], "tokyo")
+        self.assertEqual(fx.session_for(mnk, at("Europe/Berlin", "10:00"))["session"], "europe")
+        self.assertEqual(fx.session_for(mnk, at("America/New_York", "10:00"))["session"], "us")
+        self.assertIsNone(fx.session_for(mnk, at("Europe/Berlin", "08:00")))     # between Tokyo and Europe
+        self.assertIsNone(fx.session_for(mnk, at("America/New_York", "16:00")))  # after the US session
+
+    def test_windows_and_flat_times_do_not_overlap(self):
+        # on ordinary days each session is flat before the next one opens
+        for day in ("2026-01-14", "2026-07-15", "2026-11-04"):
+            d = datetime.date.fromisoformat(day)
+            vs = fx.sessions(self.MNK)
+            spans = sorted((fx.at_local(d, v["window"][0], v), fx.at_local(d, v["flat_by"], v)) for v in vs)
+            for (a0, a1), (b0, b1) in zip(spans, spans[1:]):
+                self.assertLessEqual(a1, b0, day)
+
+    def test_sessions_from_config(self):
+        cfg = fx.load_config(None)
+        cfg["contract_overrides"] = {"MNK": {"sessions": ["tokyo", "us"]}}
+        self.assertEqual([v["session"] for v in fx.sessions(fx.spec_for("MNK", cfg))], ["tokyo", "us"])
+        cfg["contract_overrides"] = {"MNK": {"sessions": ["mars"]}}
+        with self.assertRaises(fx.FuturesError):
+            fx.sessions(fx.spec_for("MNK", cfg))
+        self.assertEqual(fx.sessions(fx.spec_for("MES"))[0]["session"], "us")
+        self.assertEqual(fx.sessions(fx.spec_for("FDXS"))[0]["session"], "europe")
+
+    def test_backtest_finds_the_tokyo_trade_and_only_in_its_session(self):
+        tokyo = fx.tz("Asia/Tokyo")
+        moved = [dict(b, t=b["t"].astimezone(NY).replace(tzinfo=tokyo).astimezone(UTC)) for b in bars()]
+        res = fx.backtest(moved, fx.spec_for("MNK", {"tick": 0.25, "multiplier": 5.0}), eurusd=1.08)
+        self.assertEqual(len(res["trades"]), 1)
+        t = res["trades"][0]
+        self.assertEqual((t["session"], t["signal"], t["exit_reason"]), ("tokyo", "02:25", "target"))
+        only_us = fx.spec_for("MNK", {"tick": 0.25, "multiplier": 5.0, "sessions": ["us"]})
+        self.assertEqual(fx.backtest(moved, only_us, eurusd=1.08)["summary"]["trades"], 0)
 
     def test_symbol_override_from_config(self):
         cfg = fx.load_config(None)
@@ -253,7 +298,8 @@ class TestBacktest(unittest.TestCase):
         self.assertEqual(len(res["trades"]), 1)
         t = res["trades"][0]
         self.assertEqual((t["date"], t["signal"], t["entry_time"], t["exit_reason"]),
-                         ("2026-10-30", "10:25", "10:30", "target"))
+                         ("2026-10-30", "15:25", "15:30", "target"))
+        self.assertEqual(t["session"], "us")
         self.assertEqual(t["qty"], 2)
         self.assertEqual(t["entry"], 6917.25)
         self.assertEqual(t["exit"], 6922.75)
@@ -422,6 +468,8 @@ class TestAutotrader(unittest.TestCase):
             rows = list(csv.reader(fh, delimiter=";"))
         self.assertEqual(rows[1][rows[0].index("exit_reason")], "target")
         self.assertEqual(rows[1][rows[0].index("contract")], "MESZ6")
+        self.assertEqual(rows[1][rows[0].index("session")], "us")
+        self.assertEqual(rows[1][rows[0].index("entry_time")], "15:30")
         with open(e.state.path) as fh:
             st = json.load(fh)
         self.assertEqual(st["trades"], 1)

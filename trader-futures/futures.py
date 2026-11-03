@@ -50,6 +50,17 @@ UTC = datetime.timezone.utc
 EPS = 1e-9
 BAR = datetime.timedelta(minutes=5)
 
+# Trading sessions a contract can be traded in. Each has its own time zone,
+# open (VWAP starts there), entry window and flat-by time, so a position never
+# runs from one session into the next. The windows do not overlap.
+SESSIONS = {
+    "tokyo": {"tz": "Asia/Tokyo", "open": "09:00", "window": ["09:15", "15:00"], "flat_by": "15:25"},
+    "europe": {"tz": "Europe/Berlin", "open": "09:00", "window": ["09:15", "15:00"], "flat_by": "15:25"},
+    "us": {"tz": "America/New_York", "open": "09:30", "window": ["09:45", "15:30"], "flat_by": "15:55"},
+}
+
+TZ_SESSION = {"Asia/Tokyo": "tokyo", "Europe/Berlin": "europe", "America/New_York": "us"}
+
 # Fallback contract specs. The autotrader replaces multiplier and tick with
 # what IBKR's contract details say, so these only matter offline.
 SPECS = {
@@ -71,12 +82,11 @@ SPECS = {
     "M2K": {"name": "Micro E-mini Russell 2000", "symbol": "M2K", "exchange": "CME", "currency": "USD",
             "multiplier": 5.0, "tick": 0.1, "tz": "America/New_York", "open": "09:30",
             "window": ["09:45", "15:30"], "flat_by": "15:55"},
-    # Micro Nikkei (USD) on CME Globex. It trades almost 24 hours, but the
-    # volume is in the Tokyo session (09:00-15:30 JST = 01:00-07:30 Dutch
-    # winter time, 02:00-08:30 summer time; Japan has no daylight saving).
+    # Micro Nikkei (USD) on CME Globex trades almost 24 hours: it is traded in
+    # the Tokyo, European and US sessions, flat between them.
     "MNK": {"name": "Micro Nikkei (USD)", "symbol": "MNK", "exchange": "CME", "currency": "USD",
             "multiplier": 0.5, "tick": 5.0, "tz": "Asia/Tokyo", "open": "09:00",
-            "window": ["09:15", "15:00"], "flat_by": "15:25"},
+            "window": ["09:15", "15:00"], "flat_by": "15:25", "sessions": ["tokyo", "europe", "us"]},
     "FDXS": {"name": "Micro-DAX", "symbol": "DAX", "trading_class": "FDXS", "exchange": "EUREX",
              "currency": "EUR", "multiplier": 1.0, "tick": 1.0, "tz": "Europe/Berlin", "open": "09:00",
              "window": ["09:15", "17:00"], "flat_by": "17:25"},
@@ -150,6 +160,14 @@ def local(t, spec):
     return t.astimezone(tz(spec["tz"]))
 
 
+AMS = "Europe/Amsterdam"
+
+
+def dutch(t, fmt="%H:%M"):
+    """A time as the user reads it: Dutch local time."""
+    return t.astimezone(tz(AMS)).strftime(fmt)
+
+
 def slot(t, spec):
     lt = local(t, spec)
     return lt.strftime("%H:%M")
@@ -216,12 +234,53 @@ def completed(bars, now):
     return [b for b in bars if b["t"] + BAR <= now]
 
 
-def ann(b, spec):
-    """Cache the bar's exchange-local day and HH:MM slot on the bar itself."""
-    if b.get("_tz") != spec["tz"]:
+def day_slot(b, spec):
+    """(local date, "HH:MM") of a bar in the spec's time zone, cached on the bar
+    per time zone (one bar can be looked at from several sessions)."""
+    c = b.get("_a")
+    if c is None:
+        c = b["_a"] = {}
+    v = c.get(spec["tz"])
+    if v is None:
         lt = local(b["t"], spec)
-        b["_tz"], b["_d"], b["_s"] = spec["tz"], lt.date(), lt.strftime("%H:%M")
-    return b
+        v = c[spec["tz"]] = (lt.date(), lt.strftime("%H:%M"))
+    return v
+
+
+def sessions(spec):
+    """The sessions of a contract, each as a full spec view with its own tz,
+    open, window and flat_by, plus "session" (its name)."""
+    names = spec.get("sessions")
+    if not names:
+        v = dict(spec)
+        v["session"] = v.get("session") or TZ_SESSION.get(v["tz"], "main")
+        v.pop("sessions", None)
+        return [v]
+    out = []
+    for n in names:
+        sess = SESSIONS.get(n) if isinstance(n, str) else n
+        if not sess:
+            raise FuturesError("unknown session %r; known: %s" % (n, ", ".join(sorted(SESSIONS))))
+        v = dict(spec)
+        v.pop("sessions", None)
+        v.update(sess)
+        v["session"] = n if isinstance(n, str) else sess.get("name", "custom")
+        out.append(v)
+    return out
+
+
+def session_for(spec, t):
+    """The session whose entry window holds time t, or None."""
+    for v in sessions(spec):
+        day = local(t, v).date()
+        if at_local(day, v["window"][0], v) <= t <= at_local(day, v["window"][1], v):
+            return v
+    return None
+
+
+def windows_text(spec):
+    return ", ".join("%s %s-%s %s" % (v["session"], v["window"][0], v["window"][1], v["tz"].split("/")[1])
+                     for v in sessions(spec))
 
 
 def session_day(t, spec):
@@ -250,12 +309,12 @@ def day_volumes(bars, spec, before, days):
     """Total volume per session for the `days` sessions before `before`."""
     tot = {}
     for b in reversed(bars):
-        ann(b, spec)
-        if b["_d"] >= before:
+        d = day_slot(b, spec)[0]
+        if d >= before:
             continue
-        if b["_d"] not in tot and len(tot) >= days:
+        if d not in tot and len(tot) >= days:
             break
-        tot[b["_d"]] = tot.get(b["_d"], 0) + b["v"]
+        tot[d] = tot.get(d, 0) + b["v"]
     return tot
 
 
@@ -264,8 +323,7 @@ def baseline_volume(bars, sig, spec, days, min_samples, min_day_ratio=0.0):
     Sessions whose total volume is under `min_day_ratio` x the busiest one are
     left out: after a quarterly roll, the days when this contract was still the
     thin back month would otherwise make every bar look like a surge."""
-    ann(sig, spec)
-    want, today = sig["_s"], sig["_d"]
+    today, want = day_slot(sig, spec)
     totals = day_volumes(bars, spec, today, days)
     if not totals:
         return None, 0
@@ -273,11 +331,12 @@ def baseline_volume(bars, sig, spec, days, min_samples, min_day_ratio=0.0):
     ok_days = {d for d, v in totals.items() if v >= floor}
     by_day = {}
     for b in reversed(bars):
-        if b["_d"] < today and b["_d"] in ok_days and b["_s"] == want:
-            by_day.setdefault(b["_d"], b["v"])
+        d, sl = day_slot(b, spec)
+        if d < today and d in ok_days and sl == want:
+            by_day.setdefault(d, b["v"])
             if len(by_day) >= days:
                 break
-        elif b["_d"] < today and b["_d"] not in totals:
+        elif d < today and d not in totals:
             break
     vols = [by_day[d] for d in sorted(by_day)]
     if len(vols) < min_samples:
@@ -297,20 +356,22 @@ def evaluate(bars, now, spec, strategy=None):
     if not done:
         return {"status": "no-data", "reasons": ["no completed bars yet"]}
     sig = done[-1]
-    day = session_day(sig["t"], spec)
     bar_close = sig["t"] + BAR
-    w0, w1 = at_local(day, spec["window"][0], spec), at_local(day, spec["window"][1], spec)
     out = {"bar_time": sig["t"].isoformat(), "bar_close": bar_close.isoformat(),
-           "slot": slot(sig["t"], spec), "close": sig["c"]}
+           "slot": dutch(sig["t"]), "close": sig["c"]}
     if now - bar_close > 2 * BAR:
         out.update(status="no-data", reasons=["the last completed bar is %s: the data is stale" % out["slot"]])
         return out
-    if not (w0 <= bar_close <= w1):
+    v = session_for(spec, bar_close)
+    if v is None:
         out.update(status="outside-window",
-                   reasons=["bar closes at %s, the entry window is %s-%s %s"
-                            % (local(bar_close, spec).strftime("%H:%M"), spec["window"][0], spec["window"][1],
-                               spec["tz"])])
+                   reasons=["bar closes at %s Dutch time, outside the entry windows (%s)"
+                            % (dutch(bar_close), windows_text(spec))])
         return out
+    spec = v
+    day = local(bar_close, spec).date()
+    out["session"] = spec["session"]
+    out["flat_by_utc"] = at_local(day, spec["flat_by"], spec).isoformat()
     open_t = at_local(day, spec["open"], spec)
     today = []
     for b in reversed(done):
@@ -477,15 +538,14 @@ def risk_check(plan, sized, spec, state, now, risk=None, margin=None):
     if last:
         wait = parse_time(last) + datetime.timedelta(minutes=r["cooldown_after_loss_min"])
         if now < wait:
-            reasons.append("cooling down after a loss in %s until %s" % (key, local(wait, spec).strftime("%H:%M")))
+            reasons.append("cooling down after a loss in %s until %s" % (key, dutch(wait)))
     if margin:
         cap = margin["available_eur"] * r["max_margin_pct"] / 100.0
         if margin["init_eur"] > cap + EPS:
             reasons.append("initial margin EUR %.0f is more than %d%% of available funds (EUR %.0f)"
                            % (margin["init_eur"], r["max_margin_pct"], cap))
-    day = session_day(now, spec)
-    if now > at_local(day, spec["window"][1], spec):
-        reasons.append("past the last entry time %s" % spec["window"][1])
+    if session_for(spec, now) is None:
+        reasons.append("outside the entry windows (%s)" % windows_text(spec))
     return (not reasons), reasons
 
 
@@ -505,14 +565,22 @@ def backtest(bars, spec, strategy=None, risk=None, eurusd=None):
     eurusd = eurusd or r["eurusd"]
     mult, tick = spec["multiplier"], spec["tick"]
     trades, missed = [], 0
-    idx_by_day = {}
-    for i, b in enumerate(bars):
-        idx_by_day.setdefault(ann(b, spec)["_d"], []).append(i)
-    for day in sorted(idx_by_day):
-        state = {"date": day.isoformat(), "trades": 0, "pnl_eur": 0.0, "open": {}, "last_loss": {}}
-        flat_t = at_local(day, spec["flat_by"], spec)
-        w0, w1 = at_local(day, spec["window"][0], spec), at_local(day, spec["window"][1], spec)
-        ids = idx_by_day[day]
+    # one segment per session per local day, replayed in time order; the daily
+    # limits (trades, loss, cooldown) run per Dutch calendar day across sessions
+    segments = []
+    for v in sessions(spec):
+        idx_by_day = {}
+        for i, b in enumerate(bars):
+            idx_by_day.setdefault(day_slot(b, v)[0], []).append(i)
+        for day, ids in idx_by_day.items():
+            segments.append((at_local(day, v["window"][0], v), v, day, ids))
+    segments.sort(key=lambda x: x[0])
+    states = {}
+    for w0, v, day, ids in segments:
+        dday = w0.astimezone(tz(AMS)).date().isoformat()
+        state = states.setdefault(dday, {"date": dday, "trades": 0, "pnl_eur": 0.0, "open": {}, "last_loss": {}})
+        flat_t = at_local(day, v["flat_by"], v)
+        w1 = at_local(day, v["window"][1], v)
         k = 0
         while k < len(ids):
             i = ids[k]
@@ -570,10 +638,9 @@ def backtest(bars, spec, strategy=None, risk=None, eurusd=None):
             net = gross - 2 * r["commission_per_side"] * qty
             net_eur = to_eur(net, spec["currency"], eurusd)
             risk_eur = sized["max_loss_eur"]
-            trades.append({"date": day.isoformat(), "direction": plan["direction"],
-                           "signal": local(bars[i]["t"], spec).strftime("%H:%M"),
-                           "entry_time": local(nb["t"], spec).strftime("%H:%M"),
-                           "exit_time": local(exit_t, spec).strftime("%H:%M"),
+            trades.append({"date": dday, "session": v["session"], "direction": plan["direction"],
+                           "signal": dutch(bars[i]["t"]), "entry_time": dutch(nb["t"]),
+                           "exit_time": dutch(exit_t),
                            "qty": qty, "entry": entry, "stop": plan["stop"], "target": plan["target"],
                            "exit": round(exit_px, 6), "exit_reason": why_exit, "points": round(pts, 6),
                            "pnl_eur": round(net_eur, 2), "risk_eur": risk_eur,
@@ -619,7 +686,7 @@ def nl(x):
     return str(x)
 
 
-JOURNAL_FIELDS = ["date", "direction", "signal", "entry_time", "exit_time", "qty", "entry", "stop", "target",
+JOURNAL_FIELDS = ["date", "session", "direction", "signal", "entry_time", "exit_time", "qty", "entry", "stop", "target",
                   "exit", "exit_reason", "points", "pnl_eur", "risk_eur", "r", "rvol"]
 
 
@@ -668,13 +735,18 @@ def spec_for(key, overrides=None):
 # ---------------------------------------------------------------- CLI
 
 def cmd_specs(a, cfg):
-    print("%-5s %-28s %-7s %-4s %8s %6s  %s" % ("key", "contract", "exch", "ccy", "per pt", "tick", "entry window"))
+    print("%-5s %-28s %-7s %-4s %8s %6s  %s" % ("key", "contract", "exch", "ccy", "per pt", "tick",
+                                               "entry windows (local time), flat by"))
     for k in sorted(SPECS):
-        s = SPECS[k]
-        print("%-5s %-28s %-7s %-4s %8s %6s  %s-%s %s, flat by %s" % (
-            k, s["name"], s["exchange"], s["currency"], s["multiplier"], s["tick"], s["window"][0],
-            s["window"][1], s["tz"].split("/")[1].replace("_", " "), s["flat_by"]))
+        s = spec_for(k, cfg)
+        win = "; ".join("%s %s-%s %s, flat %s" % (v["session"], v["window"][0], v["window"][1],
+                                                 v["tz"].split("/")[1].replace("_", " "), v["flat_by"])
+                        for v in sessions(s))
+        print("%-5s %-28s %-7s %-4s %8s %6s  %s" % (k, s["name"], s["exchange"], s["currency"], s["multiplier"],
+                                                   s["tick"], win))
     print("\nper pt = money per index point per contract. IBKR's contract details override these live.")
+    print("Sessions per contract: \"contract_overrides\": {\"MNK\": {\"sessions\": [\"tokyo\", \"us\"]}} "
+          "(known: %s)." % ", ".join(sorted(SESSIONS)))
     return 0
 
 
@@ -682,11 +754,12 @@ def cmd_signal(a, cfg):
     spec = spec_for(a.contract, cfg)
     bars = load_bars_csv(a.bars)
     now = parse_time(a.now) if a.now else bars[-1]["t"] + BAR
-    if a.now and len(a.now.strip()) <= 16 and "+" not in a.now:
-        now = datetime.datetime.fromisoformat(a.now.replace("T", " ")).replace(tzinfo=tz(spec["tz"])).astimezone(UTC)
+    if a.now and len(a.now.strip()) <= 16 and "+" not in a.now:   # a plain time is Dutch time
+        now = datetime.datetime.fromisoformat(a.now.replace("T", " ")).replace(tzinfo=tz(AMS)).astimezone(UTC)
     sig = evaluate(bars, now, spec, cfg["strategy"])
-    print("%s %s at %s: %s" % (spec["key"], sig.get("slot", ""), local(now, spec).strftime("%Y-%m-%d %H:%M"),
-                               sig["status"].upper()))
+    print("%s bar %s at %s Dutch time%s: %s" % (spec["key"], sig.get("slot", ""), dutch(now, "%Y-%m-%d %H:%M"),
+                                              " (%s session)" % sig["session"] if sig.get("session") else "",
+                                              sig["status"].upper()))
     for line in sig.get("reasons", []):
         print("  " + line)
     if sig["status"] == "signal":
@@ -707,8 +780,9 @@ def cmd_backtest(a, cfg):
     bars = load_bars_csv(a.bars)
     res = backtest(bars, spec, cfg["strategy"], cfg["risk"], a.eurusd)
     sm = res["summary"]
-    print("Backtest %s (%s), %d bars, %s to %s" % (
-        spec["key"], spec["name"], len(bars), local(bars[0]["t"], spec).date(), local(bars[-1]["t"], spec).date()))
+    print("Backtest %s (%s), %d bars, %s to %s, sessions: %s" % (
+        spec["key"], spec["name"], len(bars), dutch(bars[0]["t"], "%Y-%m-%d"), dutch(bars[-1]["t"], "%Y-%m-%d"),
+        windows_text(spec)))
     print("  trades %d on %d days, missed entries %d" % (sm["trades"], sm["days"], sm["missed_entries"]))
     if sm["trades"]:
         print("  won %d, lost %d, win rate %s%%, average %sR, profit factor %s" % (

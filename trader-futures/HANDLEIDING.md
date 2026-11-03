@@ -19,16 +19,33 @@ groter zijn dan wat er op de rekening staat. Begin altijd met paper trading.
 | MNQ | Micro E-mini Nasdaq-100 | $ 2 | 15:45 - 21:30 | 21:55 |
 | MYM | Micro E-mini Dow | $ 0,50 | 15:45 - 21:30 | 21:55 |
 | M2K | Micro E-mini Russell 2000 | $ 5 | 15:45 - 21:30 | 21:55 |
-| MNK | Micro Nikkei (in dollar, CME) | $ 0,50 (tick 5 punten = $ 2,50) | 01:15 - 07:00 (zomertijd 02:15 - 08:00) | 07:25 |
+| MNK | Micro Nikkei (in dollar, CME) | $ 0,50 (tick 5 punten = $ 2,50) | drie sessies, zie hieronder | per sessie |
 | FDXS | Micro-DAX | € 1 | 09:15 - 17:00 | 17:25 |
 | FSXE | Micro Euro Stoxx 50 | € 1 | 09:15 - 17:00 | 17:25 |
 
-Het Nikkei-venster volgt Tokyo (09:15 - 15:00, plat om 15:25). Dat is midden
-in de Nederlandse nacht, dus je pc en IB Gateway moeten aan blijven. Wil je
-naast MES ook MNK, zet dan `"contracts": ["MES", "MNK"]`. De daglimiet en het
-aantal trades gelden dan samen per Nederlandse kalenderdag. MNK is een jonger
-en dunner contract dan MES: reken op meer slippage, en doe eerst een backtest
-op MNK zelf (`--contract MNK`).
+**MNK handelt in drie sessies.** Het contract loopt op CME bijna de klok rond,
+dus hij handelt in drie vensters (Nederlandse tijd):
+
+| sessie | wintertijd | zomertijd | plat om (winter / zomer) |
+| --- | --- | --- | --- |
+| Tokyo | 01:15 - 07:00 | 02:15 - 08:00 | 07:25 / 08:25 |
+| Europa | 09:15 - 15:00 | 09:15 - 15:00 | 15:25 |
+| VS | 15:45 - 21:30 | 15:45 - 21:30 | 21:55 |
+
+Elke sessie heeft een eigen VWAP en een eigen volumevergelijking: een bar van
+03:00 wordt vergeleken met eerdere bars van 03:00, niet met de drukte bij de
+Amerikaanse opening. Tussen de sessies staat hij altijd plat. Wil je minder
+sessies, bijvoorbeeld alleen Tokyo en de VS, zet dan in de config
+`"contract_overrides": {"MNK": {"sessions": ["tokyo", "us"]}}`. Voor de
+Tokyo-sessie moeten je pc en IB Gateway 's nachts aan blijven.
+
+Wil je naast MES ook MNK, zet dan `"contracts": ["MES", "MNK"]`. De daglimiet en
+het aantal trades gelden dan samen per Nederlandse kalenderdag. MNK is jonger en
+dunner dan MES: reken op meer slippage, vooral buiten de Tokyo-uren. Doe eerst
+een backtest op MNK zelf (`--contract MNK`). Die laat per trade de sessie zien,
+zodat je ziet welke sessie iets oplevert.
+
+Alle tijden in de meldingen, het journaal en de backtest staan in Nederlandse tijd.
 
 De Amerikaanse tijden volgen New York (09:45 - 15:30, flat om 15:55). In de
 weken dat de VS en Europa niet tegelijk de klok verzetten (maart en eind
