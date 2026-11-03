@@ -536,5 +536,33 @@ class Directory(unittest.TestCase):
                 self.assertTrue(it["s"] and it["n"])
 
 
+class CompareRisk(unittest.TestCase):
+    def test_stats_blend_and_portfolio_fit(self):
+        import math as _m
+        days = ["%04d-%02d-%02d" % (2021 + i // 250, 1 + (i % 250) // 21, 1 + (i % 21)) for i in range(1300)]
+        series = {
+            "AAA": {d: 100 * 1.0006 ** i * (1 + 0.02 * _m.sin(i / 7.0)) for i, d in enumerate(days)},
+            "BBB": {d: 100 * 1.0003 ** i * (1 + 0.01 * _m.cos(i / 11.0)) for i, d in enumerate(days)},
+            "SPY": {d: 100 * 1.0004 ** i * (1 + 0.01 * _m.sin(i / 9.0)) for i, d in enumerate(days)},
+        }
+        old = srv._try_daily
+        srv._try_daily = lambda sym: (series.get(sym, {}), "USD")
+        old_t = srv.time.time
+        srv.time.time = lambda: srv.calendar.timegm((2026, 3, 1, 0, 0, 0))
+        try:
+            d = srv.compare_risk(["AAA", "BBB"], portfolio={"BBB": 1.0}, add_frac=0.2)
+        finally:
+            srv._try_daily = old
+            srv.time.time = old_t
+        a, b = d["stats"]["AAA"], d["stats"]["BBB"]
+        self.assertGreater(a["vol"], b["vol"])
+        self.assertLessEqual(a["maxdd"], 0)
+        self.assertIn("AAA|BBB", d["corr"])
+        self.assertEqual(sum(d["equalRisk"].values()), 100)
+        self.assertGreater(d["equalRisk"]["BBB"], d["equalRisk"]["AAA"])  # calmer one gets more money for equal risk
+        self.assertEqual(d["portfolio"]["fit"]["BBB"]["corr"], 1.0)
+        self.assertEqual(len(d["norm"]["AAA"]), len(d["dates"]))
+
+
 if __name__ == "__main__":
     unittest.main()

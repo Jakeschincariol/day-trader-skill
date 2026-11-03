@@ -2252,7 +2252,7 @@ def directory_page(q="", kind="", region="", page=1, size=50):
 
 # ---------------------------------------------------------------- compare 2-3 stocks
 
-def _daily_adj(sym, rng="5y"):
+def _daily_adj(sym, rng="10y"):
     res = _chart(sym, "range=%s&interval=1d" % rng, 3600)
     return {_day(t): c for t, c in _adj(res)}, (res.get("meta") or {}).get("currency")
 
@@ -2265,11 +2265,30 @@ def _stats(rets):
     return m, math.sqrt(sum((x - m) ** 2 for x in rets) / (n - 1))
 
 
-def compare_risk(symbols, bench="SPY"):
-    """Risk and correlation numbers on shared trading days (5 years, dividends included)."""
+def _corr(a, b):
+    ma, sa = _stats(a)
+    mb, sb = _stats(b)
+    if not sa or not sb:
+        return None
+    return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / ((len(a) - 1) * sa * sb)
+
+
+CRASHES = [("COVID crash", "2020-02-19", "2020-03-23"), ("2022 bear market", "2022-01-03", "2022-10-12"),
+           ("2025 tariff drop", "2025-02-19", "2025-04-08")]
+
+
+def compare_risk(symbols, bench="SPY", base=None, portfolio=None, add_frac=0.1):
+    """Risk, crash and correlation numbers for 2-3 picks on shared trading days (5 years, dividends in).
+    base: the investor's currency (returns also shown converted). portfolio: {symbol: weight} of holdings."""
     syms = [s.upper() for s in symbols][:3]
-    loaded = dict(POOL.map(lambda s: (s, _daily_adj(s)), syms + [bench]))
-    days = sorted(set.intersection(*[set(loaded[s][0]) for s in syms + [bench]]))
+    pf = {k.upper(): v for k, v in (portfolio or {}).items() if v > 0}
+    need = list(dict.fromkeys(syms + [bench] + list(pf)))
+    loaded = dict(POOL.map(lambda s: (s, _try_daily(s)), need))
+    for s in syms + [bench]:
+        if not loaded.get(s) or not loaded[s][0]:
+            raise ValueError("no price history for %s" % s)
+    cut = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 5 * 365.25 * 86400))
+    days = sorted(d for d in set.intersection(*[set(loaded[s][0]) for s in syms + [bench]]) if d >= cut)
     if len(days) < 120:
         raise ValueError("not enough shared price history to compare")
     px = {s: [loaded[s][0][d] for d in days] for s in syms + [bench]}
@@ -2277,6 +2296,15 @@ def compare_risk(symbols, bench="SPY"):
     years = (calendar.timegm(time.strptime(days[-1], "%Y-%m-%d")) - calendar.timegm(time.strptime(days[0], "%Y-%m-%d"))) / 31557600.0
     mb, sb = _stats(rets[bench])
     out, rf = {}, 0.03  # 3% a year cash rate for Sharpe / Sortino
+
+    def fx_series(ccy):
+        unit, scale = (ccy, 1.0) if ccy not in ("GBp", "GBX") else ("GBP", 0.01)
+        if not base or unit == base:
+            return None
+        try:
+            return _daily_adj("%s%s=X" % (unit, base))[0]
+        except Exception:
+            return None
     for s in syms:
         r_, p = rets[s], px[s]
         m, sd = _stats(r_)
@@ -2285,7 +2313,6 @@ def compare_risk(symbols, bench="SPY"):
         down = [x for x in r_ if x < 0]
         dsd = math.sqrt(sum(x * x for x in down) / len(r_)) * math.sqrt(252) if down else None
         vol = sd * math.sqrt(252)
-        # worst fall and how long it took to get back to the old high
         peak, peak_i, worst, worst_i, worst_peak = p[0], 0, 0.0, 0, 0
         for i, c in enumerate(p):
             if c > peak:
@@ -2294,7 +2321,6 @@ def compare_risk(symbols, bench="SPY"):
             if dd < worst:
                 worst, worst_i, worst_peak = dd, i, peak_i
         rec = next((i for i in range(worst_i, len(p)) if p[i] >= p[worst_peak]), None)
-        # monthly up/down capture vs the benchmark
         mon = {}
         for i, d in enumerate(days):
             mon[d[:7]] = i
@@ -2303,37 +2329,92 @@ def compare_risk(symbols, bench="SPY"):
         upm = [(a, b) for a, b in mr if b > 0]
         dnm = [(a, b) for a, b in mr if b < 0]
         cap = lambda xs: 100 * (sum(a for a, _ in xs) / len(xs)) / (sum(b for _, b in xs) / len(xs)) if xs and sum(b for _, b in xs) else None
-        y22 = [d for d in days if d.startswith("2022")]
-        crash = (loaded[s][0][y22[-1]] / loaded[s][0][y22[0]] - 1) if y22 else None
+        roll = [p[i] / p[i - 252] - 1 for i in range(252, len(p))]
+        own = loaded[s][0]
+        crashes = {}
+        for name, a, b in CRASHES:
+            ks = sorted(k for k in own if a <= k <= b)
+            crashes[name] = r(100 * (own[ks[-1]] / own[ks[0]] - 1), 1) if len(ks) > 5 else None
+        ccy = loaded[s][1]
+        fxs = fx_series(ccy)
+        cagr_base = None
+        if fxs:
+            f0 = next((fxs[d] for d in days if d in fxs), None)
+            f1 = next((fxs[d] for d in reversed(days) if d in fxs), None)
+            if f0 and f1:
+                cagr_base = ((p[-1] * f1) / (p[0] * f0)) ** (1 / years) - 1
         out[s] = {
-            "cagr": r(100 * cagr, 1), "vol": r(100 * vol, 1), "beta": r(cov / (sb * sb), 2),
+            "cagr": r(100 * cagr, 1), "cagrBase": r(100 * cagr_base, 1) if cagr_base is not None else None,
+            "vol": r(100 * vol, 1), "beta": r(cov / (sb * sb), 2),
             "sharpe": r((cagr - rf) / vol, 2) if vol else None, "sortino": r((cagr - rf) / dsd, 2) if dsd else None,
-            "maxdd": r(100 * worst, 1), "ddDate": days[worst_i], "recoveryDays": (rec - worst_i) if rec is not None else None,
+            "maxdd": r(100 * worst, 1), "ddDate": days[worst_i], "recoveryDays": (rec - worst_peak) if rec is not None else None,
             "recovered": rec is not None, "upCapture": r(cap(upm), 0), "downCapture": r(cap(dnm), 0),
-            "y2022": r(100 * crash, 1) if crash is not None else None,
+            "worst12m": r(100 * min(roll), 1) if roll else None, "best12m": r(100 * max(roll), 1) if roll else None,
+            "median12m": r(100 * sorted(roll)[len(roll) // 2], 1) if roll else None,
             "positiveMonths": round(100.0 * sum(1 for a, _ in mr if a > 0) / len(mr)) if mr else None,
-            "currency": loaded[s][1],
+            "crashes": crashes, "currency": ccy,
         }
-    corr = {}
-    for i, a in enumerate(syms):
-        for b in syms[i + 1:]:
-            ma, sa = _stats(rets[a])
-            mb2, sb2 = _stats(rets[b])
-            c = sum((x - ma) * (y - mb2) for x, y in zip(rets[a], rets[b])) / ((len(rets[a]) - 1) * sa * sb2)
-            corr["%s|%s" % (a, b)] = r(c, 2)
-    step = max(1, len(days) // 260)
-    norm = {s: [r(100 * px[s][i] / px[s][0], 2) for i in range(0, len(days), step)] for s in syms + [bench]}
-    # an equal split of the same money across the candidates, rebalanced never (buy and hold)
-    blend = [r(sum(100 * px[s][i] / px[s][0] for s in syms) / len(syms), 2) for i in range(0, len(days), step)]
-    bl = [sum(px[s][i] / px[s][0] for s in syms) / len(syms) for i in range(len(days))]
-    bpeak, bworst = bl[0], 0.0
-    for c in bl:
+    corr = {"%s|%s" % (a, b): r(_corr(rets[a], rets[b]), 2) for i, a in enumerate(syms) for b in syms[i + 1:]}
+    # split the money equally, rebalanced every month
+    level, lv, last_m, wts = 1.0, [1.0], days[0][:7], {s: 1.0 / len(syms) for s in syms}
+    for i in range(1, len(days)):
+        g = sum(wts[s] * (1 + rets[s][i - 1]) for s in syms)
+        level *= g
+        wts = {s: wts[s] * (1 + rets[s][i - 1]) / g for s in syms}
+        if days[i][:7] != last_m:
+            wts, last_m = {s: 1.0 / len(syms) for s in syms}, days[i][:7]
+        lv.append(level)
+    bpeak, bworst = 1.0, 0.0
+    for c in lv:
         bpeak = max(bpeak, c)
         bworst = min(bworst, c / bpeak - 1)
-    return {"symbols": syms, "benchmark": bench, "from": days[0], "to": days[-1], "years": round(years, 1),
-            "stats": out, "bench": {"cagr": r(100 * ((px[bench][-1] / px[bench][0]) ** (1 / years) - 1), 1), "vol": r(100 * sb * math.sqrt(252), 1)},
-            "corr": corr, "dates": days[::step], "norm": norm, "blend": blend,
-            "blendStats": {"cagr": r(100 * (bl[-1] ** (1 / years) - 1), 1), "maxdd": r(100 * bworst, 1)}}
+    br = [lv[i] / lv[i - 1] - 1 for i in range(1, len(lv))]
+    bvol = _stats(br)[1] * math.sqrt(252)
+    bcagr = lv[-1] ** (1 / years) - 1
+    inv = {s: 1 / out[s]["vol"] for s in syms if out[s]["vol"]}
+    tot = sum(inv.values())
+    step = max(1, len(days) // 260)
+    res = {"symbols": syms, "benchmark": bench, "from": days[0], "to": days[-1], "years": round(years, 1), "base": base,
+           "stats": out, "bench": {"cagr": r(100 * ((px[bench][-1] / px[bench][0]) ** (1 / years) - 1), 1), "vol": r(100 * sb * math.sqrt(252), 1)},
+           "corr": corr, "dates": days[::step],
+           "norm": {s: [r(100 * px[s][i] / px[s][0], 2) for i in range(0, len(days), step)] for s in syms + [bench]},
+           "drawdown": {s: _dd_series(px[s])[::step] for s in syms},
+           "blend": [r(100 * x, 2) for x in lv[::step]],
+           "blendStats": {"cagr": r(100 * bcagr, 1), "maxdd": r(100 * bworst, 1), "vol": r(100 * bvol, 1),
+                          "sharpe": r((bcagr - rf) / bvol, 2) if bvol else None},
+           "equalRisk": {s: round(100 * inv[s] / tot) for s in inv} if tot else None}
+    # fit with the current portfolio: correlation and volatility before / after adding each pick
+    pfs = [k for k in pf if loaded.get(k) and loaded[k][0]]
+    if pfs:
+        wsum = sum(pf[k] for k in pfs)
+        pdays = [d for d in days if all(d in loaded[k][0] for k in pfs)]
+        if len(pdays) > 120:
+            pr = []
+            for i in range(1, len(pdays)):
+                pr.append(sum(pf[k] / wsum * (loaded[k][0][pdays[i]] / loaded[k][0][pdays[i - 1]] - 1) for k in pfs))
+            vol_now = _stats(pr)[1] * math.sqrt(252)
+            fit = {}
+            for s in syms:
+                sr = [loaded[s][0][pdays[i]] / loaded[s][0][pdays[i - 1]] - 1 for i in range(1, len(pdays))]
+                after = [(1 - add_frac) * a + add_frac * b for a, b in zip(pr, sr)]
+                fit[s] = {"corr": r(_corr(pr, sr), 2), "volAfter": r(100 * _stats(after)[1] * math.sqrt(252), 1)}
+            res["portfolio"] = {"volNow": r(100 * vol_now, 1), "addPct": round(100 * add_frac), "fit": fit, "holdings": len(pfs)}
+    return res
+
+
+def _try_daily(s):
+    try:
+        return _daily_adj(s)
+    except Exception:
+        return ({}, None)
+
+
+def _dd_series(p):
+    out, peak = [], p[0]
+    for c in p:
+        peak = max(peak, c)
+        out.append(r(100 * (c / peak - 1), 1))
+    return out
 
 
 # ---------------------------------------------------------------- HTTP
@@ -2491,7 +2572,21 @@ class Handler(BaseHTTPRequestHandler):
             ss = syms(q.get("symbols"))[:3]
             if len(ss) < 2:
                 return self.send_json({"error": "pick at least two symbols"}, 400)
-            return self.send_json(cached(("compare", tuple(ss)), 1800, lambda: compare_risk(ss)))
+            base = (q.get("base") or "").upper()[:3] or None
+            pf = {}
+            for part in (q.get("pf") or "").split(","):
+                k, _, w = part.partition(":")
+                try:
+                    if k.strip():
+                        pf[k.strip().upper()] = float(w)
+                except ValueError:
+                    pass
+            try:
+                add = min(0.5, max(0.01, float(q.get("add", "0.1"))))
+            except ValueError:
+                add = 0.1
+            key = ("compare", tuple(ss), base, tuple(sorted(pf.items())), add)
+            return self.send_json(cached(key, 1800, lambda: compare_risk(ss, base=base, portfolio=pf, add_frac=add)))
         if path == "/api/spark":
             return self.send_json(spark(syms(q.get("symbols"))[:100]))
         if path == "/api/trending":
@@ -2502,6 +2597,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 page = 1
             return self.send_json(directory_page(q.get("q", ""), q.get("type", ""), q.get("region", ""), page))
+        if path == "/api/themes":
+            return self.send_json({sym: th for th, lst in RADAR_THEMES.items() for sym in lst})
         if path == "/api/lookthrough":
             return self.send_json(LOOKTHROUGH)
         if path == "/api/quotes":

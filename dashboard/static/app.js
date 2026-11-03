@@ -461,7 +461,8 @@
         <div><div class="px num">${priceStr(a.price, a.currency)}</div><div class="num ${cls(a.change)}">${a.change >= 0 ? "+" : ""}${fmt(a.change, dp(a.price))} (${pct(a.changePct)}) today</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="hdrBadges">${isLT() ? "" : ratingBadge(a.rating) + " " + entryBadge(a.entryStatus)}
           ${a.earnings ? `<span class="badge ${a.earnings.days <= 7 ? "e-wait" : "e-none"}" title="Next earnings report"><i data-lucide="calendar-clock" class="ico"></i> Earnings ${a.earnings.days === 0 ? "today" : "in " + a.earnings.days + "d"}</span>` : ""}
-          <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button> ${rf("quote")}</div>
+          <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button>
+          <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button> ${rf("quote")}</div>
       </div>
       <div class="grid g2">
         <div class="card chart-card">
@@ -621,6 +622,12 @@
     }).catch((e) => { $("#stats") && ($("#stats").innerHTML = `<p class="muted">Fundamentals unavailable: ${esc(e.message)}</p>`); $("#earnCard") && ($("#earnCard").hidden = true); });
     RF.fund().then(() => stamp("fund"));
     $("#wstar").addEventListener("click", (e) => e.target.classList.toggle("on", toggleWatch(a.symbol)));
+    $("#cmpBtn").addEventListener("click", () => {
+      const list = store.get("compare", []).filter((x) => x !== a.symbol);
+      list.unshift(a.symbol);
+      store.set("compare", list.slice(0, 3));
+      location.hash = "#/compare";
+    });
     $("#addPf").addEventListener("click", () => { location.hash = "#/portfolio?add=" + encodeURIComponent(a.symbol) + "&price=" + a.price; });
     if (window.Trade) {
       if (p) {
@@ -943,6 +950,13 @@
   }
 
 
+
+  // ------------------------------------------------------------ compare 2-3 stocks
+  pages.compare = async function (arg, params) {
+    if (!window.Compare) { view.innerHTML = `<p class="error">Compare module missing.</p>`; return; }
+    const cleanup = await window.Compare.page(view, params);
+    current = cleanup;
+  };
 
   // ------------------------------------------------------------ market map (ECharts treemap)
   pages.map = async function () {
