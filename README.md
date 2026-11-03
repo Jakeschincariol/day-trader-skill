@@ -1,6 +1,6 @@
 # The Day Trader skill
 
-11 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay every outcome before you risk a dollar.
+12 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay every outcome before you risk a dollar.
 
 Free, MIT, no signup, no API key. The tools are plain Python that read free
 public data: Yahoo Finance charts, Nasdaq Trader's symbol lists, SEC EDGAR
@@ -72,6 +72,7 @@ or in the `SEC_USER_AGENT` environment variable.
 | `/trader-alerts` | Price Alerts | Rings when a price, a stop or the opening bell hits. |
 | `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
 | `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
+| `/trader-futures` | Index Futures Autotrader | Trades index futures (MES, MNQ, DAX...) on Interactive Brokers by itself: volume surge breakouts, sized in EUR, paper first. |
 
 ## How to use it
 
@@ -119,6 +120,27 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
    card asks you one more time.
 9. **`/trader-alerts`** rings on the stop, the target and at 3:55 PM to
    flatten whatever is still open.
+
+## Index futures on Interactive Brokers
+
+`/trader-futures` is the one skill that trades by itself, and only index
+futures: the Micro E-mini S&P 500 (MES), Nasdaq-100 (MNQ), Dow (MYM) and
+Russell 2000 (M2K), their full-size versions, and Micro/Mini-DAX and Euro
+Stoxx 50 on Eurex. It runs on your own computer next to IB Gateway, checks
+every completed 5-minute bar for a volume surge breakout, sizes the trade in
+euros to your max loss, checks margin and a daily loss limit, sends one
+bracket order and is flat by the close. `observe` only notifies, `paper`
+trades a paper account (it refuses a live one), and `live` needs a sentence
+you type into the config yourself. A backtest on real IBKR bars comes first.
+The full guide is in `trader-futures/SKILL.md`, in Dutch in
+`trader-futures/HANDLEIDING.md`. Needs Python 3.10+ and `pip install ib_async`.
+
+```bash
+python3 trader-futures/ib_tools.py download --contract MES --days 60 --out trader/mes-5m.csv
+python3 trader-futures/futures.py backtest --contract MES --bars trader/mes-5m.csv --out trader/backtest.csv
+python3 trader-futures/autotrader.py --mode observe
+python3 trader-futures/autotrader.py --mode paper
+```
 
 ## The tools
 

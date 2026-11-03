@@ -1,0 +1,142 @@
+# trader-futures: handleiding
+
+Een automatische handelaar voor **index futures** via **Interactive Brokers
+(IBKR)**. Hij draait op je eigen pc naast IB Gateway, kijkt elke 5 minuten
+naar de markt, en handelt alleen als er een volumepiek met een uitbraak is.
+Jij hoeft niet mee te kijken: je krijgt een melding op je telefoon bij elk
+signaal, elke order en elke uitstap.
+
+Dit is geen beleggingsadvies. Futures werken met hefboom: een verlies kan
+groter zijn dan wat er op de rekening staat. Begin altijd met paper trading.
+
+## Wat hij doet
+
+**Markten** (standaard alleen MES; meer in `contracts` in de config):
+
+| code | contract | per indexpunt | handelsvenster (Nederlandse tijd, wintertijd) | sluit uiterlijk |
+| --- | --- | --- | --- | --- |
+| MES | Micro E-mini S&P 500 | $ 5 | 15:45 - 21:30 | 21:55 |
+| MNQ | Micro E-mini Nasdaq-100 | $ 2 | 15:45 - 21:30 | 21:55 |
+| MYM | Micro E-mini Dow | $ 0,50 | 15:45 - 21:30 | 21:55 |
+| M2K | Micro E-mini Russell 2000 | $ 5 | 15:45 - 21:30 | 21:55 |
+| FDXS | Micro-DAX | € 1 | 09:15 - 17:00 | 17:25 |
+| FSXE | Micro Euro Stoxx 50 | € 1 | 09:15 - 17:00 | 17:25 |
+
+De Amerikaanse tijden volgen New York (09:45 - 15:30, flat om 15:55). In de
+weken dat de VS en Europa niet tegelijk de klok verzetten (maart en eind
+oktober) liggen ze voor ons een uur eerder. Dat rekent het programma zelf uit.
+
+**Het signaal** (een voltooide 5-minutenbar, alle vijf moeten kloppen):
+
+1. het volume is minstens 2,5 keer zo hoog als normaal voor dat tijdstip (gemiddelde van de laatste 10 handelsdagen);
+2. de slotkoers breekt boven het hoogste punt van het afgelopen uur;
+3. het is een sterke bar: groen, en sluit in de bovenste 30 % van zijn bereik;
+4. de koers staat boven de VWAP (de gemiddelde prijs van de dag, gewogen naar volume);
+5. de bar is niet uitzonderlijk groot (maximaal 2,5 x de gemiddelde beweging), om niet de top van een uitschieter te kopen.
+
+**De trade**: een limietorder net boven de slotkoers (loopt de markt weg,
+dan geen aankoop, er wordt niet achteraan gejaagd), een stop net onder het
+midden van de signaalbar, een koersdoel op 2 x het risico, en altijd plat
+voor het slot. Er blijft nooit een positie 's nachts staan. Standaard alleen
+long (kopen); short staat uit.
+
+**De grenzen** (allemaal in `trader/config.json`):
+
+- `max_loss_per_trade_eur` (100): het aantal contracten wordt zo gekozen dat het verlies op de stop, inclusief commissie en slippage, hieronder blijft. Past zelfs 1 contract niet, dan geen trade;
+- `max_daily_loss_eur` (250): bereikt het dagresultaat dit verlies, dan sluit hij alles en stopt hij voor die dag. Hij opent ook geen trade die bij een stop-out over deze grens zou gaan;
+- `max_trades_per_day` (3), `max_contracts` (2), `max_open_positions` (1);
+- `cooldown_after_loss_min` (30): na een verlies 30 minuten geen nieuwe trade in dat contract;
+- `max_margin_pct` (50): de margin van een trade mag maximaal de helft van je beschikbare ruimte zijn;
+- een positie die je zelf met de hand opent, laat hij met rust, maar zolang die er staat opent hij in dat contract niets.
+
+## Eenmalig instellen
+
+1. **IBKR-rekening** met handelsrechten voor **futures**: in de Client
+   Portal onder Instellingen > Accountinstellingen > Handelsrechten
+   (Futures: Verenigde Staten en/of Duitsland/Eurex).
+2. **Marktdata**: een realtime-abonnement voor CME (en CBOT voor MYM) en/of
+   Eurex. Zet "marktdata delen met paper account" aan, anders krijgt je
+   paper account vertraagde koersen en komt elk signaal te laat.
+3. **IB Gateway** installeren (versie "stable") en inloggen op je **paper
+   account**. Ga naar Configure > Settings > API > Settings en stel in:
+   - ActiveX and Socket Clients: aan;
+   - socket port: 4002 (paper; live is 4001);
+   - Read-Only API: uit (in observe-modus maakt het programma zelf een alleen-lezen verbinding);
+   - Trusted IPs: 127.0.0.1;
+   - en zet auto-restart aan, zodat de Gateway de nachtelijke herstart van IBKR overleeft.
+4. **Python 3.10 of nieuwer** (python.org), en in een opdrachtvenster:
+   `pip install ib_async tzdata`
+5. Zet de repository in een map, bijvoorbeeld `C:\Handelen\day-trader-skill`,
+   maak daarin een map `trader`, kopieer `trader-futures\config.example.json`
+   naar `trader\config.json` en vul je grenzen in.
+6. **Meldingen op je telefoon** (optioneel): installeer de gratis app
+   *ntfy*, abonneer je op een lange, onraadbare naam (bijvoorbeeld
+   `eren-futures-8f3k29xq`) en zet die bij `"ntfy_topic"` in de config.
+
+## Elke keer
+
+Open een opdrachtvenster in `C:\Handelen\day-trader-skill`.
+
+```
+python trader-futures\ib_tools.py status
+```
+Hier moet PAPER staan, met het contract (bijvoorbeeld MESZ6) en positie 0.
+
+**1. Eerst testen op echte koersen (backtest)**
+```
+python trader-futures\ib_tools.py download --contract MES --days 60 --out trader\mes-5m.csv
+python trader-futures\futures.py backtest --contract MES --bars trader\mes-5m.csv --out trader\backtest.csv
+```
+`trader\backtest.csv` opent direct in Excel (puntkomma's, decimale komma's).
+Kijk vooral naar de verliestrades en de grootste daling ("drawdown"), niet
+alleen naar het totaal.
+
+**2. Meekijken zonder orders (observe)**
+```
+python trader-futures\autotrader.py --mode observe
+```
+Je krijgt elk signaal als melding, maar er gaat geen order uit. Doe dit
+minstens een week.
+
+**3. Zelf laten handelen op paper**
+```
+python trader-futures\autotrader.py --mode paper
+```
+Hij weigert te starten als de Gateway op een echte rekening is ingelogd
+(paper-rekeningen beginnen met DU). Laat het venster openstaan.
+
+**Stoppen**
+- `Ctrl+C`: het programma stopt. Openstaande posities houden hun stop en koersdoel bij IBKR.
+- Noodstop: maak een leeg bestand `trader\STOP`. Dan sluit hij alles wat hij zelf geopend heeft en stopt. Hij start pas weer als je dat bestand verwijdert.
+- Met de hand één contract sluiten: `python trader-futures\ib_tools.py flatten --contract MES`
+
+**Terugkijken**
+- `trader\journal.csv`: elke afgesloten trade (Excel);
+- `trader\state\autotrader.log`: alles wat hij deed en waarom, ook signalen die geblokkeerd werden.
+
+## Live gaan (echt geld)
+
+Pas na weken paper trading, en alleen als je dat zelf besluit. Dan:
+
+1. log IB Gateway in op je echte rekening (poort 4001);
+2. zet in `trader\config.json`: `"paper": false` en
+   `"live_confirm": "IK BEGRIJP DAT DIT ECHT GELD IS"`;
+3. start met `--mode live`.
+
+Zonder die twee regels, of met een paper-rekening, weigert hij. Claude
+verandert deze instellingen nooit voor je.
+
+## Goed om te weten
+
+- **Het contract wisselt elk kwartaal** (maart, juni, september, december).
+  Acht dagen voor de vervaldatum stapt hij vanzelf over op het volgende
+  contract. De eerste dagen daarna kunnen er minder signalen zijn, omdat de
+  volumevergelijking dunne dagen overslaat.
+- **Een stop is een plan, geen garantie.** Bij een snelle markt of een
+  koerssprong wordt hij slechter uitgevoerd.
+- **Een backtest is geen voorspelling.** Hij laat zien wat de regels op
+  oude koersen deden, niet wat ze morgen doen.
+- **De pc moet aan blijven** met IB Gateway ingelogd, zolang het programma
+  moet handelen. Valt de verbinding weg, dan probeert hij opnieuw te
+  verbinden en opent hij intussen niets nieuws; je stop en koersdoel staan
+  dan al bij IBKR.
