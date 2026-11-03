@@ -2250,6 +2250,92 @@ def directory_page(q="", kind="", region="", page=1, size=50):
             "regions": sorted(regions.items(), key=lambda kv: -kv[1]), "all": len(rows)}
 
 
+# ---------------------------------------------------------------- compare 2-3 stocks
+
+def _daily_adj(sym, rng="5y"):
+    res = _chart(sym, "range=%s&interval=1d" % rng, 3600)
+    return {_day(t): c for t, c in _adj(res)}, (res.get("meta") or {}).get("currency")
+
+
+def _stats(rets):
+    n = len(rets)
+    if n < 2:
+        return None, None
+    m = sum(rets) / n
+    return m, math.sqrt(sum((x - m) ** 2 for x in rets) / (n - 1))
+
+
+def compare_risk(symbols, bench="SPY"):
+    """Risk and correlation numbers on shared trading days (5 years, dividends included)."""
+    syms = [s.upper() for s in symbols][:3]
+    loaded = dict(POOL.map(lambda s: (s, _daily_adj(s)), syms + [bench]))
+    days = sorted(set.intersection(*[set(loaded[s][0]) for s in syms + [bench]]))
+    if len(days) < 120:
+        raise ValueError("not enough shared price history to compare")
+    px = {s: [loaded[s][0][d] for d in days] for s in syms + [bench]}
+    rets = {s: [px[s][i] / px[s][i - 1] - 1 for i in range(1, len(days))] for s in px}
+    years = (calendar.timegm(time.strptime(days[-1], "%Y-%m-%d")) - calendar.timegm(time.strptime(days[0], "%Y-%m-%d"))) / 31557600.0
+    mb, sb = _stats(rets[bench])
+    out, rf = {}, 0.03  # 3% a year cash rate for Sharpe / Sortino
+    for s in syms:
+        r_, p = rets[s], px[s]
+        m, sd = _stats(r_)
+        cov = sum((a - m) * (b - mb) for a, b in zip(r_, rets[bench])) / (len(r_) - 1)
+        cagr = (p[-1] / p[0]) ** (1 / years) - 1
+        down = [x for x in r_ if x < 0]
+        dsd = math.sqrt(sum(x * x for x in down) / len(r_)) * math.sqrt(252) if down else None
+        vol = sd * math.sqrt(252)
+        # worst fall and how long it took to get back to the old high
+        peak, peak_i, worst, worst_i, worst_peak = p[0], 0, 0.0, 0, 0
+        for i, c in enumerate(p):
+            if c > peak:
+                peak, peak_i = c, i
+            dd = c / peak - 1
+            if dd < worst:
+                worst, worst_i, worst_peak = dd, i, peak_i
+        rec = next((i for i in range(worst_i, len(p)) if p[i] >= p[worst_peak]), None)
+        # monthly up/down capture vs the benchmark
+        mon = {}
+        for i, d in enumerate(days):
+            mon[d[:7]] = i
+        idx = [mon[k] for k in sorted(mon)]
+        mr = [(p[idx[k]] / p[idx[k - 1]] - 1, px[bench][idx[k]] / px[bench][idx[k - 1]] - 1) for k in range(1, len(idx))]
+        upm = [(a, b) for a, b in mr if b > 0]
+        dnm = [(a, b) for a, b in mr if b < 0]
+        cap = lambda xs: 100 * (sum(a for a, _ in xs) / len(xs)) / (sum(b for _, b in xs) / len(xs)) if xs and sum(b for _, b in xs) else None
+        y22 = [d for d in days if d.startswith("2022")]
+        crash = (loaded[s][0][y22[-1]] / loaded[s][0][y22[0]] - 1) if y22 else None
+        out[s] = {
+            "cagr": r(100 * cagr, 1), "vol": r(100 * vol, 1), "beta": r(cov / (sb * sb), 2),
+            "sharpe": r((cagr - rf) / vol, 2) if vol else None, "sortino": r((cagr - rf) / dsd, 2) if dsd else None,
+            "maxdd": r(100 * worst, 1), "ddDate": days[worst_i], "recoveryDays": (rec - worst_i) if rec is not None else None,
+            "recovered": rec is not None, "upCapture": r(cap(upm), 0), "downCapture": r(cap(dnm), 0),
+            "y2022": r(100 * crash, 1) if crash is not None else None,
+            "positiveMonths": round(100.0 * sum(1 for a, _ in mr if a > 0) / len(mr)) if mr else None,
+            "currency": loaded[s][1],
+        }
+    corr = {}
+    for i, a in enumerate(syms):
+        for b in syms[i + 1:]:
+            ma, sa = _stats(rets[a])
+            mb2, sb2 = _stats(rets[b])
+            c = sum((x - ma) * (y - mb2) for x, y in zip(rets[a], rets[b])) / ((len(rets[a]) - 1) * sa * sb2)
+            corr["%s|%s" % (a, b)] = r(c, 2)
+    step = max(1, len(days) // 260)
+    norm = {s: [r(100 * px[s][i] / px[s][0], 2) for i in range(0, len(days), step)] for s in syms + [bench]}
+    # an equal split of the same money across the candidates, rebalanced never (buy and hold)
+    blend = [r(sum(100 * px[s][i] / px[s][0] for s in syms) / len(syms), 2) for i in range(0, len(days), step)]
+    bl = [sum(px[s][i] / px[s][0] for s in syms) / len(syms) for i in range(len(days))]
+    bpeak, bworst = bl[0], 0.0
+    for c in bl:
+        bpeak = max(bpeak, c)
+        bworst = min(bworst, c / bpeak - 1)
+    return {"symbols": syms, "benchmark": bench, "from": days[0], "to": days[-1], "years": round(years, 1),
+            "stats": out, "bench": {"cagr": r(100 * ((px[bench][-1] / px[bench][0]) ** (1 / years) - 1), 1), "vol": r(100 * sb * math.sqrt(252), 1)},
+            "corr": corr, "dates": days[::step], "norm": norm, "blend": blend,
+            "blendStats": {"cagr": r(100 * (bl[-1] ** (1 / years) - 1), 1), "maxdd": r(100 * bworst, 1)}}
+
+
 # ---------------------------------------------------------------- HTTP
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
@@ -2401,6 +2487,11 @@ class Handler(BaseHTTPRequestHandler):
                                    "url": "http://%s:%d/?key=%s" % (ip, port, tok) if tok and ip else None})
         if path == "/api/universe":
             return self.send_json(UNIVERSE)
+        if path == "/api/compare":
+            ss = syms(q.get("symbols"))[:3]
+            if len(ss) < 2:
+                return self.send_json({"error": "pick at least two symbols"}, 400)
+            return self.send_json(cached(("compare", tuple(ss)), 1800, lambda: compare_risk(ss)))
         if path == "/api/spark":
             return self.send_json(spark(syms(q.get("symbols"))[:100]))
         if path == "/api/trending":
