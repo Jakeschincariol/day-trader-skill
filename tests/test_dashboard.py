@@ -562,6 +562,10 @@ class CompareRisk(unittest.TestCase):
         self.assertGreater(d["equalRisk"]["BBB"], d["equalRisk"]["AAA"])  # calmer one gets more money for equal risk
         self.assertEqual(d["portfolio"]["fit"]["BBB"]["corr"], 1.0)
         self.assertEqual(len(d["norm"]["AAA"]), len(d["dates"]))
+        pb = d["pairBlend"]["AAA|BBB"]
+        self.assertIn("0.80", pb)
+        # more of the calmer stock = smaller swings
+        self.assertLess(pb["0.20"]["vol"], pb["0.80"]["vol"])
 
 
 if __name__ == "__main__":

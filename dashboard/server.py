@@ -2371,6 +2371,33 @@ def compare_risk(symbols, bench="SPY", base=None, portfolio=None, add_frac=0.1):
     br = [lv[i] / lv[i - 1] - 1 for i in range(1, len(lv))]
     bvol = _stats(br)[1] * math.sqrt(252)
     bcagr = lv[-1] ** (1 / years) - 1
+    # every pair at many splits (weight of the first symbol), monthly rebalanced, for core + satellite advice
+    def blend_stats(wmap):
+        lev, path, lm, w = 1.0, [1.0], days[0][:7], dict(wmap)
+        for i in range(1, len(days)):
+            g = sum(w[k] * (1 + rets[k][i - 1]) for k in wmap)
+            lev *= g
+            w = {k: w[k] * (1 + rets[k][i - 1]) / g for k in wmap}
+            if days[i][:7] != lm:
+                w, lm = dict(wmap), days[i][:7]
+            path.append(lev)
+        pk, wd = 1.0, 0.0
+        for c in path:
+            pk = max(pk, c)
+            wd = min(wd, c / pk - 1)
+        rr = [path[i] / path[i - 1] - 1 for i in range(1, len(path))]
+        roll = [path[i] / path[i - 252] - 1 for i in range(252, len(path))]
+        crash = {}
+        for name, _, _ in CRASHES:
+            parts = [(wmap[k], out[k]["crashes"].get(name)) for k in wmap]
+            crash[name] = r(sum(a * b for a, b in parts), 1) if all(b is not None for _, b in parts) else None
+        return {"cagr": r(100 * (path[-1] ** (1 / years) - 1), 1), "maxdd": r(100 * wd, 1), "vol": r(100 * _stats(rr)[1] * math.sqrt(252), 1),
+                "worst12m": r(100 * min(roll), 1) if roll else None, "median12m": r(100 * sorted(roll)[len(roll) // 2], 1) if roll else None, "crashes": crash}
+    pair_blend = {}
+    for i, a in enumerate(syms):
+        for b in syms[i + 1:]:
+            pair_blend["%s|%s" % (a, b)] = {("%.2f" % wa): blend_stats({a: wa, b: 1 - wa}) for wa in
+                                            (0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9)}
     inv = {s: 1 / out[s]["vol"] for s in syms if out[s]["vol"]}
     tot = sum(inv.values())
     step = max(1, len(days) // 260)
@@ -2382,7 +2409,7 @@ def compare_risk(symbols, bench="SPY", base=None, portfolio=None, add_frac=0.1):
            "blend": [r(100 * x, 2) for x in lv[::step]],
            "blendStats": {"cagr": r(100 * bcagr, 1), "maxdd": r(100 * bworst, 1), "vol": r(100 * bvol, 1),
                           "sharpe": r((bcagr - rf) / bvol, 2) if bvol else None},
-           "equalRisk": {s: round(100 * inv[s] / tot) for s in inv} if tot else None}
+           "equalRisk": {s: round(100 * inv[s] / tot) for s in inv} if tot else None, "pairBlend": pair_blend}
     # fit with the current portfolio: correlation and volatility before / after adding each pick
     pfs = [k for k in pf if loaded.get(k) and loaded[k][0]]
     if pfs:

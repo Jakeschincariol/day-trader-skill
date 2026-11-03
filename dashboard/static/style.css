@@ -568,3 +568,17 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
   .cmp-val { font-size: 12.5px; }
   .cmp-chart { height: 230px; }
 }
+
+/* ---------- pick for me */
+.pick-card { border-color: rgba(74,149,238,.45); background: linear-gradient(135deg, rgba(74,149,238,.08), var(--surface-1) 50%); }
+.pick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.pick-col { min-width: 0; }
+.pick-head { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.pick-head.good { border-left: 3px solid var(--good); }
+.pick-head.bad { border-left: 3px solid var(--warning); display: block; }
+.pair-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pair-side { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 12px; background: var(--surface-2); border-top: 3px solid var(--c); }
+.pair-amt { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; }
+.pair-amt b { font-size: 20px; }
+@media (max-width: 1000px) { .pick-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .pair-grid { grid-template-columns: 1fr; } }
