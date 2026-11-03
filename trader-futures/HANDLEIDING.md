@@ -19,8 +19,16 @@ groter zijn dan wat er op de rekening staat. Begin altijd met paper trading.
 | MNQ | Micro E-mini Nasdaq-100 | $ 2 | 15:45 - 21:30 | 21:55 |
 | MYM | Micro E-mini Dow | $ 0,50 | 15:45 - 21:30 | 21:55 |
 | M2K | Micro E-mini Russell 2000 | $ 5 | 15:45 - 21:30 | 21:55 |
+| MNK | Micro Nikkei (in dollar, CME) | $ 0,50 (tick 5 punten = $ 2,50) | 01:15 - 07:00 (zomertijd 02:15 - 08:00) | 07:25 |
 | FDXS | Micro-DAX | € 1 | 09:15 - 17:00 | 17:25 |
 | FSXE | Micro Euro Stoxx 50 | € 1 | 09:15 - 17:00 | 17:25 |
+
+Het Nikkei-venster volgt Tokyo (09:15 - 15:00, plat om 15:25). Dat is midden
+in de Nederlandse nacht, dus je pc en IB Gateway moeten aan blijven. Wil je
+naast MES ook MNK, zet dan `"contracts": ["MES", "MNK"]`. De daglimiet en het
+aantal trades gelden dan samen per Nederlandse kalenderdag. MNK is een jonger
+en dunner contract dan MES: reken op meer slippage, en doe eerst een backtest
+op MNK zelf (`--contract MNK`).
 
 De Amerikaanse tijden volgen New York (09:45 - 15:30, flat om 15:55). In de
 weken dat de VS en Europa niet tegelijk de klok verzetten (maart en eind
@@ -81,6 +89,9 @@ Open een opdrachtvenster in `C:\Handelen\day-trader-skill`.
 python trader-futures\ib_tools.py status
 ```
 Hier moet PAPER staan, met het contract (bijvoorbeeld MESZ6) en positie 0.
+Meldt hij dat IBKR een contract niet kent, zoek het dan op in TWS of de IBKR-app.
+Gebruikt IBKR een ander symbool, zet dat in de config, bijvoorbeeld
+`"contract_overrides": {"MNK": {"symbol": "..."}}`.
 
 **1. Eerst testen op echte koersen (backtest)**
 ```

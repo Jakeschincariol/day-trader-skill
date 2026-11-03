@@ -37,7 +37,7 @@ def cmd_status(a):
     print("today's P&L EUR %s, EUR/USD %s" % (b.daily_pnl_eur(), b.eurusd()))
     today = datetime.date.today()
     for key in cfg.get("contracts") or ["MES"]:
-        spec = fx.spec_for(key)
+        spec = fx.spec_for(key, cfg)
         c, over = b.resolve(spec, today, int(cfg.get("roll_days", 8)))
         print("%s -> %s, expiry %s, %s per point, tick %s, position %d" % (
             key, over["local_symbol"], over["expiry"], over["multiplier"], over["tick"], b.position(c)))
@@ -47,7 +47,7 @@ def cmd_status(a):
 
 def cmd_download(a):
     b, cfg = connect(a)
-    spec = fx.spec_for(a.contract)
+    spec = fx.spec_for(a.contract, cfg)
     c, over = b.resolve(spec, datetime.date.today(), int(cfg.get("roll_days", 8)))
     got = {}
     end = ""
@@ -79,7 +79,7 @@ def key_name(spec):
 
 def cmd_flatten(a):
     b, cfg = connect(a, readonly=False)
-    spec = fx.spec_for(a.contract)
+    spec = fx.spec_for(a.contract, cfg)
     c, over = b.resolve(spec, datetime.date.today(), int(cfg.get("roll_days", 8)))
     res = b.flatten(c)
     print("%s: closed %s at %s (%s)" % (over["local_symbol"], res.get("closed"), res.get("avg"), res.get("status", "")))

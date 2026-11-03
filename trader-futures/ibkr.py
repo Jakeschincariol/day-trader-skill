@@ -138,8 +138,10 @@ class Broker(object):
             kw["tradingClass"] = spec["trading_class"]
         details = self.ib.reqContractDetails(m.Future(spec["symbol"], **kw))
         if not details:
-            raise BrokerError("IBKR knows no %s futures on %s: check the symbol, and that your account has "
-                              "futures trading permission for %s" % (spec["key"], spec["exchange"], spec["exchange"]))
+            raise BrokerError("IBKR knows no %s futures (symbol %s) on %s. Look the contract up in TWS or the IBKR "
+                              "app, and if IBKR uses another symbol put it in the config: \"contract_overrides\": "
+                              "{\"%s\": {\"symbol\": \"...\"}}. Also check your futures trading permission for %s."
+                              % (spec["key"], spec["symbol"], spec["exchange"], spec["key"], spec["exchange"]))
         months = [{"expiry": d.contract.lastTradeDateOrContractMonth, "detail": d} for d in details]
         pick = fx.pick_contract(months, today, roll_days)["detail"]
         c = pick.contract

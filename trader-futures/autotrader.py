@@ -134,7 +134,7 @@ class Engine(object):
         roll = int(self.cfg.get("roll_days", 8))
         lines = []
         for key in self.cfg.get("contracts") or ["MES"]:
-            spec = fx.spec_for(key)
+            spec = fx.spec_for(key, self.cfg)
             c, over = self.b.resolve(spec, today, roll)
             spec.update(over)
             self.contracts[spec["key"]] = {"spec": spec, "contract": c}

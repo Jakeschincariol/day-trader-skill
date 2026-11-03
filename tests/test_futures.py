@@ -126,6 +126,59 @@ class TestSignal(unittest.TestCase):
         self.assertLess(base0, base)                    # without the guard the baseline drops: false surges
 
 
+class TestNikkei(unittest.TestCase):
+    MNK = fx.spec_for("MNK")
+
+    def test_spec(self):
+        s = self.MNK
+        self.assertEqual((s["exchange"], s["currency"], s["multiplier"], s["tick"], s["tz"]),
+                         ("CME", "USD", 0.5, 5.0, "Asia/Tokyo"))
+
+    def test_window_in_dutch_time(self):
+        ams = fx.tz("Europe/Amsterdam")
+        day = datetime.date(2026, 11, 4)                     # Dutch winter time: JST is 8 hours ahead
+        w0 = fx.at_local(day, self.MNK["window"][0], self.MNK).astimezone(ams)
+        flat = fx.at_local(day, self.MNK["flat_by"], self.MNK).astimezone(ams)
+        self.assertEqual((w0.strftime("%H:%M"), flat.strftime("%H:%M")), ("01:15", "07:25"))
+        summer = fx.at_local(datetime.date(2026, 7, 1), "09:15", self.MNK).astimezone(ams)
+        self.assertEqual(summer.strftime("%H:%M"), "02:15")  # 7 hours ahead in summer
+
+    def test_signal_in_the_tokyo_session(self):
+        # the MES fixture moved to Tokyo wall-clock time (same HH:MM), 0.25 ticks kept
+        tokyo = fx.tz("Asia/Tokyo")
+        moved = []
+        for b in bars():
+            lt = b["t"].astimezone(NY).replace(tzinfo=tokyo)
+            moved.append(dict(b, t=lt.astimezone(UTC)))
+        spec = fx.spec_for("MNK", {"tick": 0.25})
+        when = datetime.datetime(2026, 10, 30, 10, 30, tzinfo=tokyo).astimezone(UTC)
+        self.assertEqual(fx.evaluate(moved, when, spec)["status"], "signal")
+        early = datetime.datetime(2026, 10, 30, 9, 10, tzinfo=tokyo).astimezone(UTC)
+        self.assertEqual(fx.evaluate(moved, early, spec)["status"], "outside-window")
+
+    def test_size_with_a_five_point_tick(self):
+        plan = {"risk_points": 40.0}                          # 8 ticks
+        s = fx.size(plan, self.MNK, {"max_loss_per_trade_eur": 100, "max_contracts": 10}, eurusd=1.08)
+        # (40 + 2 x 5 stop slippage) x $0.50 + 2 x 0.62 = $26.24 = EUR 24.30 per contract
+        self.assertEqual(s["risk_per_contract_eur"], 24.3)
+        self.assertEqual(s["qty"], 4)
+
+    def test_plan_rounds_to_five_points(self):
+        sig = {"bar": {"o": 51000.0, "h": 51120.0, "l": 51000.0, "c": 51110.0}, "direction": "long",
+               "metrics": {"atr": 60.0}, "bar_time": "x"}
+        plan, why = fx.make_plan(sig, self.MNK)
+        for k in ("limit", "stop", "target"):
+            self.assertEqual(plan[k] % 5.0, 0.0, k)
+        self.assertEqual((plan["limit"], plan["stop"]), (51120.0, 51055.0))
+
+    def test_symbol_override_from_config(self):
+        cfg = fx.load_config(None)
+        cfg["contract_overrides"] = {"MNK": {"symbol": "NKMICRO"}}
+        self.assertEqual(fx.spec_for("MNK", cfg)["symbol"], "NKMICRO")
+        self.assertEqual(fx.spec_for("MES", cfg)["symbol"], "MES")
+        self.assertEqual(fx.spec_for("MNK", fx.load_config(None))["symbol"], "MNK")
+
+
 class TestPlanSizeRisk(unittest.TestCase):
     def setUp(self):
         self.sig = fx.evaluate(bars(), ny("2026-10-30", "10:30"), MES)

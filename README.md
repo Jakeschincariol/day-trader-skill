@@ -72,7 +72,7 @@ or in the `SEC_USER_AGENT` environment variable.
 | `/trader-alerts` | Price Alerts | Rings when a price, a stop or the opening bell hits. |
 | `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
 | `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
-| `/trader-futures` | Index Futures Autotrader | Trades index futures (MES, MNQ, DAX...) on Interactive Brokers by itself: volume surge breakouts, sized in EUR, paper first. |
+| `/trader-futures` | Index Futures Autotrader | Trades index futures (MES, MNQ, MNK, DAX...) on Interactive Brokers by itself: volume surge breakouts, sized in EUR, paper first. |
 
 ## How to use it
 
@@ -125,8 +125,8 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
 
 `/trader-futures` is the one skill that trades by itself, and only index
 futures: the Micro E-mini S&P 500 (MES), Nasdaq-100 (MNQ), Dow (MYM) and
-Russell 2000 (M2K), their full-size versions, and Micro/Mini-DAX and Euro
-Stoxx 50 on Eurex. It runs on your own computer next to IB Gateway, checks
+Russell 2000 (M2K), their full-size versions, the Micro Nikkei (MNK) in the
+Tokyo session, and Micro/Mini-DAX and Euro Stoxx 50 on Eurex. It runs on your own computer next to IB Gateway, checks
 every completed 5-minute bar for a volume surge breakout, sizes the trade in
 euros to your max loss, checks margin and a daily loss limit, sends one
 bracket order and is flat by the close. `observe` only notifies, `paper`

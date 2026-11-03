@@ -71,6 +71,12 @@ SPECS = {
     "M2K": {"name": "Micro E-mini Russell 2000", "symbol": "M2K", "exchange": "CME", "currency": "USD",
             "multiplier": 5.0, "tick": 0.1, "tz": "America/New_York", "open": "09:30",
             "window": ["09:45", "15:30"], "flat_by": "15:55"},
+    # Micro Nikkei (USD) on CME Globex. It trades almost 24 hours, but the
+    # volume is in the Tokyo session (09:00-15:30 JST = 01:00-07:30 Dutch
+    # winter time, 02:00-08:30 summer time; Japan has no daylight saving).
+    "MNK": {"name": "Micro Nikkei (USD)", "symbol": "MNK", "exchange": "CME", "currency": "USD",
+            "multiplier": 0.5, "tick": 5.0, "tz": "Asia/Tokyo", "open": "09:00",
+            "window": ["09:15", "15:00"], "flat_by": "15:25"},
     "FDXS": {"name": "Micro-DAX", "symbol": "DAX", "trading_class": "FDXS", "exchange": "EUREX",
              "currency": "EUR", "multiplier": 1.0, "tick": 1.0, "tz": "Europe/Berlin", "open": "09:00",
              "window": ["09:15", "17:00"], "flat_by": "17:25"},
@@ -643,7 +649,14 @@ def load_config(path):
 
 
 def spec_for(key, overrides=None):
+    """The spec for a contract key. `overrides` is either a dict of fields, or
+    the whole config (then its "contract_overrides": {KEY: {...}} is used), so
+    a user can fix e.g. the IBKR symbol without touching the code."""
     key = key.upper()
+    if overrides and "contract_overrides" in overrides:
+        overrides = (overrides.get("contract_overrides") or {}).get(key)
+    elif overrides and ("strategy" in overrides or "risk" in overrides):
+        overrides = None
     if key not in SPECS:
         raise FuturesError("unknown contract %s; known: %s" % (key, ", ".join(sorted(SPECS))))
     s = dict(SPECS[key])
@@ -666,7 +679,7 @@ def cmd_specs(a, cfg):
 
 
 def cmd_signal(a, cfg):
-    spec = spec_for(a.contract)
+    spec = spec_for(a.contract, cfg)
     bars = load_bars_csv(a.bars)
     now = parse_time(a.now) if a.now else bars[-1]["t"] + BAR
     if a.now and len(a.now.strip()) <= 16 and "+" not in a.now:
@@ -690,7 +703,7 @@ def cmd_signal(a, cfg):
 
 
 def cmd_backtest(a, cfg):
-    spec = spec_for(a.contract)
+    spec = spec_for(a.contract, cfg)
     bars = load_bars_csv(a.bars)
     res = backtest(bars, spec, cfg["strategy"], cfg["risk"], a.eurusd)
     sm = res["summary"]

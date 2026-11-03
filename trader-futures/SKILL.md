@@ -3,7 +3,7 @@ name: trader-futures
 description: >-
   Index Futures Autotrader. Trades index futures only (Micro E-mini S&P 500
   MES, Micro Nasdaq-100 MNQ, Micro Dow MYM, Micro Russell M2K, their full-size
-  versions, Micro/Mini-DAX and Euro Stoxx 50 on Eurex) through Interactive
+  versions, Micro Nikkei MNK in the Tokyo session, Micro/Mini-DAX and Euro Stoxx 50 on Eurex) through Interactive
   Brokers, with one strategy: the volume surge breakout on 5-minute bars (a
   bar with 2.5x the usual volume for its time of day that breaks the last
   hour's range, closes strong and above VWAP). Sizes every trade in EUR to a
@@ -43,7 +43,8 @@ python3 "${CLAUDE_SKILL_DIR}/autotrader.py" --mode paper                        
 
 On every completed 5-minute bar inside the entry window (US index futures
 09:45-15:30 New York time = 15:45-21:30 Dutch time; Eurex 09:15-17:00
-Frankfurt time), a LONG signal needs all five:
+Frankfurt time; Micro Nikkei MNK 09:15-15:00 Tokyo time = 01:15-07:00 Dutch
+winter time, 02:15-08:00 summer time), a LONG signal needs all five:
 
 1. volume at least 2.5x the average of the same 5-minute slot over the last
    10 sessions (sessions with under half the busiest session's volume are left
@@ -57,7 +58,7 @@ Frankfurt time), a LONG signal needs all five:
 The plan: a LIMIT entry 2 ticks above the signal close (if the market runs
 away, no fill, no chase; it waits 60 seconds), a stop one tick under the
 signal bar's midpoint (at least 4 ticks, at most 1.5x ATR, otherwise no
-trade), a target at 2R, and flat by 15:55 New York (17:25 Frankfurt). Shorts
+trade), a target at 2R, and flat by 15:55 New York (17:25 Frankfurt, 15:25 Tokyo). Shorts
 are the mirror image and are off unless the user adds "short" to
 `strategy.directions`. Every number is in `trader/config.json`.
 
@@ -74,6 +75,9 @@ are the mirror image and are off unless the user adds "short" to
 - IBKR's what-if initial margin at most `max_margin_pct` of available funds;
 - the contract it trades is the nearest one that expires more than
   `roll_days` (8) days ahead, with multiplier and tick from IBKR itself;
+- the contract keys and IBKR symbols are in `futures.py specs`; when IBKR uses
+  another symbol for a contract, `"contract_overrides": {"MNK": {"symbol": "..."}}`
+  in the config fixes it without code changes (ib_tools.py status shows it);
 - a position the user opened by hand in the same contract blocks new entries
   and is never touched by the autotrader.
 
@@ -123,6 +127,7 @@ nobody can guess.
 
 1. IBKR account with **futures trading permission** (Settings > Account
    Settings > Trading Permissions: Futures, for the US and/or Eurex).
+   MNK is a CME contract: the US futures permission covers it.
 2. **Market data**: real-time data for CME (and CBOT for MYM) and/or Eurex,
    requested in the Client Portal. The paper account gets the live
    account's data only when "share market data with paper account" is on.
@@ -137,6 +142,17 @@ nobody can guess.
 6. `ib_tools.py status`: it must say PAPER, show the contract and the position 0.
 7. `ib_tools.py download --days 60`, then `futures.py backtest` on that file.
 8. A week or more in `observe`, then weeks in `paper`, then decide.
+
+## The Micro Nikkei (MNK)
+
+MNK is $0.50 per Nikkei point with a tick of 5 points ($2.50), quoted in USD
+on CME Globex. It trades almost around the clock, but its volume is in the
+Tokyo session, so its window is 09:15-15:00 Tokyo time: the middle of the
+Dutch night. The computer and IB Gateway have to stay on. MNK is a younger
+and thinner contract than MES: expect wider spreads and more slippage, and
+judge it on a backtest of its own bars (`ib_tools.py download --contract MNK`).
+With MES and MNK both in `contracts`, the daily loss limit and the trade count
+are shared per Dutch calendar day.
 
 ## Files
 
