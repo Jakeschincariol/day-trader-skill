@@ -40,7 +40,8 @@ python3 "${CLAUDE_SKILL_DIR}/timemachine.py" chart --from           # ASCII fan 
 ```
 
 Other flags: `--replays N`, `--seed N` (default 19), `--window N` (default 2
-bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
+bars), `--fill next-open|close` (history fills, default next-open),
+`--cost-bps N` (history costs a side, default 2), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 `--now "2026-10-19 10:15"` (New York time) to pin the clock.
 
 ## What it reads and writes
@@ -70,7 +71,21 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    counts as -1R here. A real fill can be worse.
 4. **The history.** The plan's own rule (the same opening range, stop rule
    and target R) runs again on every one of those past sessions. That is
-   what really happened, not a simulation.
+   what really happened, not a simulation. The signal is a bar's CLOSE, so
+   nobody can buy at it: the fill is the OPEN of the next bar. A next open
+   already past the stop or the target is a bracket the broker rejects, so
+   that day is left out and counted. A bar that opens past the stop fills at
+   that open, worse than -1R. Costs (2 bps a side by default) come off every
+   R. `--fill close --cost-bps 0` gives the old accounting.
+4b. **The baseline.** The same trades with the setup taken out: for each
+   history trade, a blind entry at the same bar on every other past session,
+   breakout or not, with the same stop width, target R, fills and costs. It
+   prints the setup's average R with a bootstrap 95 % range, the setup minus
+   the blind entry, and how often a random set of as many blind trades did as
+   well. Under 100 history trades the line says "Too few trades to tell". The
+   replays above cannot tell a setup from a blind entry (every bar is drawn
+   on its own, whatever happened earlier that day); this line is the only
+   place the setup itself is tested.
 5. **The verdict** is one line from the numbers. It looks only at the
    replays that hit one side, and asks how often the target came first. A
    bigger target needs to win less often to break even: 1 in (1 + R). That
@@ -103,8 +118,9 @@ grid). A live in-progress bar is never used.
 2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
    flat-by time, so "neither" means still open at the time you would get out.
 3. Tell the user, in this order: the four odds, the median and the 5 to 95
-   range of the price at the close, the average R, the history line, then the
-   verdict line and any line under it exactly as printed. Say the seed.
+   range of the price at the close, the average R, the history line and its
+   fills, the baseline lines, then the verdict line and any line under it
+   exactly as printed. Say the seed.
 4. If the verdict is a coin flip or close to break-even, say so plainly. Do
    not dress it up. If the history and the replays disagree, say that too.
 5. Say once that this is built from the last 60 days and is not a prediction.
@@ -127,7 +143,11 @@ The 10:10 bar closes above it: entry 364.18 at 10:15 AM (bar 8), stop 358.32
   Price at 4:00 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
   Average R: +0.034
 History: the same rule on each of those 59 real sessions fired 33 times:
-13 target, 15 stop, 5 neither. Average R -0.062.
+13 target, 15 stop, 5 neither. Average R -0.113.
+  Fills: at the open of the bar after the signal close; ... costs 2 bps a side, taken off every R.
+Baseline: a blind entry at the same bars on the other sessions, ...: 1,914 trades, average R -0.041.
+  Setup minus blind: -0.071 R a trade. The setup's average R -0.113, 95 % range -0.425 to +0.206 (bootstrap, seed 19).
+Too few trades to tell: 33 trades, and at least 100 are needed before a gap between the setup and a blind entry means much.
 Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
 45.1 % of the replays hit neither by 4:00 PM; the price at 4:00 PM decides those.
 ```
@@ -136,6 +156,35 @@ At 1R the target has to come first in half of the replays that hit one
 side. It did in 53.6 %. The replays came out close to a coin flip, and the
 real history was slightly worse than even. That is the honest answer for this setup, and it is what
 the user should hear before `/trader-budget` sizes 8 shares.
+
+## The bigger test: backtest.py
+
+One stock's 60 days give about 30 trades, too few to tell. `backtest.py` runs
+the same rule, fills and costs on every S&P 500 stock (or `--symbols FILE`)
+and compares each trade with its blind entry, with 95 % ranges that resample
+whole days (trades on the same day move together).
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" fetch      # 60 days of 5-min bars per stock, cached in trader/cache/60d5m
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" run        # 1R and 2R, with and without costs, the old accounting
+```
+
+The run of 2026-11-03 (496 stocks, 2026-08-10 to 2026-11-02, out by 3:55 PM,
+15-minute range, stop at the midpoint, long only):
+
+| variant | trades | average R (95 %) | blind entry | breakout adds (95 %) |
+| --- | --- | --- | --- | --- |
+| 1R, next open, 2 bps | 15,415 | -0.125 (-0.174 to -0.075) | -0.077 | -0.047 (-0.095 to +0.004) |
+| 2R, next open, 2 bps | 15,418 | -0.131 (-0.200 to -0.061) | -0.085 | -0.047 (-0.118 to +0.026) |
+| 1R, next open, no costs | 15,415 | -0.064 (-0.113 to -0.015) | -0.018 | -0.047 (-0.094 to +0.005) |
+| 1R, signal close, no costs (old) | 15,499 | -0.065 (-0.115 to -0.016) | -0.015 | -0.050 (-0.098 to +0.001) |
+
+On these stocks and these days the rule lost money after costs, and the
+breakout did no better than a blind entry at the same bar (slightly worse,
+not clearly). Costs alone took about 0.06R a trade: the midpoint stop is
+tight. Say this when the user asks whether the setup works. Sixty days are
+one stretch of one market, so it is a first look, not a verdict for every
+year, and it says nothing about small, fast "stocks in play".
 
 ## Rules
 

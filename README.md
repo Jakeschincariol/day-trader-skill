@@ -104,7 +104,13 @@ An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
    previous 59 sessions (seed 19, so anyone can repeat it): target first
    29.4 %, stop first 25.5 %, still open at the close 45.1 %. It also re-ran
    the same rule on those 59 real sessions: it fired 33 times, 13 hit the
-   target, 15 the stop, 5 neither. Its verdict: close to a coin flip. That is
+   target, 15 the stop, 5 neither (filled at the signal close with no costs;
+   by default the history now fills at the next bar's open and takes 2 bps a
+   side off: the same 13, 15 and 5, but an average of -0.113R a trade, not
+   -0.062R). It also enters blind at the same times on the other sessions
+   (1,914 trades, -0.041R): the setup came out 0.071R a trade worse, and 33
+   trades are too few to tell the two apart.
+   Its verdict: close to a coin flip. That is
    the point of looking before you risk a dollar.
 6. **`/trader-budget`** with a $5,000 account and a $50 max loss per trade:
    50 / 5.86 = 8 shares ($2,913.44). If the stop fills at 358.32, the loss is
@@ -171,7 +177,13 @@ Alpaca's MCP server defaults to its paper account. Keys live in environment
 variables, never in the chat.
 
 **The Time Machine is a simulation, not a prediction.** It is built from the
-stock's own last 60 days of 5-minute bars. The future can do things those 60
+stock's own last 60 days of 5-minute bars. The 10,000 replays draw every bar
+on its own, so they say how far the price tends to wander, not whether the
+setup helps: only the history and its blind-entry baseline test the setup,
+and 60 days rarely give enough trades to tell. Run on all S&P 500 stocks over
+the 60 days to November 2 2026 (15,415 trades, `trader-timemachine/backtest.py`),
+the opening-range breakout averaged -0.125R a trade after 2 bps of costs a
+side, and did no better than a blind entry at the same bar. The future can do things those 60
 days never did: an earnings report, a halt, a headline. Treat its odds as a
 reality check, never as a promise.
 
@@ -203,7 +215,7 @@ trader-scanner/     SKILL.md, scan.py
 trader-news/        SKILL.md, news.py
 trader-entry/       SKILL.md, entry.py
 trader-exit/        SKILL.md, exit.py
-trader-timemachine/ SKILL.md, timemachine.py
+trader-timemachine/ SKILL.md, timemachine.py, backtest.py
 trader-risk/        SKILL.md, check.py
 trader-budget/      SKILL.md, size.py, config.example.json, targets.example.json
 trader-broker/      SKILL.md, ticket.py, claude_desktop_config.example.json

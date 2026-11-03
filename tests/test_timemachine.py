@@ -80,10 +80,13 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
+LEGACY = {"fill": "close", "cost_bps": 0}   # the reel's accounting: filled at the signal close, no costs
+
+
 class Reel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.doc = machine()
+        cls.doc = machine(**LEGACY)
 
     def test_the_reel_odds(self):
         m = self.doc["mc"]
@@ -445,6 +448,140 @@ class Plans(unittest.TestCase):
         self.assertIn(doc["verdict"] + "\n" + doc["verdict_notes"][0] + "\n" + doc["verdict_notes"][1], text)
 
 
+def bar(o, h=None, l=None, c=None):
+    return {"o": o, "h": o if h is None else h, "l": o if l is None else l, "c": o if c is None else c}
+
+
+def session(date, overrides=None):
+    """A made-up session: a 99 to 101 opening range, bar 3 closes at 101.50 (the signal),
+    then flat at 101.60. Stop at the midpoint 100.00, 1R target 103.00, risk 1.50."""
+    D = [bar(100, 101, 99, 100) for _ in range(3)] + [bar(100.5, 101.6, 100.4, 101.5)] + \
+        [bar(101.6) for _ in range(tm.SESSION_BARS - 4)]
+    for i, b in (overrides or {}).items():
+        D[i] = b
+    return (date, D)
+
+
+def quiet(date):
+    """A session that never breaks its 99 to 101 range: flat at 100."""
+    return (date, [bar(100, 101, 99, 100) for _ in range(3)] + [bar(100) for _ in range(tm.SESSION_BARS - 3)])
+
+
+RULE = {"setup": "orb", "or_minutes": 15, "stop_rule": "or_mid", "target_r": 1.0}
+LAST = tm.SESSION_BARS - 1
+
+
+def one(overrides=None, fill="next_open", cost_bps=0, last=LAST):
+    h = tm.history_replay([session("2026-01-02", overrides)], RULE, last, "buy", fill, cost_bps)
+    return h, (h["trades"][0] if h["trades"] else None)
+
+
+class Fills(unittest.TestCase):
+    def test_the_fill_is_the_next_open_not_the_signal_close(self):
+        h, t = one()
+        self.assertEqual((t["signal"], t["entry"], t["stop"], t["target"], t["risk"]), (101.5, 101.6, 100.0, 103.0, 1.5))
+        self.assertEqual((t["outcome"], t["exit"], t["R"]), ("close", 101.6, 0.0))
+        self.assertEqual((h["fill"], h["cost_bps"], h["skipped"]), ("next_open", 0, {"no_bar": 0, "rejected": 0}))
+
+    def test_a_gap_through_the_stop_fills_at_the_open(self):
+        _, t = one({5: bar(99.5)})
+        self.assertEqual((t["outcome"], t["exit"], t["R"]), ("stop", 99.5, -1.4))   # worse than -1R
+        _, t = one({5: bar(99.5)}, fill="close")
+        self.assertEqual((t["outcome"], t["exit"], t["R"]), ("stop", 100.0, -1.0))  # the old accounting
+
+    def test_a_gap_past_the_target_fills_at_the_open(self):
+        _, t = one({5: bar(104)})
+        self.assertEqual((t["outcome"], t["exit"], t["R"]), ("target", 104.0, 1.6))
+
+    def test_a_stop_inside_a_bar_fills_at_the_stop(self):
+        _, t = one({5: bar(101.0, 101.1, 99.9, 100.2)})
+        self.assertEqual((t["outcome"], t["exit"], t["R"]), ("stop", 100.0, -1.07))  # 1.60 lost on a 1.50 risk
+        _, t = one({5: bar(101.0, 101.1, 99.9, 100.2)}, fill="close")
+        self.assertEqual(t["R"], -1.0)
+
+    def test_a_next_open_past_the_target_is_a_rejected_bracket(self):
+        h, t = one({4: bar(103.2)})
+        self.assertIsNone(t)
+        self.assertEqual((h["triggered"], h["skipped"]), (0, {"no_bar": 0, "rejected": 1}))
+        _, t = one({4: bar(103.2)}, fill="close")
+        self.assertEqual((t["outcome"], t["R"]), ("target", 1.0))
+
+    def test_a_signal_on_the_last_bar_has_nothing_to_fill_on(self):
+        h, t = one(last=3)
+        self.assertIsNone(t)
+        self.assertEqual(h["skipped"], {"no_bar": 1, "rejected": 0})
+
+    def test_costs_come_off_every_r(self):
+        _, t = one({5: bar(99.5)}, cost_bps=10)
+        self.assertEqual((t["cost_R"], t["R"]), (0.1355, -1.54))   # 2 x 0.10 % x 101.60 / 1.50 = 0.1355R
+        self.assertAlmostEqual(tm.cost_r(100.0, 1.0, 2.0), 0.04)
+
+
+class Baseline(unittest.TestCase):
+    def test_a_blind_entry_on_the_other_sessions(self):
+        sessions = [session("2026-01-02", {5: bar(104)})] + [quiet("2026-01-0%d" % d) for d in (5, 6, 7)]
+        h = tm.history_replay(sessions, RULE, LAST, "buy", "next_open", 0)
+        self.assertEqual((h["triggered"], h["trades"][0]["R"]), (1, 1.6))
+        b = tm.baseline(sessions, h, LAST, "buy", "next_open", 0, seed=19, draws=500)
+        # the quiet days: entry 100 at bar 4's open, stop 98.52 (the same 1.48 % width), nothing moves: 0R each
+        self.assertEqual((b["trades"], b["avg_R"], b["setup_avg_R"], b["edge_R"]), (3, 0.0, 1.6, 1.6))
+        self.assertEqual((b["setup_ci"], b["blind_as_good"]), ([1.6, 1.6], 0.0))
+        self.assertTrue(tm.baseline_verdict(b).startswith("Too few trades to tell: 1 trades, and at least 100"))
+
+    def test_the_verdict_needs_enough_trades(self):
+        b = {"setup_avg_R": 0.2, "setup_trades": 150, "min_trades": 100, "edge_R": 0.15, "blind_as_good": 0.01,
+             "draws": 10000}
+        self.assertEqual(tm.baseline_verdict(b), "The setup beat a blind entry: random sets of 150 blind trades did "
+                                                 "as well in only 1.0 % of 10,000 draws.")
+        self.assertTrue(tm.baseline_verdict(dict(b, edge_R=-0.2, blind_as_good=0.99))
+                        .startswith("The setup did worse than a blind entry"))
+        self.assertTrue(tm.baseline_verdict(dict(b, blind_as_good=0.3)).startswith("No clear difference"))
+        self.assertTrue(tm.baseline_verdict(dict(b, setup_trades=33)).startswith("Too few trades to tell: 33 trades"))
+        self.assertIsNone(tm.baseline_verdict(None))
+
+    def test_the_fixture_by_default(self):
+        doc = machine(replays=300)
+        h, b = doc["history"], doc["baseline"]
+        self.assertEqual((h["fill"], h["cost_bps"]), ("next_open", 2.0))
+        # the same 33 signals as the old accounting: each one is either a trade or left out with a reason
+        self.assertEqual(h["triggered"] + h["skipped"]["rejected"] + h["skipped"]["no_bar"], 33)
+        for t in h["trades"]:
+            self.assertTrue(t["stop"] < t["entry"] < t["target"], t)
+            self.assertGreater(t["cost_R"], 0)
+        self.assertEqual(b["setup_trades"], h["triggered"])
+        self.assertGreater(b["trades"], 10 * h["triggered"])
+        self.assertLessEqual(b["setup_ci"][0], b["setup_avg_R"])
+        self.assertLessEqual(b["setup_avg_R"], b["setup_ci"][1])
+        self.assertTrue(0 <= b["blind_as_good"] <= 1)
+        self.assertAlmostEqual(b["edge_R"], b["setup_avg_R"] - b["avg_R"], delta=0.0015)
+        self.assertTrue(b["verdict"].startswith("Too few trades to tell: %d trades" % h["triggered"]))
+        text = "\n".join(tm.report(doc))
+        for line in ("Fills: at the open of the bar after the signal close", "costs 2 bps a side",
+                     "Baseline: a blind entry at the same bars", "Setup minus blind:", b["verdict"]):
+            self.assertIn(line, text)
+        self.assertEqual(machine(replays=300)["baseline"], b)   # same seed, same numbers
+
+    def test_the_reel_with_real_fills(self):
+        doc = machine(replays=100)
+        h, b = doc["history"], doc["baseline"]
+        self.assertEqual((h["triggered"], h["target"], h["stop"], h["close"], h["avg_R"]), (33, 13, 15, 5, -0.113))
+        self.assertEqual((b["trades"], b["avg_R"], b["edge_R"], b["setup_ci"]), (1914, -0.041, -0.071, [-0.425, 0.206]))
+        old = machine(replays=100, **LEGACY)["baseline"]
+        self.assertEqual((old["avg_R"], old["edge_R"]), (0.005, -0.068))
+
+    def test_costs_only_make_the_old_accounting_worse(self):
+        h = machine(replays=100, fill="close", cost_bps=2)["history"]
+        self.assertEqual(h["triggered"], 33)
+        self.assertLess(h["avg_R"], -0.062)
+
+    def test_bad_fill_and_costs_are_refused(self):
+        with self.assertRaises(tm.TMError):
+            machine(replays=10, fill="vwap")
+        with self.assertRaises(tm.TMError):
+            machine(replays=10, cost_bps=-1)
+        self.assertEqual(machine(replays=10, fill="next-open")["history"]["fill"], "next_open")
+
+
 class Network(unittest.TestCase):
     def setUp(self):
         self.calls, self.sleeps = [], []
@@ -527,7 +664,8 @@ class Cli(unittest.TestCase):
         shutil.rmtree(self.d)
 
     def test_run_with_the_plan_end_to_end(self):
-        code, text, err = run(["run", "--plan", self.plan, "--offline", TSLA, "--now", NOW, "--write", self.out])
+        code, text, err = run(["run", "--plan", self.plan, "--offline", TSLA, "--now", NOW, "--write", self.out,
+                               "--fill", "close", "--cost-bps", "0"])
         self.assertEqual(code, 0, err)
         self.assertIn("target first   29.4 %", text)
         self.assertIn("Close to a coin flip: target first 29.4 % vs stop first 25.5 %.", text)
@@ -555,7 +693,7 @@ class Cli(unittest.TestCase):
     def test_the_plan_as_flags_matches_the_file(self):
         code, text, err = run(["run", "--symbol", "tsla", "--date", "2026-10-19", "--entry", "364.18",
                                "--stop", "358.32", "--target", "370.04", "--entry-time", "10:15 AM",
-                               "--offline", TSLA, "--now", NOW, "--json"])
+                               "--offline", TSLA, "--now", NOW, "--json", "--fill", "close", "--cost-bps", "0"])
         self.assertEqual(code, 0, err)
         doc = json.loads(text)
         self.assertEqual((doc["mc"]["p_target"], doc["mc"]["p_green"]), (0.2938, 0.5168))
