@@ -240,7 +240,9 @@
     }
     const weights = {};
     pos.forEach((p) => { weights[p.symbol] = (weights[p.symbol] || 0) + p.v / total; });
-    const ccy = t ? t.currency : (td.settings().ccy || "USD");
+    const t = td.state.t212 && !td.state.t212.error ? td.state.t212 : null;
+    const rv = td.state.revolut && td.state.revolut.linked ? td.state.revolut : null;
+    const ccy = t ? t.currency : rv ? rv.currency : (td.settings().ccy || "USD");
     return { expNow, expAfter, sameTheme, weights, total, amount, amountLabel: td.money(amount, ccy).replace(/[.,]00(?=\D*$)/, "") };
   }
 

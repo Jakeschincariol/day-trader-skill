@@ -1216,6 +1216,13 @@
   };
 
   // ------------------------------------------------------------ router
+  // phone: "More" in the bottom bar opens Compare, News and Market Map
+  document.addEventListener("click", (e) => {
+    const nav = $("#tabs"), btn = $("#tabMore");
+    if (!nav || !btn) return;
+    if (e.target.closest("#tabMore")) { const open = nav.classList.toggle("more-open"); btn.setAttribute("aria-expanded", String(open)); return; }
+    if (nav.classList.contains("more-open") && !e.target.closest("#tabs a")) { nav.classList.remove("more-open"); btn.setAttribute("aria-expanded", "false"); }
+  });
   async function route() {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
     RF = {};
@@ -1224,6 +1231,9 @@
     const [name, arg] = path.split("/");
     const page = pages[name || "home"] ? name || "home" : "home";
     const tab = { stock: "markets" }[page] || page;
+    const nav = $("#tabs");
+    nav.classList.remove("more-open"); $("#tabMore") && $("#tabMore").setAttribute("aria-expanded", "false");
+    nav.classList.toggle("more-active", ["compare", "news", "map"].includes(tab));
     $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
     const first = routeId === 1;
