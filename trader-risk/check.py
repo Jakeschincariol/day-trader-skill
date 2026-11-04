@@ -45,7 +45,8 @@ What blocks an entry (on top):
                 cannot understate the risk
   reward:risk   (target - entry) / (entry - stop) under min_reward_risk
   daily loss    the max losses at the stops of today's entries plus this one
-                over max_daily_loss_usd (win or lose, each counts in full)
+                over max_daily_loss_usd (win or lose, each counts in full),
+                or a placed entry today has an unknown max loss in the log
   trades        max_trades_per_day entries already placed today
   window        before no_entries_before or after no_entries_after (New York
                 time), or the market is closed (weekend, NYSE holiday, outside
@@ -63,6 +64,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -387,11 +389,18 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     count_today = len(done_today)
     entries_today = [r for r in done_today if rec_is_entry(r)]
     loss_today = 0.0
+    unknown_losses = []
     for r in entries_today:
-        ml = _f(r.get("max_loss"))
-        if ml is None:
-            top_warn.append("an entry placed today (%s %s) has no max loss in the log; not counted in "
-                            "the daily loss" % (r.get("side"), r.get("symbol")))
+        raw_loss = r.get("max_loss")
+        try:
+            ml = _f(raw_loss)
+        except OverflowError:
+            ml = None
+        if ml is None or isinstance(raw_loss, bool) or not math.isfinite(ml) or ml < 0:
+            label = "%s %s" % (r.get("side"), r.get("symbol"))
+            unknown_losses.append(label)
+            top_warn.append("an entry placed today (%s) has no valid max loss in the log; total daily "
+                            "risk is unknown" % label)
         else:
             loss_today += ml
     placed_keys = {(str(r.get("symbol", "")).upper(), r.get("side")) for r in done_today}
@@ -613,7 +622,11 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                         later.append("reward:risk: no target to measure it against (min_reward_risk %s)"
                                      % _num(min_rr))
             daily = _f(c.get("max_daily_loss_usd"))
-            if daily and max_loss is not None:
+            if daily and unknown_losses:
+                later.append("daily loss: total risk from today's entries is unknown (%s); reconcile "
+                             "the trade log before a new entry (limit %s)"
+                             % (", ".join(unknown_losses), money(daily)))
+            elif daily and max_loss is not None:
                 used = loss_today + batch_loss
                 if used + max_loss > daily + CENT:
                     later.append("daily loss: %s already at risk today plus %s for this one = %s, over your %s "
@@ -640,7 +653,8 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             if daily or cap_t:
                 info.append("today before this: %d of %s trades, %s of %s daily loss"
                             % (len(entries_today) + batch_entries, cap_t or "unlimited",
-                               money(loss_today + batch_loss), money(daily) if daily else "no limit on"))
+                               ("unknown (%s known)" % money(loss_today + batch_loss)) if unknown_losses
+                               else money(loss_today + batch_loss), money(daily) if daily else "no limit on"))
 
         # duplicates and the daily order limit
         key = (sym, side)
@@ -701,7 +715,10 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         "warnings": top_warn,
         "cash_after": round(acct["cash"], 2),
         "today": {"orders_placed": count_today, "entries_placed": len(entries_today),
-                  "loss_at_risk": round(loss_today, 2), "day_trades_5d": pdt_n if c.get("pdt_guard") else None},
+                  "loss_at_risk": None if unknown_losses else round(loss_today, 2),
+                  "known_loss_at_risk": round(loss_today, 2),
+                  "entries_with_unknown_loss": len(unknown_losses),
+                  "day_trades_5d": pdt_n if c.get("pdt_guard") else None},
     }
 
 
