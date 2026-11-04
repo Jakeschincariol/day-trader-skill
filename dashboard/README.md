@@ -47,6 +47,24 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Use Revolut
+
+Revolut has no API for personal investing accounts, so the dashboard reads your statement file:
+
+1. In the Revolut app open **Invest** → **…** (More) → **Documents** → **Brokerage account** → **Account statement** (menu names can differ a little between app versions).
+2. Choose **Excel** (not PDF) and the period **All time**, then get the file onto your computer (email, OneDrive, AirDrop), or pick it from Files on the iPhone.
+3. On **Portfolio**, under **Use Revolut?**, choose the file and your account currency.
+
+Holdings are rebuilt from the trades (average cost, sells, stock splits, dividends, fees), priced live, and shown with your Trading 212 positions everywhere: dashboard, plan, diversification, correlation, Compare and the history chart. The file stays on your computer in `dashboard/.revolut.json` (git-ignored). Import a new statement after you trade. Any broker's CSV or Excel file with **Symbol** and **Quantity** columns (plus an average price) also works.
+
+## Briefing, news impact, calendar and correlation (no AI key)
+
+- **Your briefing** (Dashboard): the market, your holdings' day, big moves, important headlines that name your stocks, earnings this week and the next big US/EU economic events, built with fixed rules from live data.
+- **News impact badges**: every headline is tagged Bullish or Bearish and High or Medium impact from keyword rules. Filter by "Important only", "Bullish" or "Bearish". Click a ticker chip to open its stock page.
+- **Calendar** (News → Calendar): earnings dates of your US-listed stocks and this week's and next week's medium and high impact economic events (Forex Factory feed), with what each one usually moves.
+- **How your holdings move together** (Portfolio): a correlation heatmap of weekly returns over two years, the pairs that move most alike and the best diversifiers.
+- **Shortcuts**: Ctrl+K or / jumps to search; watchlist and trending prices flash green or red when they change.
+
 ## Logos
 
 Company and fund logos come from Financial Modeling Prep and Parqet, fetched by

@@ -53,7 +53,7 @@
   // Refresh buttons: rf("key") renders "Updated hh:mm:ss  ↻"; RF[key] reloads that section with fresh data.
   let RF = {};
   const RF_NAMES = { market: "market signals", wl: "watchlist", hnews: "news", screener: "market table", signals: "signals", quote: "quote and plan", chart: "chart",
-    perf: "performance", fund: "fundamentals", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
+    perf: "performance", fund: "fundamentals", brief: "briefing", corr: "correlation", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
   const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh ${RF_NAMES[key] || "this section"}"><i data-lucide="rotate-cw"></i></button></span>`;
   const stamp = (key) => $$(`[data-upd="${key}"]`).forEach((el) => (el.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })));
   async function runRefresh(key, btn) {
@@ -93,7 +93,18 @@
     state.screenerAt = Date.now();
     return state.screener;
   }
+  async function getRevolut(force) {
+    if (state.revolut === undefined || force) state.revolut = await api("/api/revolut/portfolio").catch(() => null);
+    return state.revolut && state.revolut.linked ? state.revolut : null;
+  }
+  // every broker position (Trading 212 + Revolut import), each tagged with its source
+  function brokerPositions() {
+    const t = state.t212 && !state.t212.error ? state.t212.positions.map((p) => Object.assign({ source: "Trading 212" }, p)) : [];
+    const r = state.revolut && state.revolut.linked ? state.revolut.positions.map((p) => Object.assign({ source: "Revolut" }, p)) : [];
+    return t.concat(r);
+  }
   async function getT212(force) {
+    await getRevolut(force);
     if (!state.t212Status || force) state.t212Status = await api("/api/t212/status").catch(() => ({ linked: false }));
     if (!state.t212Status.linked) return null;
     try { state.t212 = await api("/api/t212/portfolio"); } catch (e) { state.t212 = { error: e.message }; }
@@ -226,6 +237,18 @@
     if (!el.isConnected) return;
     const by = Object.fromEntries(rows.map((r) => [r.symbol, r]));
     el.innerHTML = liveRowsHtml(symbols.map((s) => by[s]).filter(Boolean), extra);
+    flash(el, rows);
+  }
+  // a short green/red pulse on rows whose price changed since the last refresh
+  const lastPx = {};
+  function flash(el, rows) {
+    rows.forEach((r) => {
+      const before = lastPx[r.symbol];
+      lastPx[r.symbol] = r.price;
+      if (before == null || r.price == null || before === r.price) return;
+      const a = el.querySelector(`a[href="#/stock/${encodeURIComponent(r.symbol)}"] .lr-px`);
+      if (a) { a.classList.remove("flash-up", "flash-down"); void a.offsetWidth; a.classList.add(r.price > before ? "flash-up" : "flash-down"); }
+    });
   }
 
   // ------------------------------------------------------------ pages
@@ -238,6 +261,7 @@
     const lt = isLT();
     view.innerHTML = `<h1>Market Dashboard</h1><p class="sub">${lt ? "Your long-term overview: quality businesses on sale, your watchlist, portfolio and the market mood." : "Live overview of the market, today's best setups, your watchlist and portfolio."}</p>
       <div id="moodBanner" style="margin-bottom:16px"></div>
+      <div class="card brief-card" style="margin-bottom:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="sunrise"></i>Your briefing</h2><span style="display:flex;gap:10px;align-items:center">${rf("brief")}<a href="#/news?tab=cal">Calendar →</a></span></div><div id="brief">${skeleton(4)}</div></div>
       <div class="grid g4" id="stats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>${lt ? "Quality on sale" : "Top Strong Buys"}</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
@@ -255,10 +279,19 @@
       $("#hn") && ($("#hn").innerHTML = newsHtml(news.slice(0, 7), true));
     }).catch((e) => $("#hn") && ($("#hn").innerHTML = `<p class="error">${esc(e.message)}</p>`));
     RF.hnews().then(() => stamp("hnews"));
+    RF.brief = async () => {
+      await getT212().catch(() => null);
+      const pos = brokerPositions().concat(manual().map((m) => Object.assign({ mv: m.qty * m.avgPrice }, m)));
+      const w = {};
+      pos.forEach((p) => { w[p.symbol] = (w[p.symbol] || 0) + (p.valueAcct || p.value || p.mv || 0); });
+      const syms = Object.keys(w).sort((a, b) => w[b] - w[a]);
+      if (window.Insights && $("#brief")) await window.Insights.briefing($("#brief"), syms.length ? syms : watchlist().slice(0, 15), w);
+    };
+    RF.brief().then(() => stamp("brief"));
     if (window.Trade) window.Trade.regime($("#moodBanner"));
     RF.market = async () => { await Promise.all([homeMarket(), loadStrip(), window.Trade ? window.Trade.regime($("#moodBanner")) : null]); };
     RF.wl = homeWatch;
-    RF.trend = async () => { const t = await api("/api/trending").catch(() => []); const el = $("#trend"); if (el) el.innerHTML = liveRowsHtml(t); };
+    RF.trend = async () => { const t = await api("/api/trending").catch(() => []); const el = $("#trend"); if (el) { el.innerHTML = liveRowsHtml(t); flash(el, t); } };
     RF.trend().then(() => stamp("trend"));
     homeWatch().then(() => stamp("wl"));
     await homeMarket(); stamp("market");
@@ -279,7 +312,7 @@
       <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${ratingBadge(spy.rating)} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
       <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
       <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 →</a></div>`}</div>`;
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 or Revolut →</a></div>`}</div>`;
     if (isLT() && window.LT) {
       $("#stats").children[2].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
       $("#top").innerHTML = `<p class="muted" style="font-size:13px">Scoring stocks for quality and value (the first time takes about a minute)…</p>`;
@@ -452,7 +485,7 @@
     try { a = await api("/api/analysis?symbol=" + encodeURIComponent(sym)); if (rid !== routeId) return; }
     catch (e) { if (rid !== routeId) return; view.innerHTML = `<div class="card empty"><h2>Couldn't load ${esc(sym)}</h2><p class="error">${esc(e.message)}</p><p>Try the search box: some tickers need an exchange suffix (e.g. VUSA.L for London, SAP.DE for Xetra).</p></div>`; return; }
     const t212 = state.t212 && !state.t212.error ? state.t212 : null;
-    const held = (t212 ? t212.positions : []).concat(manual()).find((p) => p.symbol === a.symbol);
+    const held = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
     const p = a.plan;
     view.innerHTML = `
       <div class="quote-head">
@@ -690,10 +723,12 @@
   function portfolioSummary(t212, rows) {
     const quotes = Object.fromEntries((rows || []).map((r) => [r.symbol, r]));
     const t = t212 && !t212.error ? t212 : null;
+    const rv = state.revolut && state.revolut.linked ? state.revolut : null;
     const m = manual();
-    if (!t && !m.length) return null;
-    let value = 0, ppl = 0, ccy = t ? t.currency : settings().ccy || "USD";
+    if (!t && !rv && !m.length) return null;
+    let value = 0, ppl = 0, ccy = t ? t.currency : rv ? rv.currency : settings().ccy || "USD";
     if (t) { value += t.cash.total || 0; ppl += t.cash.ppl || 0; }
+    if (rv) { value += rv.totals.value || 0; ppl += rv.ppl || 0; }
     for (const p of m) {
       const q = quotes[p.symbol]; const px = q ? q.price : p.avgPrice;
       value += p.qty * px; ppl += p.qty * (px - p.avgPrice);
@@ -704,7 +739,7 @@
   pages.portfolio = async function (arg, params) {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
     const lt = isLT();
-    view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only) plus manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only) plus any holdings you add by hand, with a live rating and exit check on every position."}</p>
+    view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only), Revolut statement and manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only), Revolut statement and any holdings you add by hand, with a live rating and exit check on every position."}</p>
       <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
         <div id="pret" class="ret-grid ret7">${skeleton(2)}</div>
@@ -714,11 +749,13 @@
         <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio value</span><span style="color:var(--text-muted)"><i class="dash"></i>Money invested (cost of shares held)</span><span style="color:var(--series-2)"><i class="dash"></i>Same money in a world index fund (VWRL)</span><span><i style="background:rgba(12,163,12,.4);height:10px"></i>Gain</span><span><i style="background:rgba(208,59,59,.4);height:10px"></i>Loss</span></div>
         <div id="phWarn" class="muted" style="font-size:12px;margin-top:6px"></div>
       </div>
+      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="grid-3x3"></i>How your holdings move together</h2>${rf("corr")}</div><div id="corrBox">${skeleton(5)}</div></div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="telescope"></i>10-year plan</h2><span class="muted" style="font-size:12.5px">what monthly investing could grow to</span></div><div id="projBox">${skeleton(5)}</div></div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
         <div class="grid" style="align-content:start">
           <div class="card" id="link">${skeleton(4)}</div>
+          <div class="card" id="revBox">${skeleton(3)}</div>
           <div class="card"><div class="card-head"><h2>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
           <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
         </div>
@@ -770,7 +807,9 @@
     loadHistory(t212).then(() => stamp("hist"));
 
     const t = t212 && !t212.error ? t212 : null;
-    const positions = (t ? t.positions.map((p) => Object.assign({ source: "Trading 212" }, p)) : []).concat(manual().map((p, i) => Object.assign({ source: "Manual", idx: i }, p)));
+    const rv = state.revolut && state.revolut.linked ? state.revolut : null;
+    if ($("#revBox") && window.Insights) window.Insights.revolutCard($("#revBox"), () => pages.portfolio("", new URLSearchParams()));
+    const positions = brokerPositions().concat(manual().map((p, i) => Object.assign({ source: "Manual", idx: i }, p)));
     const syms = [...new Set(positions.map((p) => p.symbol))];
     const quotes = syms.length ? await api("/api/quotes?symbols=" + encodeURIComponent(syms.join(","))).catch(() => []) : [];
     const Q = Object.fromEntries(quotes.filter((q) => !q.error).map((q) => [q.symbol, q]));
@@ -814,19 +853,27 @@
       RF.divs = () => (t ? window.LT.dividends($("#divBox"), t.currency) : null);
       if (t) window.LT.dividends($("#divBox"), t.currency).then(() => stamp("divs"));
     }
-    const ccy = t ? t.currency : "USD";
+    const ccy = t ? t.currency : rv ? rv.currency : settings().ccy || "USD";
     const invested = positions.reduce((a, p) => a + (p.avgPrice || 0) * (p.qty || 0), 0);
-    const total = t ? (t.cash.total || 0) + manual().reduce((a, p) => a + p.qty * (Q[p.symbol] ? Q[p.symbol].price : p.avgPrice), 0) : positions.reduce((a, p) => a + p.mv, 0);
+    const manualVal = manual().reduce((a, p) => a + p.qty * (Q[p.symbol] ? Q[p.symbol].price : p.avgPrice), 0);
+    const total = t || rv ? (t ? t.cash.total || 0 : 0) + (rv ? rv.totals.value || 0 : 0) + manualVal : positions.reduce((a, p) => a + p.mv, 0);
     const ppl = (t && t.cash.ppl != null ? t.cash.ppl : positions.filter((p) => p.source === "Trading 212").reduce((a, p) => a + (p.ppl || 0), 0)) +
-      positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
+      (rv ? rv.ppl || 0 : 0) + positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
     if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     $("#pstats").innerHTML = `
-      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${t ? "Trading 212 " + esc(t.env) + (manual().length ? " + manual" : "") : "manual holdings"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t ? pct(100 * ppl / invested) : ""}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+    if (window.Insights && $("#corrBox")) {
+      const bySym = {};
+      positions.forEach((p) => { bySym[p.symbol] = (bySym[p.symbol] || 0) + (p.valueAcct || p.mv || 0); });
+      const cs = Object.keys(bySym).sort((a, b) => bySym[b] - bySym[a]);
+      RF.corr = () => window.Insights.correlation($("#corrBox"), cs);
+      RF.corr().then(() => stamp("corr"));
+    }
     if (window.Projection && $("#projBox")) {
       const etfVal = positions.filter((p) => /ETF|MUTUALFUND/i.test((p.q && p.q.type) || "")).reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0);
       const posVal = positions.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0);
@@ -835,7 +882,8 @@
     stamp("pos");
 
     if (!positions.length) {
-      $("#ptbl").innerHTML = `<p class="empty">No positions yet. Link Trading 212 or add a holding below.</p>`;
+      $("#ptbl").innerHTML = `<p class="empty">No positions yet. Link Trading 212, import a Revolut statement or add a holding below.</p>`;
+      if ($("#corrBox")) $("#corrBox").innerHTML = `<p class="muted">Add holdings to see how they move together.</p>`;
       $("#alloc").innerHTML = `<p class="empty">Nothing to chart yet.</p>`;
       return;
     }
@@ -880,8 +928,8 @@
 
   async function loadHistory(t212) {
     const t = t212 && !t212.error ? t212 : null;
-    if (!t && !manual().length) {
-      $("#pret").innerHTML = `<p class="muted">Link Trading 212 or add holdings to see your returns.</p>`;
+    if (!t && !(state.revolut && state.revolut.linked) && !manual().length) {
+      $("#pret").innerHTML = `<p class="muted">Link Trading 212, import a Revolut statement or add holdings to see your returns.</p>`;
       $("#vchart").innerHTML = `<p class="empty">No history yet.</p>`; $("#vchart").style.height = "auto";
       return;
     }
@@ -1124,26 +1172,30 @@
       ${!compact && n.thumb ? `<img src="${safeUrl(n.thumb)}" alt="" loading="lazy">` : ""}
       <div><div class="t">${esc(n.title)}</div>
       ${!compact && n.summary ? `<div class="d">${esc(n.summary)}</div>` : ""}
-      <div class="m">${esc(n.publisher || "")} · ${ago(n.time)} ${(n.tickers || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${(n.tags || []).map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</div></div></a>`).join("");
+      <div class="m">${window.Insights ? window.Insights.newsBadges(n) : ""}${esc(n.publisher || "")} · ${ago(n.time)} ${(n.tickers || []).map((t) => `<span class="tag tag-go" role="link" data-go="${esc(t)}">${esc(t)}</span>`).join("")}${(n.tags || []).map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</div></div></a>`).join("");
   }
 
-  pages.news = async function () {
-    const t = state.t212 && !state.t212.error ? state.t212.positions.map((p) => p.symbol) : [];
+  pages.news = async function (arg, params) {
+    if (state.revolut === undefined) await getT212().catch(() => null);
+    const t = brokerPositions().map((p) => p.symbol);
     const mine = [...new Set([...t, ...manual().map((p) => p.symbol), ...watchlist()])];
-    view.innerHTML = `<h1>Trading News</h1><p class="sub">Headlines for your holdings and watchlist, or the whole market. Tagged by type so earnings, analyst calls and deals stand out.</p>
-      <div class="toolbar"><div class="seg" id="ns"><button data-s="mine" class="on">My stocks</button><button data-s="market">Market</button></div>
+    view.innerHTML = `<h1>Trading News</h1><p class="sub">Headlines for your holdings and watchlist, or the whole market, tagged bullish or bearish and by impact. Calendar shows earnings dates and the economic events that move markets.</p>
+      <div class="toolbar"><div class="seg" id="ns"><button data-s="mine" class="on">My stocks</button><button data-s="market">Market</button><button data-s="cal">Calendar</button></div>
         <input type="text" id="nsym" placeholder="Ticker, e.g. AMD" aria-label="News for ticker" style="width:150px"><button class="btn" id="ngo" type="button">Show</button>
-        <select id="ntag" aria-label="Filter by type"><option value="">All types</option><option value="earnings">Earnings</option><option value="analyst">Analyst</option><option value="deal">Deals</option><option value="legal">Legal</option><option value="macro">Macro</option></select>${rf("news")}</div>
+        <select id="ntag" aria-label="Filter by type"><option value="">All types</option><option value="!important">Important only</option><option value="!bull">Bullish</option><option value="!bear">Bearish</option><option value="earnings">Earnings</option><option value="analyst">Analyst</option><option value="deal">Deals</option><option value="legal">Legal</option><option value="macro">Macro</option></select>${rf("news")}</div>
       <div id="nl" class="news-list">${skeleton(10)}</div>`;
     let items = [];
     let shown = 20;
     const paint = () => {
-      const tag = $("#ntag").value, list = tag ? items.filter((n) => n.tags.includes(tag)) : items;
+      const tag = $("#ntag").value;
+      const keep = { "!important": (n) => n.impact !== "low", "!bull": (n) => n.mood === "bullish", "!bear": (n) => n.mood === "bearish" }[tag] || ((n) => n.tags.includes(tag));
+      const list = tag ? items.filter(keep) : items;
       $("#nl").innerHTML = newsHtml(list.slice(0, shown)) + (list.length > shown ? `<button class="btn" id="nMore" type="button">Load more (${list.length - shown})</button>` : "");
       const more = $("#nMore"); if (more) more.addEventListener("click", () => { shown += 20; paint(); });
     };
     let last = [];
     const load = async (syms) => {
+      if (!syms) return;
       last = syms;
       $("#nl").innerHTML = skeleton(10);
       try { items = await api("/api/news?symbols=" + encodeURIComponent(syms.join(","))); paint(); stamp("news"); }
@@ -1151,13 +1203,16 @@
     };
     $$("#ns button").forEach((b) => b.addEventListener("click", () => {
       $$("#ns button").forEach((x) => x.classList.toggle("on", x === b));
+      if (b.dataset.s === "cal") { last = null; RF.news = () => window.Insights.calendar($("#nl"), mine); return RF.news().then(() => stamp("news")); }
+      RF.news = () => load(last);
       load(b.dataset.s === "mine" ? mine.slice(0, 25) : ["stock market news", "SPY", "QQQ", "^VIX", "DIA"]);
     }));
     $("#ngo").addEventListener("click", () => { const s = $("#nsym").value.trim().toUpperCase(); if (s) load([s]); });
     $("#nsym").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#ngo").click(); });
     $("#ntag").addEventListener("change", paint);
     RF.news = () => load(last);
-    load(mine.length ? mine.slice(0, 25) : ["stock market news"]);
+    if (params && params.get("tab") === "cal") $('#ns button[data-s="cal"]').click();
+    else load(mine.length ? mine.slice(0, 25) : ["stock market news"]);
   };
 
   // ------------------------------------------------------------ router
@@ -1186,7 +1241,7 @@
     $$("button:not([type])").forEach((b) => { if (!b.closest("form")) b.setAttribute("type", "button"); });
   }).observe(view, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   // shared with trade.js (order ticket, alerts, risk, journal, backtest)
-  window.TD = { logo, isLT, api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
+  window.TD = { logo, isLT, api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, getRevolut, brokerPositions, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
   window.addEventListener("hashchange", route);
   syncModeUI();
   route();

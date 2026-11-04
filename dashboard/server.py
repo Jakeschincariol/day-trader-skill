@@ -37,6 +37,7 @@ import hmac
 import secrets
 import socket
 import calendar
+import datetime
 import email.utils
 import concurrent.futures
 import json
@@ -694,6 +695,7 @@ def get_news(symbols):
                 "tickers": sorted(set(n.get("relatedTickers") or []))[:6],
                 "tags": [name for name, pat in TAGS if re.search(pat, title + " " + (n.get("summary") or ""), re.I)],
             })
+            items[-1]["mood"], items[-1]["impact"] = news_impact(title, n.get("summary") or "")
     items.sort(key=lambda x: x.get("time") or 0, reverse=True)
     return items[:100]
 
@@ -1580,18 +1582,24 @@ def period_returns(h):
     return out
 
 
-def build_lots(manual, include_t212=True):
+def build_lots(manual, include_t212=True, include_revolut=True):
     lots, notes = [], []
+    base = None
+    if include_revolut and os.path.exists(REVOLUT_FILE):
+        try:
+            rl, base = revolut_lots()
+            lots += rl
+        except Exception as e:
+            notes.append("Revolut history unavailable (%s)" % str(e)[:80])
     for m in manual or []:
         try:
             ts = _iso_ts(m.get("date")) or int(time.time()) - 86400
             lots.append({"symbol": str(m["symbol"]).upper(), "ts": ts, "qty": float(m["qty"]), "price": float(m["avgPrice"])})
         except (KeyError, TypeError, ValueError):
             continue
-    base = None
     if include_t212 and T212["key"]:
         pf = t212_portfolio()
-        base = pf.get("currency")
+        base = pf.get("currency") or base
         try:
             orders, complete = t212_orders()
         except Exception as e:
@@ -2448,6 +2456,559 @@ def _dd_series(p):
 # ---------------------------------------------------------------- HTTP
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+# ---------------------------------------------------------------- news impact (rules, no AI key needed)
+
+BULL = [(r"\bbeats?\b|\btops? (estimates|expectations|forecasts)|record (revenue|profit|sales|quarter)|better[- ]than[- ]expected", 2),
+        (r"\bupgrade[sd]?\b|raises? (its )?price target|price target (raised|hike)|\boutperform\b|\bbuy rating\b", 2),
+        (r"raises? (its )?(guidance|outlook|forecast)|boosts? (guidance|outlook|forecast)|lifts? (guidance|outlook|forecast)", 3),
+        (r"\bsurge[sd]?\b|\bsoar(s|ed)?\b|\bjump(s|ed)?\b|\brall(y|ies|ied)\b|\bclimb(s|ed)?\b|\bgains?\b|\brises?\b|\bhighs?\b", 1),
+        (r"buyback|repurchase|dividend (hike|increase)|raises? (its )?dividend", 1),
+        (r"\bwins?\b.{0,30}\b(contract|deal|order)|partnership|\bapprov(al|es|ed)\b|strong demand", 1)]
+BEAR = [(r"\bmiss(es|ed)?\b|falls? short|below (estimates|expectations)|worse[- ]than[- ]expected", 2),
+        (r"\bdowngrade[sd]?\b|cuts? (its )?price target|price target (cut|lowered)|\bunderperform\b|\bsell rating\b", 2),
+        (r"cuts? (its )?(guidance|outlook|forecast)|lowers? (its )?(guidance|outlook|forecast)|profit warning|\bwarns?\b", 3),
+        (r"\bplunge[sd]?\b|\bsinks?\b|\btumble[sd]?\b|\bslump(s|ed)?\b|\bcrash(es|ed)?\b|\bsell-?off\b|\bslides?\b|\bdrops?\b|\bfalls?\b|\blows?\b", 1),
+        (r"lawsuit|\bprobe\b|investigation|\bfraud\b|\brecall\b|antitrust|\bban(s|ned)?\b|export (curbs|controls|restrictions)", 1),
+        (r"layoffs?|job cuts|bankrupt|\bdefault\b|delist|short seller", 2)]
+HIGH = r"earnings|results|guidance|outlook|forecast|acquir|merger|buyout|takeover|\bFDA\b|bankrupt|downgrade|upgrade|\bSEC\b|fraud|recall|\bCEO\b|tariff|export (ban|curbs|controls)|\bFed\b|rate (cut|hike)|profit warning"
+
+
+def news_impact(title, summary=""):
+    """('bullish'|'bearish'|'neutral', 'high'|'medium'|'low') from simple keyword rules."""
+    def score(text, w):
+        s = 0.0
+        for pat, pts in BULL:
+            if re.search(pat, text, re.I):
+                s += pts * w
+        for pat, pts in BEAR:
+            if re.search(pat, text, re.I):
+                s -= pts * w
+        return s
+    s = score(title or "", 1.0) + score(summary or "", 0.4)
+    mood = "bullish" if s >= 1 else "bearish" if s <= -1 else "neutral"
+    big = re.search(HIGH, title or "", re.I)
+    impact = "high" if big and abs(s) >= 1 else "medium" if big or abs(s) >= 2 else "low"
+    return mood, impact
+
+
+# ---------------------------------------------------------------- economic calendar
+
+ECON_WHY = [
+    (r"CPI|Inflation", "Inflation: hotter than expected usually hits growth and tech stocks (rates stay high for longer)."),
+    (r"Non-Farm|NFP|Employment Change|Unemployment Rate", "Jobs: a very strong or very weak number moves rate expectations and the whole market."),
+    (r"Federal Funds|FOMC|Fed Chair|Powell", "US central bank: rate decisions and hints move every stock, the dollar and bonds."),
+    (r"Main Refinancing|ECB|Lagarde|Deposit Facility", "European Central Bank: moves the euro, European stocks and your EUR returns on US shares."),
+    (r"Official Bank Rate|BOE|MPC", "Bank of England: moves the pound and UK stocks."),
+    (r"BOJ|Policy Rate", "Bank of Japan: can shake global markets through the yen."),
+    (r"PCE", "The Fed's favourite inflation gauge."),
+    (r"GDP", "Economic growth: a big miss raises recession worries."),
+    (r"PMI|ISM", "Business surveys: an early sign of growth or slowdown."),
+    (r"Retail Sales", "Consumer spending: about two thirds of the US economy."),
+    (r"Unemployment Claims", "Weekly layoffs: a sudden jump is an early recession signal."),
+]
+
+
+def econ_calendar():
+    def load():
+        out = []
+        for feed in ("thisweek", "nextweek"):
+            try:
+                req = urllib.request.Request("https://nfs.faireconomy.media/ff_calendar_%s.json" % feed, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    data = json.loads(resp.read())
+            except Exception:
+                if feed == "thisweek":
+                    raise
+                continue
+            for e in data:
+                if e.get("country") not in ("USD", "EUR", "GBP", "JPY", "CNY") or e.get("impact") not in ("High", "Medium"):
+                    continue
+                try:
+                    ts = int(datetime.datetime.fromisoformat(e["date"]).timestamp())
+                except (KeyError, ValueError):
+                    continue
+                why = next((w for pat, w in ECON_WHY if re.search(pat, e.get("title") or "")), "")
+                out.append({"title": e.get("title"), "country": e.get("country"), "ts": ts, "impact": e.get("impact").lower(),
+                            "forecast": e.get("forecast") or None, "previous": e.get("previous") or None,
+                            "actual": e.get("actual") or None, "why": why})
+        seen, uniq = set(), []
+        for e in sorted(out, key=lambda x: x["ts"]):
+            k = (e["title"], e["country"], e["ts"])
+            if k not in seen:
+                seen.add(k)
+                uniq.append(e)
+        return uniq
+    return cached(("econ",), 3600, load)
+
+
+def calendar_for(symbols):
+    try:
+        econ = econ_calendar()
+        err = None
+    except Exception as e:
+        econ, err = [], "Economic calendar unavailable (%s)" % str(e)[:80]
+    earn = []
+    for s, e in zip(symbols[:60], POOL.map(lambda x: next_earnings(x, True), symbols[:60])):
+        if e and e["days"] <= 45:
+            earn.append({"symbol": s, "date": e["date"], "days": e["days"]})
+    earn.sort(key=lambda x: x["days"])
+    return {"econ": econ, "earnings": earn, "error": err}
+
+
+# ---------------------------------------------------------------- morning briefing (rules, no AI key needed)
+
+def briefing(symbols, weights=None):
+    """A short plain-English summary: market, your biggest moves, news that matters, earnings and events."""
+    weights = weights or {}
+    now = time.time()
+    lines = []
+    idx = {q["symbol"]: q for q in spark(["SPY", "QQQ", "^STOXX50E", "VWRL.L", "^VIX"])}
+    spy, qqq, eu, vix = (idx.get(s) or {} for s in ("SPY", "QQQ", "^STOXX50E", "^VIX"))
+    if spy.get("changePct") is not None:
+        mood = "up" if spy["changePct"] > 0.3 else "down" if spy["changePct"] < -0.3 else "flat"
+        txt = "US market %s: S&P 500 %+.1f%%, Nasdaq 100 %+.1f%%" % (mood, spy["changePct"], qqq.get("changePct") or 0)
+        if eu.get("changePct") is not None:
+            txt += ", Europe %+.1f%%" % eu["changePct"]
+        if vix.get("price"):
+            txt += ". Fear gauge (VIX) %.0f%s" % (vix["price"], " (nervous market)" if vix["price"] >= 25 else " (calm)" if vix["price"] < 16 else "")
+        lines.append({"kind": "market", "tone": "up" if mood == "up" else "down" if mood == "down" else "flat", "text": txt + "."})
+    quotes = [q for q in spark(symbols[:60]) if q.get("changePct") is not None] if symbols else []
+    if quotes:
+        tw = sum(weights.get(q["symbol"], 0) for q in quotes)
+        if tw > 0:
+            day = sum(weights.get(q["symbol"], 0) * q["changePct"] for q in quotes) / tw
+            lines.append({"kind": "portfolio", "tone": "up" if day > 0 else "down", "text": "Your holdings today: about %+.1f%% on average (weighted by size)." % day})
+        movers = sorted(quotes, key=lambda q: -abs(q["changePct"]))
+        big = [q for q in movers if abs(q["changePct"]) >= 3][:4]
+        if big:
+            lines.append({"kind": "movers", "tone": "flat", "text": "Big moves: " + ", ".join("%s %+.1f%%" % (q["symbol"], q["changePct"]) for q in big) + ".",
+                          "symbols": [q["symbol"] for q in big]})
+        else:
+            lines.append({"kind": "movers", "tone": "flat", "text": "No holding moved more than 3% today: a quiet day."})
+    names = directory_names()
+    stop = {"the", "inc", "corp", "group", "holdings", "company", "international", "technologies", "energy", "applied", "advanced"}
+
+    def about(n):
+        """Yahoo's per-ticker feed mixes in general headlines: keep the ones that name a holding."""
+        title, text = n.get("title") or "", "%s %s" % (n.get("title") or "", n.get("summary") or "")
+        hit = []
+        for s in symbols[:20]:
+            word = next((w for w in re.findall(r"[A-Za-z][A-Za-z&]+", names.get(s) or "") if w.lower() not in stop and len(w) > 2), None)
+            if re.search(r"\(%s\)|\b%s\b" % (re.escape(s.split(".")[0]), re.escape(s.split(".")[0])), title) or \
+                    re.search(r"\(%s\)" % re.escape(s.split(".")[0]), text) or (word and re.search(r"\b%s\b" % re.escape(word), title, re.I)):
+                hit.append(s)
+        return hit
+    news = []
+    for n in (get_news(symbols[:20]) if symbols else []):
+        if (n.get("time") or 0) >= now - 36 * 3600:
+            hit = about(n)
+            if hit:
+                n["tickers"] = hit
+                news.append(n)
+    news.sort(key=lambda n: ({"high": 0, "medium": 1, "low": 2}[n["impact"]], -(n.get("time") or 0)))
+    picked = [n for n in news if n["impact"] != "low"][:5]
+    for n in picked:
+        lines.append({"kind": "news", "tone": {"bullish": "up", "bearish": "down"}.get(n["mood"], "flat"), "text": n["title"],
+                      "link": n.get("link"), "publisher": n.get("publisher"), "time": n.get("time"), "mood": n["mood"], "impact": n["impact"],
+                      "symbols": n.get("tickers") or []})
+    cal = calendar_for(symbols)
+    soon = [e for e in cal["earnings"] if e["days"] <= 7]
+    if soon:
+        lines.append({"kind": "earnings", "tone": "flat", "text": "Earnings this week: " + ", ".join(
+            "%s %s" % (e["symbol"], "today" if e["days"] == 0 else "tomorrow" if e["days"] == 1 else "in %d days" % e["days"]) for e in soon[:6])
+            + ". Expect bigger swings around these dates.", "symbols": [e["symbol"] for e in soon[:6]]})
+    ev, seen = [], set()
+    for e in sorted((e for e in cal["econ"] if now - 3600 <= e["ts"] <= now + 48 * 3600 and e["impact"] == "high" and e["country"] in ("USD", "EUR")),
+                    key=lambda e: ({"USD": 0, "EUR": 1}.get(e["country"], 2), e["ts"])):
+        if (e["country"], e["ts"]) not in seen:
+            seen.add((e["country"], e["ts"]))
+            ev.append(e)
+    for e in sorted(ev[:3], key=lambda e: e["ts"]):
+        when = time.strftime("%a %H:%M UTC", time.gmtime(e["ts"]))
+        lines.append({"kind": "event", "tone": "flat", "text": "%s %s (%s)%s" % (e["country"], e["title"], when, ": " + e["why"] if e["why"] else ""),
+                      "ts": e["ts"]})
+    if not picked and symbols:
+        lines.append({"kind": "news", "tone": "flat", "text": "No important headlines on your holdings in the last 36 hours."})
+    return {"lines": lines, "at": int(now)}
+
+
+# ---------------------------------------------------------------- correlation of your holdings
+
+def holdings_correlation(symbols, weeks=104):
+    """Correlation of weekly returns (2 years). Weekly steps hide the different closing hours of
+    US, European and Asian exchanges, which make daily correlations look too low."""
+    def load(s):
+        try:
+            return s, _daily_adj(s, "2y")[0]
+        except Exception:
+            return s, None
+    series = {s: p for s, p in POOL.map(load, symbols[:30]) if p}
+    syms = [s for s in symbols if s in series]
+    if len(syms) < 2:
+        return {"symbols": syms, "matrix": [], "avg": None, "pairs": []}
+    weekly = lambda ds: ds[::-5][::-1][-(weeks + 1):]
+    common = weekly(sorted(set.intersection(*[set(series[s]) for s in syms])))
+    if len(common) < 30:  # a young listing: fall back to each pair's own overlap
+        common = None
+    rets = {}
+
+    def r_of(s, dates):
+        p = series[s]
+        return [p[dates[i]] / p[dates[i - 1]] - 1 for i in range(1, len(dates)) if p[dates[i - 1]]]
+    m, pairs = [], []
+    for i, a in enumerate(syms):
+        row = []
+        for j, b in enumerate(syms):
+            if i == j:
+                row.append(1.0)
+                continue
+            if j < i:
+                row.append(m[j][i])
+                continue
+            dates = common or weekly(sorted(set(series[a]) & set(series[b])))
+            c = _corr(r_of(a, dates), r_of(b, dates)) if len(dates) > 20 else None
+            row.append(round(c, 2) if c is not None else None)
+            if c is not None:
+                pairs.append({"a": a, "b": b, "corr": round(c, 2)})
+        m.append(row)
+    vals = [p["corr"] for p in pairs]
+    pairs.sort(key=lambda p: -p["corr"])
+    return {"symbols": syms, "matrix": m, "avg": round(sum(vals) / len(vals), 2) if vals else None,
+            "pairs": pairs[:5], "low": sorted(pairs, key=lambda p: p["corr"])[:3], "weeks": len(common) - 1 if common else None}
+
+
+# ---------------------------------------------------------------- Revolut: import the statement file (no API exists)
+
+REVOLUT_FILE = os.path.join(HERE, ".revolut.json")  # git-ignored, stays on this computer
+_rev_lock = threading.Lock()
+CCY_SIGNS = {"$": "USD", "€": "EUR", "£": "GBP", "CHF": "CHF", "USD": "USD", "EUR": "EUR", "GBP": "GBP"}
+REV_COLS = {
+    "date": ("date", "time", "date/time", "completed date", "trade date", "datetime"),
+    "ticker": ("ticker", "symbol", "ticker symbol", "instrument", "isin/ticker"),
+    "type": ("type", "transaction type", "action", "side"),
+    "qty": ("quantity", "shares", "qty", "no. of shares", "units", "amount of shares"),
+    "price": ("price per share", "price", "share price", "average price", "avg price", "avg. price", "average cost"),
+    "amount": ("total amount", "amount", "total", "value", "net amount"),
+    "ccy": ("currency", "ccy"),
+    "name": ("name", "company", "description", "security name"),
+}
+
+
+def num_text(s):
+    """'USD 1,234.50', '$1,234.50', '-€12.30', '1.234,50 €', '0,5' -> float (None if empty)."""
+    if s is None:
+        return None
+    if isinstance(s, (int, float)):
+        return float(s)
+    t = str(s).strip()
+    neg = t.startswith("-") or t.startswith("(") or bool(re.match(r"^[A-Z$€£ ]{1,5}-", t))
+    t = re.sub(r"[^0-9,.]", "", t)
+    if not t:
+        return None
+    if "," in t and "." in t:
+        t = t.replace(".", "").replace(",", ".") if t.rfind(",") > t.rfind(".") else t.replace(",", "")
+    elif "," in t:
+        parts = t.split(",")
+        t = t.replace(",", ".") if len(parts) == 2 and len(parts[1]) != 3 else t.replace(",", "")
+    try:
+        v = float(t)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def _ccy_of(s):
+    t = str(s or "").strip()
+    for k, v in CCY_SIGNS.items():
+        if t.startswith(k) or t.endswith(k):
+            return v
+    m = re.match(r"^([A-Z]{3})\b", t)
+    return m.group(1) if m else None
+
+
+def _xlsx_rows(data):
+    import zipfile
+    import io
+    z = zipfile.ZipFile(io.BytesIO(data))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    shared = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall("m:si", ns):
+            shared.append("".join(t.text or "" for t in si.iter("{%s}t" % ns["m"])))
+    sheet = sorted(n for n in z.namelist() if n.startswith("xl/worksheets/sheet"))[0]
+    rows = []
+    for row in ET.fromstring(z.read(sheet)).iter("{%s}row" % ns["m"]):
+        out = {}
+        for c in row.findall("m:c", ns):
+            ref = re.match(r"([A-Z]+)", c.get("r") or "A").group(1)
+            col = 0
+            for ch in ref:
+                col = col * 26 + ord(ch) - 64
+            v = c.find("m:v", ns)
+            if c.get("t") == "s" and v is not None:
+                val = shared[int(v.text)]
+            elif c.get("t") == "inlineStr":
+                val = "".join(t.text or "" for t in c.iter("{%s}t" % ns["m"]))
+            else:
+                val = v.text if v is not None else ""
+            out[col - 1] = val
+        if out:
+            rows.append([out.get(i, "") for i in range(max(out) + 1)])
+    return rows
+
+
+def _rev_date(s):
+    if s is None or s == "":
+        return None
+    try:
+        f = float(s)
+        if 20000 < f < 80000:  # an Excel date number
+            return int((f - 25569) * 86400)
+    except (TypeError, ValueError):
+        pass
+    t = str(s).strip().replace("Z", "+00:00")
+    try:
+        d = datetime.datetime.fromisoformat(t[:32].replace(" ", "T", 1) if re.match(r"^\d{4}-\d\d-\d\d \d", t) else t[:32])
+        return int(d.timestamp() if d.tzinfo else calendar.timegm(d.timetuple()))
+    except ValueError:
+        pass
+    base = re.sub(r"(\.\d+)?(\+00:00)?$", "", t)
+    for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+                "%m/%d/%Y %H:%M:%S", "%m/%d/%Y", "%d %b %Y", "%b %d, %Y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return calendar.timegm(time.strptime(base, fmt))
+        except ValueError:
+            continue
+    try:
+        return calendar.timegm(time.strptime(t[:10], "%Y-%m-%d"))
+    except ValueError:
+        return None
+
+
+def _rev_symbol(t):
+    t = (t or "").strip().upper()
+    if re.match(r"^[A-Z]{1,5}\.[A-Z]$", t):  # BRK.B -> BRK-B (Yahoo style)
+        t = t.replace(".", "-")
+    return t
+
+
+def parse_revolut(rows):
+    """Rows (header first) from a Revolut trading statement, or any broker's holdings list -> trades."""
+    head_i = next((i for i, r in enumerate(rows[:15]) if any(str(c).strip().lower() in REV_COLS["ticker"] for c in r)), None)
+    if head_i is None:
+        raise ValueError("Couldn't find a Ticker or Symbol column. Export the Revolut trading account statement (Excel/CSV), not the PDF.")
+    head = [str(c).strip().lower() for c in rows[head_i]]
+    col = {k: next((head.index(a) for a in al if a in head), None) for k, al in REV_COLS.items()}
+    if col["qty"] is None:
+        raise ValueError("Couldn't find a Quantity column in the file.")
+    trades, skipped, types = [], 0, {}
+    snapshot = col["type"] is None
+    for r in rows[head_i + 1:]:
+        g = lambda k: (r[col[k]] if col[k] is not None and col[k] < len(r) else "")
+        raw_type = str(g("type")).strip().upper()
+        sym = _rev_symbol(str(g("ticker")))
+        qty, price, amount = num_text(g("qty")), num_text(g("price")), num_text(g("amount"))
+        ccy = (str(g("ccy")).strip().upper()[:3] or None) or _ccy_of(g("price")) or _ccy_of(g("amount"))
+        ts = _rev_date(g("date")) or int(time.time())
+        if snapshot:
+            kind = "buy"
+        elif "BUY" in raw_type:
+            kind = "buy"
+        elif "SELL" in raw_type:
+            kind = "sell"
+        elif "DIVIDEND" in raw_type:
+            kind = "dividend"
+        elif "SPLIT" in raw_type:
+            kind = "split"
+        elif "TOP" in raw_type or "DEPOSIT" in raw_type:
+            kind = "deposit"
+        elif "WITHDRAW" in raw_type:
+            kind = "withdrawal"
+        elif "FEE" in raw_type or "TAX" in raw_type:
+            kind = "fee"
+        elif "TRANSFER" in raw_type and sym and qty:
+            kind = "buy"  # shares moved in from another account
+        else:
+            skipped += 1
+            types[raw_type or "?"] = types.get(raw_type or "?", 0) + 1
+            continue
+        if kind in ("buy", "sell") and (not sym or not qty):
+            skipped += 1
+            continue
+        if kind in ("buy", "sell") and not price and amount and qty:
+            price = abs(amount) / abs(qty)
+        trades.append({"ts": ts, "kind": kind, "symbol": sym or None, "qty": abs(qty) if qty and kind != "split" else qty,
+                       "price": abs(price) if price else None, "amount": amount, "ccy": ccy,
+                       "name": str(g("name")).strip() or None})
+    if not any(t["kind"] in ("buy", "sell") for t in trades):
+        raise ValueError("No share trades found in the file. Use the trading account statement covering all your history.")
+    trades.sort(key=lambda t: t["ts"])
+    return {"trades": trades, "skipped": skipped, "otherTypes": types, "snapshot": snapshot}
+
+
+def revolut_load():
+    if not os.path.exists(REVOLUT_FILE):
+        return None
+    with open(REVOLUT_FILE) as f:
+        return json.load(f)
+
+
+def revolut_save(d):
+    fd = os.open(REVOLUT_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(d, f)
+
+
+def revolut_import(body):
+    import base64
+    import csv
+    import io
+    data = body.get("data") or ""
+    name = str(body.get("name") or "statement.csv")[:120]
+    raw = base64.b64decode(data.split(",", 1)[-1]) if body.get("base64") else data.encode("utf-8")
+    if raw[:2] == b"PK":
+        rows = _xlsx_rows(raw)
+    elif raw[:4] == b"%PDF":
+        raise ValueError("That's the PDF statement. In Revolut choose Excel instead, then import that file.")
+    else:
+        text = raw.decode("utf-8-sig", errors="replace")
+        first = text.splitlines()[0] if text else ""
+        delim = ";" if first.count(";") > first.count(",") else "\t" if first.count("\t") > first.count(",") else ","
+        rows = list(csv.reader(io.StringIO(text), delimiter=delim))
+    out = parse_revolut(rows)
+    acct = (body.get("currency") or "EUR").upper()[:3]
+    with _rev_lock:
+        old = revolut_load() if body.get("merge") else None
+        trades = out["trades"]
+        if old:
+            seen = {(t["ts"], t["kind"], t["symbol"], t["qty"]) for t in old["trades"]}
+            trades = sorted(old["trades"] + [t for t in trades if (t["ts"], t["kind"], t["symbol"], t["qty"]) not in seen], key=lambda t: t["ts"])
+        revolut_save({"currency": acct, "trades": trades, "file": name, "imported": int(time.time()),
+                      "skipped": out["skipped"], "otherTypes": out["otherTypes"], "snapshot": out["snapshot"]})
+    purge(lambda k: k[0] == "revolut")
+    return {"ok": True, "trades": len([t for t in trades if t["kind"] in ("buy", "sell")]), "skipped": out["skipped"],
+            "otherTypes": out["otherTypes"], "positions": len(revolut_holdings(trades))}
+
+
+def _rev_book(trades):
+    """Average-cost book from the trade list: {symbol: {qty, cost, realized, ccy, name, opened}} (closed ones too)."""
+    pos = {}
+    for t in trades:
+        s = t.get("symbol")
+        if not s or t["kind"] not in ("buy", "sell", "split"):
+            continue
+        p = pos.setdefault(s, {"qty": 0.0, "cost": 0.0, "realized": 0.0, "ccy": t.get("ccy"), "name": t.get("name"), "opened": t["ts"]})
+        q = t.get("qty") or 0.0
+        if t["kind"] == "buy":
+            if p["qty"] <= 1e-9:
+                p["opened"] = t["ts"]
+            p["qty"] += q
+            p["cost"] += q * (t.get("price") or 0)
+        elif t["kind"] == "sell":
+            avg = p["cost"] / p["qty"] if p["qty"] > 1e-9 else 0
+            q = min(q, p["qty"])
+            p["realized"] += q * ((t.get("price") or 0) - avg)
+            p["qty"] -= q
+            p["cost"] -= q * avg
+        else:  # split: extra (or fewer) shares, same cost
+            p["qty"] = max(0.0, p["qty"] + q)
+        p["ccy"] = p["ccy"] or t.get("ccy")
+        p["name"] = p["name"] or t.get("name")
+    return pos
+
+
+def revolut_holdings(trades):
+    return {s: p for s, p in _rev_book(trades).items() if p["qty"] > 1e-6}
+
+
+def _resolve(sym):
+    try:
+        return sym, get_bars(sym, "5d")
+    except Exception:
+        pass
+    try:
+        d = yahoo("/v1/finance/search?q=%s&quotesCount=3&newsCount=0" % urllib.parse.quote(sym))
+        for qt in d.get("quotes") or []:
+            if qt.get("symbol") and qt.get("quoteType") in ("EQUITY", "ETF"):
+                return qt["symbol"], get_bars(qt["symbol"], "5d")
+    except Exception:
+        pass
+    return sym, None
+
+
+def revolut_portfolio():
+    d = revolut_load()
+    if not d:
+        return {"linked": False}
+
+    def load():
+        acct = d.get("currency") or "EUR"
+        held = revolut_holdings(d["trades"])
+        found = dict(zip(held, POOL.map(_resolve, list(held))))
+        positions, warn = [], []
+        tot = {"value": 0.0, "cost": 0.0, "realized": 0.0, "dividends": 0.0, "deposits": 0.0, "fees": 0.0}
+        rates = {}
+
+        def rate(c):
+            c = c or acct
+            if c not in rates:
+                rates[c] = fx_rate(c, acct)
+            return rates[c] if rates[c] is not None else 1.0
+        for s, p in held.items():
+            ysym, bars = found[s]
+            price = bars["bars"][-1]["c"] if bars else None
+            qccy = (bars or {}).get("meta", {}).get("currency") or p["ccy"] or "USD"
+            if not bars:
+                warn.append("No live price for %s: shown at cost" % s)
+            avg = p["cost"] / p["qty"] if p["qty"] else 0
+            px = price if price is not None else avg
+            # Yahoo quotes some listings in pence while Revolut reports pounds
+            px_trade = px / 100 if qccy in ("GBp", "GBX") and (p["ccy"] or "") == "GBP" else px
+            fx = rate(p["ccy"] or qccy)
+            value = p["qty"] * px_trade * fx
+            cost = p["cost"] * fx
+            tot["value"] += value
+            tot["cost"] += cost
+            positions.append({"symbol": ysym, "revolut": s, "name": (bars or {}).get("meta", {}).get("name") or p["name"] or s,
+                              "qty": round(p["qty"], 8), "avgPrice": round(avg, 4), "price": px_trade, "currency": p["ccy"] or qccy,
+                              "value": round(value, 2), "valueAcct": round(value, 2), "ppl": round(value - cost, 2),
+                              "opened": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(p["opened"]))})
+        for p in _rev_book(d["trades"]).values():
+            tot["realized"] += p["realized"] * rate(p["ccy"])
+        for t in d["trades"]:
+            amt = abs(t.get("amount") or 0) * rate(t.get("ccy"))
+            if t["kind"] == "dividend":
+                tot["dividends"] += amt
+            elif t["kind"] == "deposit":
+                tot["deposits"] += amt
+            elif t["kind"] == "withdrawal":
+                tot["deposits"] -= amt
+            elif t["kind"] == "fee":
+                tot["fees"] += amt
+        positions.sort(key=lambda x: -x["value"])
+        return {"linked": True, "broker": "Revolut", "currency": acct, "positions": positions, "file": d.get("file"),
+                "imported": d.get("imported"), "warnings": warn, "snapshot": d.get("snapshot"),
+                "totals": {k: round(v, 2) for k, v in tot.items()}, "ppl": round(tot["value"] - tot["cost"], 2),
+                "fetched": int(time.time())}
+    return cached(("revolut", d.get("imported")), 60, load)
+
+
+def revolut_lots():
+    d = revolut_load()
+    if not d:
+        return [], None
+    pf = revolut_portfolio()
+    sym_map = {p["revolut"]: p["symbol"] for p in pf.get("positions", [])}
+    lots = []
+    for t in d["trades"]:
+        if t["kind"] in ("buy", "sell") and t.get("symbol") and t.get("qty"):
+            lots.append({"symbol": sym_map.get(t["symbol"], t["symbol"]), "ts": t["ts"],
+                         "qty": t["qty"] if t["kind"] == "buy" else -t["qty"], "price": t.get("price") or 0})
+        elif t["kind"] == "split" and t.get("symbol") and t.get("qty"):
+            lots.append({"symbol": sym_map.get(t["symbol"], t["symbol"]), "ts": t["ts"], "qty": t["qty"], "price": 0})
+    return lots, d.get("currency")
+
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".ico": "image/x-icon",
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
@@ -2681,6 +3242,21 @@ class Handler(BaseHTTPRequestHandler):
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})
         if path == "/api/t212/portfolio":
             return self.send_json(t212_portfolio())
+        if path == "/api/revolut/portfolio":
+            return self.send_json(revolut_portfolio())
+        if path == "/api/calendar":
+            return self.send_json(calendar_for(syms(q.get("symbols"))))
+        if path == "/api/briefing":
+            w = {}
+            for part in (q.get("w") or "").split(","):
+                k, _, v = part.partition(":")
+                try:
+                    w[k.strip().upper()] = float(v)
+                except ValueError:
+                    pass
+            return self.send_json(briefing(syms(q.get("symbols")), w))
+        if path == "/api/correlation":
+            return self.send_json(holdings_correlation(syms(q.get("symbols"))[:30]))
         self.send_json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -2688,12 +3264,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "forbidden host"}, 403)
         if "application/json" not in (self.headers.get("Content-Type") or ""):
             return self.send_json({"error": "JSON only"}, 415)
-        n = min(int(self.headers.get("Content-Length") or 0), 10000)
+        path = urllib.parse.urlparse(self.path).path
+        limit = 12 * 1024 * 1024 if path == "/api/revolut/import" else 10000
+        n = int(self.headers.get("Content-Length") or 0)
+        if n > limit:
+            return self.send_json({"error": "file too large"}, 413)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             return self.send_json({"error": "bad JSON"}, 400)
-        path = urllib.parse.urlparse(self.path).path
+        if path == "/api/revolut/import":
+            try:
+                return self.send_json(revolut_import(body))
+            except Exception as e:
+                return self.send_json({"error": str(e)[:300]}, 400)
+        if path == "/api/revolut/clear":
+            with _rev_lock:
+                if os.path.exists(REVOLUT_FILE):
+                    os.remove(REVOLUT_FILE)
+            purge(lambda k: k[0] == "revolut")
+            return self.send_json({"linked": False})
         if path == "/api/t212/connect":
             key, secret = (body.get("key") or "").strip(), (body.get("secret") or "").strip() or None
             env = "demo" if body.get("env") == "demo" else "live"
@@ -2721,7 +3311,8 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("fresh"):
                 purge(lambda k: k[0] == "t212" or (k[0] == "chart" and "period1=" in str(k[2]) and "interval=1d" in str(k[2])))
                 _orders["at"] = 0
-            lots, base, notes = build_lots(body.get("manual") or [], include_t212=bool(body.get("t212", True)))
+            lots, base, notes = build_lots(body.get("manual") or [], include_t212=bool(body.get("t212", True)),
+                                           include_revolut=bool(body.get("revolut", True)))
             base = base or (body.get("base") or "USD").upper()[:3]
             out = portfolio_history(lots, base)
             out["warnings"] = notes + out["warnings"]

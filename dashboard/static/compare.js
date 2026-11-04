@@ -214,9 +214,8 @@
   // ------------------------------------------------------------ portfolio exposure (look-through)
   async function fitInfo(picks, amount) {
     const td = T();
-    const t = td.state.t212 && !td.state.t212.error ? td.state.t212 : null;
     const manual = td.store.get("manual", []);
-    const pos = (t ? t.positions : []).map((p) => ({ symbol: p.symbol, v: (p.qty || 0) * (p.price || 0) })).concat(manual.map((m) => ({ symbol: m.symbol, v: m.qty * m.avgPrice })));
+    const pos = td.brokerPositions().map((p) => ({ symbol: p.symbol, v: p.source === "Revolut" ? p.valueAcct || 0 : (p.qty || 0) * (p.price || 0) })).concat(manual.map((m) => ({ symbol: m.symbol, v: m.qty * m.avgPrice })));
     if (!pos.length) return null;
     const L = await get("/api/lookthrough");
     const total = pos.reduce((a, p) => a + p.v, 0);
@@ -510,7 +509,7 @@
     const chips = () => {
       $("#cmpChips").innerHTML = syms.map((s, i) => `<span class="cmp-chip" style="--c:${COLORS[i]}">${td.logo(s, 22)}<b>${td.esc(s)}</b><button type="button" data-rm="${td.esc(s)}" aria-label="Remove ${td.esc(s)}">✕</button></span>`).join("") || `<span class="muted">Pick at least two.</span>`;
       $$("[data-rm]", view).forEach((b) => b.addEventListener("click", () => { syms = syms.filter((x) => x !== b.dataset.rm); save(); chips(); run(); }));
-      const quick = [...new Set(td.watchlist().concat((td.state.t212 && td.state.t212.positions || []).map((p) => p.symbol)))].filter((s) => !syms.includes(s)).slice(0, 10);
+      const quick = [...new Set(td.watchlist().concat(td.brokerPositions().map((p) => p.symbol)))].filter((s) => !syms.includes(s)).slice(0, 10);
       $("#cmpQuick").innerHTML = syms.length < 3 && quick.length ? `<span class="muted" style="font-size:12.5px">Quick add:</span> ` + quick.map((s) => `<button type="button" class="btn sm" data-add="${td.esc(s)}">${td.esc(s)}</button>`).join(" ") : "";
       $$("[data-add]", view).forEach((b) => b.addEventListener("click", () => add(b.dataset.add)));
     };

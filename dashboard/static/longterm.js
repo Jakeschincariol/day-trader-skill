@@ -252,7 +252,7 @@
       <form class="form-row" id="mAdd" style="max-width:420px;margin-top:8px"><label class="field">Add a holding to the plan<input name="s" placeholder="e.g. VWRL.L" autocapitalize="characters"></label><button class="btn" type="submit">Add</button></form>
       ${implicit ? `<p class="muted" style="font-size:12.5px">No targets set yet: using today's mix. Type your own target % to change it.</p>` : ""}
       <p class="muted" style="font-size:12.5px">Targets add up to ${tsum.toFixed(0)}%${Math.abs(tsum - 100) > 0.5 && tsum ? " (they're scaled to 100%)" : ""}. New money goes to what's furthest below target, a bit more to names "on sale" and less to stretched ones, so you rebalance without selling.
-      In Trading 212 a <b>Pie</b> with these target % and <b>AutoInvest</b> does the monthly buying for you.</p>`;
+      In Trading 212 a <b>Pie</b> with these target % and <b>AutoInvest</b> does the monthly buying for you; in Revolut use a <b>recurring buy</b> for each holding.</p>`;
     const save = () => { td.store.set("targets", targets); rerender(); }; // editing one target saves today's mix for the rest
     $("#mAmt", el).addEventListener("change", (e) => { td.store.set("settings", Object.assign(td.settings(), { monthly: +e.target.value || 0 })); rerender(); });
     $$(".tgt", el).forEach((i) => i.addEventListener("change", () => { const v = i.value === "" ? null : +i.value; if (v == null) delete targets[i.dataset.s]; else targets[i.dataset.s] = v; save(); }));

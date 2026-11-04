@@ -317,6 +317,165 @@ class Vendor(unittest.TestCase):
             self.assertIn(name, text)
 
 
+REV_CSV = """Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate
+2024-01-05T14:32:11.123Z,,CASH TOP-UP,,,EUR 2000,EUR,1.0
+2024-01-06T15:00:00.000Z,NVDA,BUY - MARKET,5,USD 48.00,USD 240.00,USD,1.09
+2024-03-01T15:00:00.000Z,AMD,BUY - MARKET,3,USD 200.00,USD 600.00,USD,1.08
+2024-06-01T15:00:00Z,AMD,SELL - MARKET,1,USD 160.00,USD 160.00,USD,1.08
+2024-06-10T08:00:00Z,NVDA,STOCK SPLIT,45,,,USD,1.07
+2024-07-01T15:00:00Z,NVDA,DIVIDEND,,,USD 0.05,USD,1.07
+2025-02-02T10:00:00Z,BRK.B,BUY - LIMIT,"0,5","$480.10","$240.05",USD,1.04
+2025-02-02T10:00:00Z,,CUSTODY FEE,,,USD -1.00,USD,1.04
+2025-03-01T10:00:00Z,XYZ,SOMETHING NEW,1,1,1,USD,1
+"""
+
+
+class Revolut(unittest.TestCase):
+    def rows(self, text=REV_CSV):
+        import csv
+        import io
+        return list(csv.reader(io.StringIO(text)))
+
+    def test_numbers_in_every_format(self):
+        for raw, want in [("USD 1,234.50", 1234.5), ("$1,234.50", 1234.5), ("-€12.30", -12.3), ("1.234,50 €", 1234.5),
+                          ("0,5", 0.5), ("USD -1.00", -1.0), ("(5.00)", -5.0), ("", None), ("12", 12.0)]:
+            self.assertEqual(srv.num_text(raw), want, raw)
+
+    def test_dates(self):
+        self.assertEqual(srv._rev_date("2024-01-05T00:00:00Z"), 1704412800)
+        self.assertEqual(srv._rev_date("05/01/2024"), 1704412800)
+        self.assertEqual(srv._rev_date("2024-01-05 00:00:00"), 1704412800)
+        self.assertEqual(srv._rev_date("45296"), 1704412800)  # Excel date number
+
+    def test_statement_to_positions(self):
+        out = srv.parse_revolut(self.rows())
+        self.assertEqual(out["skipped"], 1)
+        self.assertIn("SOMETHING NEW", out["otherTypes"])
+        book = srv._rev_book(out["trades"])
+        self.assertAlmostEqual(book["NVDA"]["qty"], 50)  # 5 shares, then a 10-for-1 split
+        self.assertAlmostEqual(book["NVDA"]["cost"], 240)  # a split doesn't change what you paid
+        self.assertAlmostEqual(book["AMD"]["qty"], 2)
+        self.assertAlmostEqual(book["AMD"]["cost"], 400)  # average cost: 2 left at 200
+        self.assertAlmostEqual(book["AMD"]["realized"], -40)
+        self.assertAlmostEqual(book["BRK-B"]["qty"], 0.5)  # Yahoo-style ticker, decimal comma
+        kinds = [t["kind"] for t in out["trades"]]
+        for k in ("deposit", "dividend", "fee", "split"):
+            self.assertIn(k, kinds)
+
+    def test_a_fully_sold_holding_disappears(self):
+        text = "Date,Ticker,Type,Quantity,Price per share\n2024-01-01,AAA,BUY - MARKET,2,10\n2024-02-01,AAA,SELL - MARKET,2,15\n"
+        trades = srv.parse_revolut(self.rows(text))["trades"]
+        self.assertEqual(srv.revolut_holdings(trades), {})
+        self.assertAlmostEqual(srv._rev_book(trades)["AAA"]["realized"], 10)
+
+    def test_any_broker_holdings_list(self):
+        out = srv.parse_revolut(self.rows("Symbol;Quantity;Average price\nASML;2;600\n".replace(";", ",")))
+        self.assertTrue(out["snapshot"])
+        self.assertAlmostEqual(srv.revolut_holdings(out["trades"])["ASML"]["cost"], 1200)
+
+    def test_helpful_errors(self):
+        with self.assertRaises(ValueError):
+            srv.parse_revolut(self.rows("Date,Amount\n2024-01-01,5\n"))
+        with self.assertRaises(ValueError):
+            srv.revolut_import({"data": "%PDF-1.4 ...", "name": "x.pdf"})
+
+    def test_excel_file(self):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("xl/sharedStrings.xml", '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                       '<si><t>Date</t></si><si><t>Ticker</t></si><si><t>Type</t></si><si><t>Quantity</t></si><si><t>Price per share</t></si>'
+                       '<si><t>MSFT</t></si><si><t>BUY - MARKET</t></si></sst>')
+            z.writestr("xl/worksheets/sheet1.xml", '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+                       '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c><c r="E1" t="s"><v>4</v></c></row>'
+                       '<row r="2"><c r="A2"><v>45296</v></c><c r="B2" t="s"><v>5</v></c><c r="C2" t="s"><v>6</v></c><c r="D2"><v>3</v></c><c r="E2"><v>400</v></c></row>'
+                       '</sheetData></worksheet>')
+        rows = srv._xlsx_rows(buf.getvalue())
+        out = srv.parse_revolut(rows)
+        self.assertEqual(out["trades"][0]["ts"], 1704412800)
+        self.assertAlmostEqual(srv.revolut_holdings(out["trades"])["MSFT"]["cost"], 1200)
+
+    def test_import_saves_privately_and_clear_removes(self):
+        import base64
+        d = tempfile.mkdtemp()
+        old = srv.REVOLUT_FILE
+        srv.REVOLUT_FILE = os.path.join(d, ".revolut.json")
+        try:
+            out = srv.revolut_import({"data": base64.b64encode(REV_CSV.encode()).decode(), "base64": True, "name": "s.csv", "currency": "EUR"})
+            self.assertEqual(out["positions"], 3)
+            self.assertEqual(oct(os.stat(srv.REVOLUT_FILE).st_mode & 0o777), "0o600")
+            again = srv.revolut_import({"data": REV_CSV, "name": "s.csv", "merge": True})
+            self.assertEqual(again["trades"], out["trades"])  # merging the same file adds nothing
+        finally:
+            srv.REVOLUT_FILE = old
+
+    def test_lots_feed_the_history_chart(self):
+        trades = srv.parse_revolut(self.rows())["trades"]
+        d = tempfile.mkdtemp()
+        old, oldp = srv.REVOLUT_FILE, srv.revolut_portfolio
+        srv.REVOLUT_FILE = os.path.join(d, ".revolut.json")
+        srv.revolut_portfolio = lambda: {"positions": []}
+        try:
+            srv.revolut_save({"currency": "EUR", "trades": trades})
+            lots, base = srv.revolut_lots()
+        finally:
+            srv.REVOLUT_FILE, srv.revolut_portfolio = old, oldp
+        self.assertEqual(base, "EUR")
+        amd = [x for x in lots if x["symbol"] == "AMD"]
+        self.assertEqual([x["qty"] for x in amd], [3, -1])
+
+    def test_revolut_file_is_git_ignored(self):
+        with open(os.path.join(ROOT, ".gitignore")) as fh:
+            self.assertIn("dashboard/.revolut.json", fh.read())
+
+
+class Insights(unittest.TestCase):
+    def test_news_impact(self):
+        self.assertEqual(srv.news_impact("Nvidia beats estimates and raises guidance"), ("bullish", "high"))
+        self.assertEqual(srv.news_impact("Lumentum plunges after weak outlook; analysts downgrade"), ("bearish", "high"))
+        self.assertEqual(srv.news_impact("Intel to present at investor conference"), ("neutral", "low"))
+        self.assertEqual(srv.news_impact("Micron shares jump 8%")[0], "bullish")
+
+    def test_correlation_of_holdings(self):
+        days = ["2025-%02d-%02d" % (m, d) for m in range(1, 13) for d in range(1, 29)]
+        import random
+        rnd = random.Random(1)
+        a, b, c = {}, {}, {}
+        pa = pb = pc = 100.0
+        for d in days:
+            x, y = rnd.gauss(0, 0.02), rnd.gauss(0, 0.02)
+            pa *= 1 + x
+            pb *= 1 + x + rnd.gauss(0, 0.002)  # almost the same as A
+            pc *= 1 + y  # independent
+            a[d], b[d], c[d] = pa, pb, pc
+        data = {"A": a, "B": b, "C": c}
+        old = srv._daily_adj
+        srv._daily_adj = lambda s, rng="10y": (data[s], "USD")
+        try:
+            h = srv.holdings_correlation(["A", "B", "C"])
+        finally:
+            srv._daily_adj = old
+        m = h["matrix"]
+        self.assertGreater(m[0][1], 0.9)
+        self.assertLess(abs(m[0][2]), 0.35)
+        self.assertEqual(m[1][0], m[0][1])
+        self.assertEqual(h["pairs"][0]["a"] + h["pairs"][0]["b"], "AB")
+
+    def test_calendar_feed_errors_are_reported_not_raised(self):
+        old = srv.econ_calendar
+
+        def boom():
+            raise OSError("offline")
+        srv.econ_calendar = boom
+        try:
+            out = srv.calendar_for([])
+        finally:
+            srv.econ_calendar = old
+        self.assertEqual(out["econ"], [])
+        self.assertIn("unavailable", out["error"])
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 

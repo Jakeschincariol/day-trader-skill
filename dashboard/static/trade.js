@@ -32,10 +32,12 @@
     let t = td.state.t212;
     if (!td.state.t212Status) { try { t = await td.getT212(); } catch (e) { t = null; } }
     t = t && !t.error ? t : null;
+    const rv = td.state.revolut && td.state.revolut.linked ? td.state.revolut : null;
+    const total = (t && t.cash.total ? t.cash.total : 0) + (rv ? rv.totals.value || 0 : 0);
     return {
-      linked: !!t, ccy: t ? t.currency || "USD" : st.ccy || "USD",
-      total: t && t.cash.total ? t.cash.total : st.account, free: t ? t.cash.free : null,
-      positions: t ? t.positions : [], pending: t ? t.pending : null,
+      linked: !!t, ccy: t ? t.currency || "USD" : rv ? rv.currency : st.ccy || "USD",
+      total: total || st.account, free: t ? t.cash.free : null,
+      positions: td.brokerPositions(), pending: t ? t.pending : null,
       riskPct: st.riskPct || 1, maxPosPct: st.maxPosPct || 25, maxHeatPct: st.maxHeatPct || 6,
     };
   }
