@@ -71,7 +71,7 @@ batch that is fine order by order but breaks a limit together is caught.
 | stop | (entries) no stop while `require_stop` is true (a bracket `stop_loss_stop_price`, or the order's plan stop); a stop on the wrong side of the entry |
 | loss | (entries) qty x (entry minus stop) over `max_loss_per_trade_usd` |
 | reward:risk | (entries) (target minus entry) / (entry minus stop) under `min_reward_risk` |
-| daily loss | (entries) the max losses at the stops of today's entries, plus this one, over `max_daily_loss_usd` |
+| daily loss | (entries) the max losses at the stops of today's entries, plus this one, over `max_daily_loss_usd`; or a placed entry today has an unknown max loss while this limit is enabled |
 | trades | (entries) `max_trades_per_day` entries already placed today |
 | window | (entries) before `no_entries_before` or after `no_entries_after`, or the market is closed |
 | pdt | (entries, only with `pdt_guard` true) 3 day trades already in the last 5 business days |
@@ -87,6 +87,13 @@ How the numbers work:
   used, and it says so.
 - **Daily loss** counts the full max loss of every entry placed today, win or
   lose, as trader-broker logged it. Three full-size trades use up a $150 day.
+  A missing, non-finite, negative or otherwise invalid `max_loss` in a placed
+  entry makes the total unknown, not zero. New entries are blocked while the
+  daily limit is enabled: reconcile the log with the actual order and its
+  stop before checking again; never invent a risk amount. Closing trades are
+  still allowed. JSON reports `today.loss_at_risk` as null when unknown,
+  `known_loss_at_risk` as the known subtotal, and `entries_with_unknown_loss`
+  as the count needing reconciliation. A zero daily limit remains disabled.
 - **The window** is New York time, worked out in the tool (daylight saving
   included), never from the computer's clock zone. Weekends and NYSE holidays
   are closed. On a 1:00 p.m. early close the window ends 3 hours earlier too.
