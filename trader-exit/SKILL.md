@@ -34,8 +34,7 @@ python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol TSLA --entry 364.18 --or-hig
 python3 "${CLAUDE_SKILL_DIR}/exit.py" show                          # the current trader/plan.json
 ```
 
-Other flags: `--flat-by 15:55`, `--json`, `--now "2026-10-19 10:15"` (New
-York time), `--entry PRICE` with a waiting entry.json to plan ahead, `--setup
+Other flags: `--flat-by 15:15`, `--json`, `--now "2026-10-19 10:15"` (IST time), `--entry PRICE` with a waiting entry.json to plan ahead, `--setup
 level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
 
 ## What it reads and writes
@@ -43,7 +42,7 @@ level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
 | file | what |
 | --- | --- |
 | `trader/entry.json` | the trigger from trader-entry: symbol, entry price, time, bar, opening range |
-| `trader/config.json` | `flat_by` (15:55) and `min_reward_risk` (1.0: a note here, trader-risk enforces it) |
+| `trader/config.json` | `flat_by` (15:15) and `min_reward_risk` (1.0: a note here, trader-risk enforces it) |
 | Yahoo chart API | only for an `atr:K` stop: the session's bars up to the entry bar, free and unofficial |
 | `trader/plan.json` | with `--write`: entry, stop and its rule, target and its R, risk a share, reward:risk, flat by. trader-timemachine, trader-budget and trader-alerts read it |
 
@@ -66,9 +65,9 @@ A level setup has no opening range to lean on, so it needs a stop you name.
   below it. A risk under 0.05% of the price: too tight to survive the
   spread, normal wiggle would stop you out. An entry.json that has not
   triggered (unless you give `--entry`). A short: v2 plans longs only.
-- **Flat by.** 15:55 by default (or `flat_by` in the config). Out by then,
-  win or lose, no overnight hold. On a 1:00 p.m. early close it moves up to
-  12:55. An entry at or after the flat-by time is refused.
+- **Flat by.** 15:15 by default (or `flat_by` in the config). Out by then,
+  win or lose, no overnight hold. The NSE has no early closes, so it never
+  moves. An entry at or after the flat-by time is refused.
 
 ## Steps
 
@@ -99,7 +98,7 @@ Exit plan: TSLA long, Mon 2026-10-19, opening-range breakout on 5-minute bars
   Target        $370.04  1R (one times the risk)
   Risk a share  $5.86 (1.61% of the entry)
   Reward:risk   1.0
-  Flat by       15:55 ET, win or lose: no overnight hold
+  Flat by       15:15 IST, win or lose: no overnight hold
 ```
 
 The default 2R target would be 364.18 + 2 x 5.86 = 375.90. trader-budget then

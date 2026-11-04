@@ -32,7 +32,7 @@ good-looking replay does not change that.
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run                    # trader/plan.json, 10,000 replays, seed 19
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --write            # also save trader/timemachine.json
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:55      # end each replay at your flat-by time
+python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:15      # end each replay at your flat-by time
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --json
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --symbol TSLA --date 2026-10-19 \
     --entry 364.18 --stop 358.32 --target 370.04 --entry-time "10:15 AM"
@@ -41,7 +41,7 @@ python3 "${CLAUDE_SKILL_DIR}/timemachine.py" chart --from           # ASCII fan 
 
 Other flags: `--replays N`, `--seed N` (default 19), `--window N` (default 2
 bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
-`--now "2026-10-19 10:15"` (New York time) to pin the clock.
+`--now "2026-10-19 10:15"` (IST) to pin the clock.
 
 ## What it reads and writes
 
@@ -53,8 +53,8 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 
 ## How it works
 
-1. **The pool.** It keeps only FULL sessions before the plan's date: all 78
-   five-minute bars, 9:30 to 4:00 New York time. Half days, gaps and today
+1. **The pool.** It keeps only FULL sessions before the plan's date: all 75
+   five-minute bars, 9:15 to 3:30 IST. Half days, gaps and today
    are left out. Every bar becomes four ratios to the bar before it:
    open, high, low and close over the previous close.
 2. **One replay.** Start at the entry price. For each bar left in the day,
@@ -62,8 +62,8 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    random, and scale it to the current price. Bar by bar, it checks the stop
    first, then the target. A bar that touches both counts as the stop.
 3. **10,000 replays** give four odds. Target first. Stop first. Neither,
-   which means the trade was still open at `--until` (default 4:00 PM, the
-   close, or 1:00 PM on an NYSE early-close day). Green, which means target
+   which means the trade was still open at `--until` (default 3:30 PM, the
+   close; the NSE has no early closes). Green, which means target
    first or above the entry at `--until`.
    R is +1 at a 1R target, -1 at the stop, and otherwise the distance from
    the entry at `--until` divided by the risk. A gap through the stop still
@@ -100,7 +100,7 @@ grid). A live in-progress bar is never used.
 
 1. Make sure `trader/plan.json` is today's plan from `/trader-exit`. If there
    is none, run that first, or pass the plan as flags.
-2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
+2. Run `timemachine.py run --write`. Add `--until 15:15` when the plan has a
    flat-by time, so "neither" means still open at the time you would get out.
 3. Tell the user, in this order: the four odds, the median and the 5 to 95
    range of the price at the close, the average R, the history line, then the
@@ -119,17 +119,17 @@ The 10:10 bar closes above it: entry 364.18 at 10:15 AM (bar 8), stop 358.32
 (the range midpoint, rounded down), target 370.04 (1R, risk 5.86 a share).
 
 ```
-10,000 replays of the rest of the session, 10:15 AM to 4:00 PM (69 five-minute bars), seed 19.
+10,000 replays of the rest of the session, 10:15 AM to 3:30 PM (63 five-minute bars), seed 19.
   target first   29.4 %
   stop first     25.5 %
-  neither        45.1 %   still open at 4:00 PM
-  green          51.7 %   target first, or above the entry at 4:00 PM
-  Price at 4:00 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
+  neither        45.1 %   still open at 3:30 PM
+  green          51.7 %   target first, or above the entry at 3:30 PM
+  Price at 3:30 PM: median 364.36, 90 % of replays between 355.54 and 373.54.
   Average R: +0.034
 History: the same rule on each of those 59 real sessions fired 33 times:
 13 target, 15 stop, 5 neither. Average R -0.062.
 Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
-45.1 % of the replays hit neither by 4:00 PM; the price at 4:00 PM decides those.
+45.1 % of the replays hit neither by 3:30 PM; the price at 3:30 PM decides those.
 ```
 
 At 1R the target has to come first in half of the replays that hit one

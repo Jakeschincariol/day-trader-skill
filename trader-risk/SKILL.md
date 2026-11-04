@@ -32,7 +32,7 @@ keep each loss and each day's losses small. They do not make a trade win.
 python3 "${CLAUDE_SKILL_DIR}/check.py"                           # trader/ files; writes trader/state/risk.json
 python3 "${CLAUDE_SKILL_DIR}/check.py" --json
 python3 "${CLAUDE_SKILL_DIR}/check.py" --no-write                # look without recording
-python3 "${CLAUDE_SKILL_DIR}/check.py" --now "2026-10-19 10:15"  # pin the clock (New York time)
+python3 "${CLAUDE_SKILL_DIR}/check.py" --now "2026-10-19 10:15"  # pin the clock (IST)
 ```
 
 ## What it reads and writes
@@ -87,9 +87,9 @@ How the numbers work:
   used, and it says so.
 - **Daily loss** counts the full max loss of every entry placed today, win or
   lose, as trader-broker logged it. Three full-size trades use up a $150 day.
-- **The window** is New York time, worked out in the tool (daylight saving
-  included), never from the computer's clock zone. Weekends and NYSE holidays
-  are closed. On a 1:00 p.m. early close the window ends 3 hours earlier too.
+- **The window** is IST, worked out in the tool (UTC+5:30, no
+  daylight saving), never from the computer's clock zone. Weekends and NSE
+  holidays are closed, and so is anything outside 9:15 to 15:30.
   Set both `no_entries_*` to null to switch the window off.
 - **pdt_guard** (off by default) counts a day trade as a symbol bought and
   sold on the same day in the log, plus any entry placed today (it is meant
@@ -128,7 +128,7 @@ PASS  #1 buy TSLA 8 shares, entry
           max loss $46.88 (limit $50), reward:risk 1.00 (min 1)
           today before this: 0 of 3 trades, $0 of $150 daily loss
 
-1 passed, 0 blocked at 2026-10-19 10:15 New York. Cash after the passed orders: $2,086.56 (paper account).
+1 passed, 0 blocked at 2026-10-19 10:15 IST. Cash after the passed orders: $2,086.56 (paper account).
 ```
 
 One more share and it is blocked:
@@ -144,7 +144,7 @@ BLOCK #1 buy TSLA 9 shares, entry
 The same 8 shares checked at 10:55 with the real 10:52 quote (366.48) in
 `trader/prices.json` are blocked twice: 8 x 8.16 = $65.28 at the stop, and
 reward:risk 0.44. At 9:40 they are blocked by the window (no new entries
-before 9:45). The 3:55 PM sell that closes the position passes, even though
+before 9:45). The 3:15 PM sell that closes the position passes, even though
 it is after the 3:30 entry cutoff: it is an exit.
 
 ## Rules
