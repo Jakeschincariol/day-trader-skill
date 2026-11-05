@@ -16,6 +16,10 @@ argument-hint: "[member name] [--read]"
 
 # trader-pelosi
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert timestamps from disclosures and tool output before
+reporting; preserve dates and times in source files and CLI inputs.
+
 Members of Congress have to report their trades, their spouse's and their
 dependent children's. The House Clerk posts every report as a PDF and lists
 them all in one index file per year. This skill reads that index, notices the

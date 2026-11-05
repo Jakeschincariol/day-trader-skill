@@ -20,6 +20,10 @@ argument-hint: "[path to orders.json]"
 
 # trader-risk
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Risk Manager is the gate between a proposal and the broker. Every order
 written by trader-budget or trader-broker's flatten passes through it. A
 BLOCK is final for that order: it does not go to the user for a yes, and it

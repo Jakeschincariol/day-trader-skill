@@ -15,6 +15,10 @@ argument-hint: "[tickers]"
 
 # trader-news
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert timestamps from headlines, filings, and tool output
+before reporting; do not alter New York-time CLI or configuration inputs.
+
 A chart can look perfect and still be about to gap on an earnings date, a
 halt or a lawsuit. Before a setup becomes a trade, this skill reads the two
 feeds that carry those first, for every stock on the watchlist, and tells you

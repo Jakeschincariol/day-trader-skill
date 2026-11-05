@@ -17,6 +17,10 @@ argument-hint: "[TICKER] [--setup orb|level] [--interval 5m|1m]"
 
 # trader-entry
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Entry Timer turns a setup into one moment: the bar that confirms it. It
 reads bars, 1-minute or 5-minute, and waits for each one to finish. A price
 that pokes above the high in the middle of a bar is not an entry. A bar that

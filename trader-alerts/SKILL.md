@@ -18,6 +18,10 @@ argument-hint: "[ticker] [price]"
 
 # trader-alerts
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 Price Alerts watches the numbers so the user does not have to stare at a
 chart. An alert is information, never an order: when a stop alert rings,
 nothing is sold by this skill. With a bracket order the stop-loss and the

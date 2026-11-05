@@ -57,6 +57,12 @@ The tools need Python 3.8 or newer. Nothing to pip install. The SEC tools
 email in `trader/config.json` (`"sec_user_agent": "Your Name you@example.com"`)
 or in the `SEC_USER_AGENT` environment variable.
 
+**Time zone for reports:** Present every date and time to the user in India
+Standard Time (IST, UTC+05:30) only. Convert timestamps from market data,
+news, and tool output before reporting them. The scripts' `--now` arguments
+and trading configuration still use New York local time; do not change those
+inputs when converting report times.
+
 ## The eleven
 
 | command | job | what it does |

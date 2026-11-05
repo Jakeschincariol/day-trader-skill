@@ -16,6 +16,10 @@ argument-hint: "[tickers]"
 
 # trader-analyst
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert timestamps from reports and tool output before
+reporting; preserve dates and times in source files and CLI inputs.
+
 Earnings move stocks more than anything else on the calendar, and the press
 release is written to put the best number first. This skill reads the numbers
 the company actually filed with the SEC, lines them up quarter by quarter, and

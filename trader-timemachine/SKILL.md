@@ -18,6 +18,10 @@ argument-hint: "[path to plan.json, or TICKER]"
 
 # trader-timemachine
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Time Machine sits between the plan and the money. trader-exit has set
 the entry, the stop and the target. Before anything is sized or sent, this
 skill asks one question: if today plays out like the stock's own last 60

@@ -17,6 +17,10 @@ argument-hint: "[--stop or-mid|or-low|price:X|pct:X|atr:K] [--target 2R|1R|price
 
 # trader-exit
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Exit Planner decides how a trade ends before it starts. The stop is where
 the setup has failed. The target is where you take what you came for. Both
 are set BEFORE the entry, written down and handed on, so nobody has to decide

@@ -17,6 +17,10 @@ argument-hint: "[budget in dollars]"
 
 # trader-budget
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from tool output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Budget Manager turns a plan ("buy TSLA at 364.18, stop 358.32") into an
 exact order ("buy 8 shares"), inside rules the user sets once. The stop
 decides the size: the further away the stop, the fewer shares. It writes a

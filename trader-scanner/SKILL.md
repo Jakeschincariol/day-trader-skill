@@ -17,6 +17,10 @@ argument-hint: "[universe | daily | orb] [--at HH:MM]"
 
 # trader-scanner
 
+Always report dates and times to the user in India Standard Time (IST,
+UTC+05:30) only. Convert New York market timestamps from scan output before
+reporting; keep `--now` inputs in New York local time as the CLI requires.
+
 The Chart Scanner is the first step of a day trade. It reads thousands of
 free charts and lists the ones that match a rule. That is all it does. A scan
 is a list of charts that match a rule, not a list of stocks to buy, and a
