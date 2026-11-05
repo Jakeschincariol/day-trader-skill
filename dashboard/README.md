@@ -47,6 +47,16 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Time Machine
+
+**Time Machine** (a tab on the PC; **More** on the iPhone; a button on every stock page) goes back in time with real prices:
+
+1. **What if I had invested**: a stock or ETF, a start month, a monthly amount and/or a one-off. Shows what it would be worth today in your currency (dividends reinvested, each month's exchange rate), growth a year on the money as it went in, the worst fall, how far below your deposits the account ever was, and the same deposits in a world fund (VWRL; ACWI or the S&P 500 before 2012).
+2. **Past crashes**: replays today's holdings (buy and hold from the market peak, in your currency) through the 2008 financial crisis, the 2020 COVID crash, the 2022 bear market and the 2025 tariff drop: the fall, the money lost at the bottom, the months to recover and the holdings hit hardest, next to the world index. Holdings that weren't listed yet are replaced by the index and flagged.
+3. **Replay a trade**: entry, stop and target (filled from the dashboard's plan) replayed 10,000 times over the next 5-60 trading days, drawing whole days from the stock's own last two years. Shows the odds of target first, stop first or neither, the average R, the win rate needed to break even, a fan chart and the real record of the dashboard's buy rule on that stock. A day touching both levels counts as the stop; gaps fill at the open.
+
+Results use past prices only. They are not a forecast or advice.
+
 ## Assistant chat
 
 Tap **Ask** (bottom right, on every page) and ask about your stocks in plain words: *How is my portfolio doing today? Why is Lumentum down? Is ASML a good buy now? Compare KLAC vs AMAT. What events are coming this week?* Answers are built from the dashboard's own data through read-only tools (your holdings, live prices, news with impact tags, long-term scores, Compare, the calendar and correlation). It can't place orders. Choose the engine in ⚙:

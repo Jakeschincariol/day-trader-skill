@@ -451,6 +451,7 @@ td a.sym:hover { color: var(--accent); }
   .tabs.more-open a.hide-m[data-tab="news"] { bottom: calc(72px + env(safe-area-inset-bottom)); }
   .tabs.more-open a.hide-m[data-tab="compare"] { bottom: calc(126px + env(safe-area-inset-bottom)); }
   .tabs.more-open a.hide-m[data-tab="map"] { bottom: calc(180px + env(safe-area-inset-bottom)); }
+  .tabs.more-open a.hide-m[data-tab="timemachine"] { bottom: calc(234px + env(safe-area-inset-bottom)); }
   .tabs a.active { background: transparent; color: var(--accent); }
   .tabs a.active svg.lucide { opacity: 1; }
   .ticker-strip { padding: 8px 12px; }
@@ -709,3 +710,25 @@ body.ai-open .ai-fab { display: none; }
   .ai-drawer { width: 100vw; border-left: 0; }
 }
 body:has(.tabs.more-open) .ai-fab { display: none; }
+
+/* time machine */
+.tm-tabs { flex-wrap: wrap; }
+.tm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; }
+.tm-lead { font-size: 16px; line-height: 1.5; margin: 0 0 12px; }
+.tm-tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.tm-notes { margin: 12px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
+.tm-notes li { margin: 4px 0; }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-muted); }
+.chip-btn.sm { padding: 4px 10px; font-size: 12.5px; }
+.tm-bar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; background: var(--surface-3); font: 600 13px var(--mono); }
+.tm-bar span { display: grid; place-items: center; color: #fff; min-width: 0; }
+.tm-bar .t { background: var(--good); } .tm-bar .s { background: var(--bad); } .tm-bar .n { background: var(--surface-3); }
+.tm-crash .ret-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 600px) { .tm-crash .ret-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* medium screens: the page tabs move to their own row instead of squeezing the search box */
+@media (min-width: 761px) and (max-width: 1640px) {
+  .top { flex-wrap: wrap; row-gap: 6px; }
+  .top .tabs { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .top .search { margin-left: auto; }
+}

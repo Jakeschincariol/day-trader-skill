@@ -495,7 +495,8 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="hdrBadges">${isLT() ? "" : ratingBadge(a.rating) + " " + entryBadge(a.entryStatus)}
           ${a.earnings ? `<span class="badge ${a.earnings.days <= 7 ? "e-wait" : "e-none"}" title="Next earnings report"><i data-lucide="calendar-clock" class="ico"></i> Earnings ${a.earnings.days === 0 ? "today" : "in " + a.earnings.days + "d"}</span>` : ""}
           <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button>
-          <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button> ${rf("quote")}</div>
+          <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button>
+          <a class="btn sm" href="#/timemachine?tab=${isLT() ? "whatif" : "trade"}&s=${encodeURIComponent(a.symbol)}"><i data-lucide="history"></i> Time machine</a> ${rf("quote")}</div>
       </div>
       <div class="grid g2">
         <div class="card chart-card">
@@ -1005,6 +1006,12 @@
 
 
 
+  // ------------------------------------------------------------ time machine
+  pages.timemachine = async function (arg, params) {
+    if (!window.TimeMachine) { view.innerHTML = `<p class="error">Time Machine module missing.</p>`; return; }
+    current = await window.TimeMachine.page(view, params);
+  };
+
   // ------------------------------------------------------------ compare 2-3 stocks
   pages.compare = async function (arg, params) {
     if (!window.Compare) { view.innerHTML = `<p class="error">Compare module missing.</p>`; return; }
@@ -1233,7 +1240,7 @@
     const tab = { stock: "markets" }[page] || page;
     const nav = $("#tabs");
     nav.classList.remove("more-open"); $("#tabMore") && $("#tabMore").setAttribute("aria-expanded", "false");
-    nav.classList.toggle("more-active", ["compare", "news", "map"].includes(tab));
+    nav.classList.toggle("more-active", ["compare", "news", "map", "timemachine"].includes(tab));
     $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
     const first = routeId === 1;

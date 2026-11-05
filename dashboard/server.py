@@ -3476,6 +3476,294 @@ def ai_chat(body):
 ai_load()
 
 
+# ---------------------------------------------------------------- Time Machine: what-if, crash replay, trade replay
+
+def _unit(ccy):
+    """('GBP', 0.01) for pence quotes, else (ccy, 1)."""
+    if ccy in ("GBp", "GBX"):
+        return "GBP", 0.01
+    if ccy in ("ZAc", "ILA"):
+        return ("ZAR" if ccy == "ZAc" else "ILS"), 0.01
+    return (ccy or "USD").upper(), 1.0
+
+
+def _monthly(sym):
+    """{YYYY-MM: dividend-adjusted month-end close} for the whole listing history, and the currency."""
+    d, ccy = _daily_adj(sym, "max")
+    out = {}
+    for day in sorted(d):
+        out[day[:7]] = d[day]
+    return out, ccy
+
+
+def _fx_monthly(ccy, base):
+    unit, scale = _unit(ccy)
+    if unit == base:
+        return (lambda ym: scale), None
+    try:
+        s, _ = _monthly("%s%s=X" % (unit, base))
+    except Exception:
+        return (lambda ym: scale), "No %s to %s rate: shown in %s" % (unit, base, unit)
+    keys = sorted(s)
+
+    def at(ym):
+        if ym in s:
+            return s[ym] * scale
+        older = [k for k in keys if k <= ym]
+        return (s[older[-1]] if older else s[keys[0]]) * scale
+    return at, None
+
+
+def _dca(prices, fx, months, monthly, lump):
+    units = invested = 0.0
+    flows, val, inv, worst_gap, peak, dd = [], [], [], 0.0, 0.0, 0.0
+    for i, ym in enumerate(months):
+        px = prices[ym] * fx(ym)
+        add = monthly + (lump if i == 0 else 0)
+        if add:
+            units += add / px
+            invested += add
+            flows.append((i / 12.0, -add))
+        v = units * px
+        val.append(round(v, 2))
+        inv.append(round(invested, 2))
+        worst_gap = max(worst_gap, invested - v)
+        peak = max(peak, px)
+        dd = min(dd, px / peak - 1)
+    final = val[-1] if val else 0
+    flows.append(((len(months) - 1) / 12.0, final))
+    irr = _irr(flows) if invested and len(months) > 1 else None
+    return {"value": val, "invested": inv, "final": round(final, 2), "totalIn": round(invested, 2),
+            "gain": round(final - invested, 2), "multiple": round(final / invested, 2) if invested else None,
+            "irr": round(100 * irr, 1) if irr is not None else None, "worstDrop": round(100 * dd, 1),
+            "worstLoss": round(worst_gap, 2), "worstLossPct": round(100 * worst_gap / invested, 1) if invested else None}
+
+
+def tm_whatif(symbol, start="2015-01", monthly=0.0, lump=0.0, base="EUR"):
+    """What a lump sum and/or a monthly amount in `symbol` since `start` would be worth today, with dividends,
+    in the investor's currency, next to the same deposits in a world index fund."""
+    symbol, base = symbol.upper(), (base or "EUR").upper()[:3]
+    if monthly <= 0 and lump <= 0:
+        raise ValueError("Enter a monthly amount, a one-off amount, or both.")
+    prices, ccy = _monthly(symbol)
+    if not prices:
+        raise ValueError("No price history for %s" % symbol)
+    first = min(prices)
+    notes = []
+    if start < first:
+        notes.append("%s only has prices from %s: the simulation starts there." % (symbol, first))
+        start = first
+    months = [m for m in sorted(prices) if m >= start]
+    if len(months) < 2:
+        raise ValueError("Pick a start date at least two months ago.")
+    fx, note = _fx_monthly(ccy, base)
+    if note:
+        notes.append(note)
+    me = _dca(prices, fx, months, monthly, lump)
+    bench, bsym = None, None
+    for b in ("VWRL.L", "ACWI", "SPY"):
+        try:
+            bp, bc = _monthly(b)
+        except Exception:
+            continue
+        if min(bp) <= months[0]:
+            bfx, _ = _fx_monthly(bc, base)
+            bm = [m for m in months if m in bp]
+            if len(bm) == len(months):
+                bench, bsym = _dca(bp, bfx, months, monthly, lump), b
+                break
+    if bsym and bsym != "VWRL.L":
+        notes.append("Before VWRL existed (2012) the world fund is %s, which tracks a similar index." % ("ACWI" if bsym == "ACWI" else "the S&P 500 (SPY)"))
+    names = directory_names()
+    return {"symbol": symbol, "name": names.get(symbol), "currency": base, "start": months[0], "end": months[-1],
+            "years": round((len(months) - 1) / 12.0, 1), "months": months, "me": me, "bench": bench, "benchSymbol": bsym,
+            "monthly": monthly, "lump": lump, "notes": notes}
+
+
+TM_CRASHES = [("2008 financial crisis", "2007-10-09", "2009-03-09")] + CRASHES
+
+
+def _daily_since(sym, start="2007-09-01"):
+    t0 = calendar.timegm(time.strptime(start, "%Y-%m-%d"))
+    res = _chart(sym, "period1=%d&period2=%d&interval=1d" % (t0, int(time.time()) // 3600 * 3600), 6 * 3600)
+    return {_day(t): c for t, c in _adj(res)}, (res.get("meta") or {}).get("currency")
+
+
+def tm_crashes(weights, base="EUR", value=None):
+    """Replay today's holdings (buy and hold from each crash's market peak) through past crashes, in the
+    investor's currency. Holdings not listed yet stand in as the world index and are flagged."""
+    base = (base or "EUR").upper()[:3]
+    syms = [s for s, w in sorted(weights.items(), key=lambda x: -x[1]) if w > 0][:25]
+    tot = sum(weights[s] for s in syms) or 1.0
+    w = {s: weights[s] / tot for s in syms}
+    proxies = ("ACWI", "SPY")  # world fund; the S&P 500 stands in before ACWI existed (March 2008)
+
+    def load(s):
+        try:
+            return s, _daily_since(s)
+        except Exception:
+            return s, (None, None)
+    data = dict(POOL.map(load, syms + list(proxies)))
+    fxs = {}
+    for s, (series, ccy) in data.items():
+        unit, scale = _unit(ccy)
+        if series and unit != base and unit not in fxs:
+            try:
+                fxs[unit] = _daily_since("%s%s=X" % (unit, base))[0]
+            except Exception:
+                fxs[unit] = {}
+
+    def conv(s):
+        series, ccy = data[s]
+        if not series:
+            return None
+        unit, scale = _unit(ccy)
+        if unit == base:
+            return {d: p * scale for d, p in series.items()}
+        f, out, last = fxs.get(unit) or {}, {}, None
+        for d in sorted(series):
+            last = f.get(d, last)
+            if last:
+                out[d] = series[d] * scale * last
+        return out
+    cs = {s: conv(s) for s in syms + list(proxies)}
+    out = []
+    for name, peak, trough in TM_CRASHES:
+        proxy = next((p for p in proxies if cs.get(p) and min(cs[p]) <= peak), None)
+        if not proxy:
+            continue
+        days = sorted(d for d in cs[proxy] if d >= peak)
+        if not days:
+            continue
+        p0 = days[0]
+        use, stand_in = {}, []
+        for s in syms:
+            c = cs.get(s)
+            if c and min(c) <= p0 and p0 in c:
+                use[s] = c
+            else:
+                stand_in.append(s)
+        series = []
+        for d in days:
+            v, ok = 0.0, True
+            for s in syms:
+                c = use.get(s) or cs[proxy]
+                base_px = c.get(p0)
+                if d not in c or not base_px:
+                    ok = False
+                    break
+                v += w[s] * c[d] / base_px
+            if ok:
+                series.append((d, v))
+        if not series:
+            continue
+        window = [x for x in series if x[0] <= trough] or series[:1]
+        low_d, low = min(window, key=lambda x: x[1])
+        rec = next((d for d, v in series if d > low_d and v >= 1.0), None)
+        bser = [(d, cs[proxy][d] / cs[proxy][p0]) for d in days if d in cs[proxy]]
+        bwin = [x for x in bser if x[0] <= trough]
+        blow_d, blow = min(bwin, key=lambda x: x[1])
+        brec = next((d for d, v in bser if d > blow_d and v >= 1.0), None)
+
+        def months_between(a, b):
+            if not b:
+                return None
+            ta, tb = (calendar.timegm(time.strptime(x, "%Y-%m-%d")) for x in (a, b))
+            return round((tb - ta) / (30.44 * 86400), 1)
+        per = []
+        for s in syms:
+            c = use.get(s)
+            if not c:
+                continue
+            seg = [c[d] / c[p0] for d in days if d in c and d <= trough]
+            per.append({"symbol": s, "drop": round(100 * (min(seg) - 1), 1) if seg else None})
+        per.sort(key=lambda x: x["drop"] if x["drop"] is not None else 0)
+        step = max(1, len(series) // 300)
+        span = [x for x in series if x[0] <= (rec or series[-1][0])]
+        out.append({"name": name, "peak": p0, "trough": low_d, "drop": round(100 * (low - 1), 1),
+                    "lost": round(value * (1 - low), 2) if value else None,
+                    "recovered": rec, "recoveryMonths": months_between(low_d, rec), "underwaterMonths": months_between(p0, rec),
+                    "bench": {"symbol": proxy, "name": "World index (ACWI)" if proxy == "ACWI" else "S&P 500 (SPY)",
+                              "drop": round(100 * (blow - 1), 1), "recovered": brec, "recoveryMonths": months_between(blow_d, brec)},
+                    "covered": round(100 * sum(w[s] for s in use), 0), "standIn": stand_in, "worst": per[:3], "best": per[-2:][::-1],
+                    "path": [[d, round(100 * (v - 1), 2)] for d, v in span[::step]]})
+    return {"base": base, "value": value, "crashes": out,
+            "note": "Buy and hold today's mix from each crash's market peak, dividends in, converted to %s. Holdings that weren't listed yet "
+                    "are replaced by the world index (ACWI; the S&P 500 for 2008, before ACWI existed)." % base}
+
+
+def tm_trade(symbol, entry, stop, target, days=20, n=10000, seed=19):
+    """Replay a swing trade 10,000 times by drawing whole days (open, high, low and close moves) from the
+    stock's own last two years. Stop is checked before target on the same day; gaps fill at the open."""
+    import random
+    symbol = symbol.upper()
+    if not (stop < entry < target):
+        raise ValueError("The stop must be below the entry and the target above it.")
+    days = max(2, min(int(days), 120))
+    n = max(500, min(int(n), 20000))
+    bars = get_bars(symbol, "2y")["bars"]
+    moves = [(b["o"] / a["c"], b["h"] / a["c"], b["l"] / a["c"], b["c"] / a["c"]) for a, b in zip(bars, bars[1:]) if a["c"]]
+    if len(moves) < 60:
+        raise ValueError("Not enough price history for %s" % symbol)
+    rnd = random.Random(seed)
+    risk = entry - stop
+    reward = (target - entry) / risk
+    hits = {"target": 0, "stop": 0, "open": 0}
+    Rs, hit_days = [], []
+    paths = [[0.0] * (days + 1) for _ in range(n)]
+    for k in range(n):
+        px, outcome = entry, None
+        paths[k][0] = entry
+        for d in range(1, days + 1):
+            o, h, l, c = (px * x for x in rnd.choice(moves))
+            if outcome is None:
+                if o <= stop:
+                    outcome, R = "stop", (o - entry) / risk
+                elif o >= target:
+                    outcome, R = "target", (o - entry) / risk
+                elif l <= stop:
+                    outcome, R = "stop", -1.0
+                elif h >= target:
+                    outcome, R = "target", reward
+                if outcome:
+                    hit_days.append(d)
+            px = c
+            paths[k][d] = px
+        if outcome is None:
+            outcome, R = "open", (px - entry) / risk
+        hits[outcome] += 1
+        Rs.append(R)
+    pct = lambda x: round(100.0 * x / n, 1)
+    bands = []
+    for d in range(days + 1):
+        col = sorted(p[d] for p in paths)
+        q = lambda f: round(col[min(n - 1, int(f * n))], 4)
+        bands.append({"day": d, "p10": q(0.1), "p25": q(0.25), "p50": q(0.5), "p75": q(0.75), "p90": q(0.9)})
+    decided = hits["target"] + hits["stop"]
+    win = 100.0 * hits["target"] / decided if decided else None
+    breakeven = 100.0 / (1 + reward)
+    edge = None if win is None else win - breakeven
+    verdict = ("Not enough decided replays to judge." if win is None else
+               "Close to break-even: the odds roughly pay for the risk, no real edge." if abs(edge) < 5 else
+               ("Strongly toward the target." if edge >= 15 else "Leans toward the target.") if edge > 0 else
+               ("Strongly toward the stop." if edge <= -15 else "Leans toward the stop."))
+    Rs.sort()
+    hist = None
+    try:
+        bt = backtest(symbol)
+        hist = {k: bt.get(k) for k in ("n", "years", "hitTarget", "winRate", "expectancy", "profitFactor", "medianDays", "note")}
+    except Exception:
+        pass
+    hit_days.sort()
+    return {"symbol": symbol, "entry": entry, "stop": stop, "target": target, "days": days, "replays": n, "rewardR": round(reward, 2),
+            "target1st": pct(hits["target"]), "stop1st": pct(hits["stop"]), "neither": pct(hits["open"]),
+            "avgR": round(sum(Rs) / n, 2), "medianR": round(Rs[n // 2], 2), "winRateDecided": round(win, 1) if win is not None else None,
+            "breakeven": round(breakeven, 1), "verdict": verdict, "medianDaysToHit": hit_days[len(hit_days) // 2] if hit_days else None,
+            "bands": bands, "samples": [[round(x, 4) for x in p] for p in paths[:40]], "history": hist, "basedOn": len(moves),
+            "note": "Each replay draws whole trading days at random from the last %d days of %s. A day that touches both the stop and the target counts as the stop; "
+                    "a gap past either fills at the open. It is a simulation from the stock's own past, not a prediction." % (len(moves), symbol)}
+
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".ico": "image/x-icon",
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
@@ -3722,6 +4010,21 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             return self.send_json(briefing(syms(q.get("symbols")), w))
+        if path == "/api/tm/whatif":
+            f = lambda k: float(q.get(k) or 0)
+            return self.send_json(tm_whatif(q.get("symbol") or "VWRL.L", (q.get("start") or "2015-01")[:7], f("monthly"), f("lump"), q.get("base") or "EUR"))
+        if path == "/api/tm/crashes":
+            w = {}
+            for part in (q.get("w") or "").split(","):
+                k, _, v = part.partition(":")
+                try:
+                    w[k.strip().upper()] = float(v)
+                except ValueError:
+                    pass
+            return self.send_json(tm_crashes(w, q.get("base") or "EUR", float(q.get("value") or 0) or None))
+        if path == "/api/tm/trade":
+            f = lambda k: float(q.get(k) or 0)
+            return self.send_json(tm_trade(q.get("symbol") or "", f("entry"), f("stop"), f("target"), int(f("days") or 20)))
         if path == "/api/ai/status":
             return self.send_json(ai_status())
         if path == "/api/correlation":

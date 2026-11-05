@@ -676,6 +676,120 @@ class Assistant(unittest.TestCase):
         self.assertIn("Try", out["text"])
 
 
+class TimeMachine(unittest.TestCase):
+    def months(self, n, start=2015):
+        return ["%d-%02d" % (start + i // 12, i % 12 + 1) for i in range(n)]
+
+    def test_dca_math(self):
+        m = self.months(3)
+        prices = {m[0]: 10.0, m[1]: 20.0, m[2]: 40.0}
+        out = srv._dca(prices, lambda ym: 1.0, m, 100.0, 0.0)
+        # 10 + 5 + 2.5 units, worth 17.5 * 40 = 700 from 300 put in
+        self.assertEqual(out["totalIn"], 300)
+        self.assertAlmostEqual(out["final"], 700)
+        self.assertEqual(out["value"], [100, 300, 700])
+        self.assertEqual(out["worstDrop"], 0)
+        m = self.months(25)
+        steady = srv._dca({x: 100 * 1.1 ** (i / 12) for i, x in enumerate(m)}, lambda ym: 1.0, m, 100.0, 0.0)
+        self.assertAlmostEqual(steady["irr"], 10.0, delta=0.2)  # a steady 10% a year comes back as 10% a year
+
+    def test_dca_converts_currency_and_tracks_losses(self):
+        m = self.months(3)
+        prices = {m[0]: 10.0, m[1]: 5.0, m[2]: 10.0}
+        out = srv._dca(prices, lambda ym: 0.5, m, 0.0, 1000.0)  # one-off only, price in USD, 0.5 EUR per USD
+        self.assertEqual(out["totalIn"], 1000)
+        self.assertAlmostEqual(out["final"], 1000)
+        self.assertEqual(out["worstDrop"], -50.0)
+        self.assertEqual(out["worstLoss"], 500)
+
+    def test_whatif_uses_a_world_fund_and_clamps_the_start(self):
+        m = self.months(36, 2020)
+        stock = {x: 100.0 * (1.01 ** i) for i, x in enumerate(m)}
+        world = {x: 50.0 for x in self.months(60, 2018)}
+        old = srv._monthly
+        srv._monthly = lambda sym: (stock, "EUR") if sym == "ABC" else (world, "EUR") if sym == "VWRL.L" else ({}, "EUR")
+        old_n = srv.directory_names
+        srv.directory_names = lambda: {}
+        try:
+            r = srv.tm_whatif("abc", "2010-01", 100, 0, "EUR")
+        finally:
+            srv._monthly, srv.directory_names = old, old_n
+        self.assertEqual(r["start"], "2020-01")
+        self.assertTrue(any("only has prices" in n for n in r["notes"]))
+        self.assertEqual(r["benchSymbol"], "VWRL.L")
+        self.assertAlmostEqual(r["bench"]["final"], r["bench"]["totalIn"])
+        self.assertGreater(r["me"]["final"], r["me"]["totalIn"])
+
+    def test_whatif_needs_money(self):
+        with self.assertRaises(ValueError):
+            srv.tm_whatif("ABC", "2015-01", 0, 0)
+
+    def test_crash_replay_with_stand_in(self):
+        days = ["2020-02-%02d" % d for d in range(19, 29)] + ["2020-03-%02d" % d for d in range(1, 31)] + ["2020-04-%02d" % d for d in range(1, 30)]
+        def path(depth):
+            out = {}
+            for i, d in enumerate(days):
+                out[d] = 100 * (1 - depth * min(i, 20) / 20) if i <= 20 else 100 * (1 - depth) + (i - 20) * 100 * depth / 25
+            return out
+        series = {"AAA": path(0.5), "ACWI": path(0.2), "SPY": path(0.2)}
+        old, old_c = srv._daily_since, srv.TM_CRASHES
+        srv._daily_since = lambda s, start="2007-09-01": (series[s], "EUR") if s in series else ({}, None)
+        srv.TM_CRASHES = [("Test crash", "2020-02-19", "2020-03-23")]
+        try:
+            r = srv.tm_crashes({"AAA": 50, "NEWCO": 50}, "EUR", 1000)
+        finally:
+            srv._daily_since, srv.TM_CRASHES = old, old_c
+        c = r["crashes"][0]
+        self.assertEqual(c["covered"], 50)
+        self.assertEqual(c["standIn"], ["NEWCO"])
+        self.assertAlmostEqual(c["drop"], -35.0)  # half at -50%, half standing in at -20%
+        self.assertAlmostEqual(c["lost"], 350)
+        self.assertEqual(c["bench"]["drop"], -20.0)
+        self.assertIsNotNone(c["recovered"])
+
+    def bars(self, moves):
+        out, px = [], 100.0
+        for o, h, l, c in moves:
+            out.append({"o": px * o, "h": px * h, "l": px * l, "c": px * c, "t": 0, "v": 0})
+            px *= c
+        return out
+
+    def run_trade(self, move, **kw):
+        bars = self.bars([move] * 100)
+        old, oldb = srv.get_bars, srv.backtest
+        srv.get_bars = lambda s, rng="2y": {"bars": bars, "meta": {}}
+        srv.backtest = lambda s: {}
+        try:
+            return srv.tm_trade("X", 100, 95, 110, n=500, **kw)
+        finally:
+            srv.get_bars, srv.backtest = old, oldb
+
+    def test_trade_always_up_hits_target(self):
+        r = self.run_trade((1.0, 1.04, 0.99, 1.03))
+        self.assertEqual(r["target1st"], 100)
+        self.assertEqual(r["avgR"], 2.0)
+        self.assertEqual(r["verdict"], "Strongly toward the target.")
+
+    def test_trade_same_day_touch_counts_as_stop(self):
+        r = self.run_trade((1.0, 1.12, 0.94, 1.0))  # every day touches both
+        self.assertEqual(r["stop1st"], 100)
+        self.assertEqual(r["avgR"], -1.0)
+
+    def test_trade_gap_fills_at_open(self):
+        r = self.run_trade((0.9, 0.91, 0.89, 0.9))  # opens 10% lower: below the stop
+        self.assertEqual(r["stop1st"], 100)
+        self.assertAlmostEqual(r["avgR"], -2.0)  # (90 - 100) / 5
+
+    def test_trade_flat_stays_open(self):
+        r = self.run_trade((1.0, 1.001, 0.999, 1.0), days=5)
+        self.assertEqual(r["neither"], 100)
+        self.assertEqual(len(r["bands"]), 6)
+
+    def test_trade_rejects_bad_levels(self):
+        with self.assertRaises(ValueError):
+            srv.tm_trade("X", 100, 105, 110)
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 
