@@ -540,6 +540,7 @@
       let picks;
       try { picks = await Promise.all(syms.map((s) => loadPick(s, mode === "lt"))); }
       catch (e) { if (my === seq) body.innerHTML = `<div class="card"><p class="error">${td.esc(e.message)}</p></div>`; return; }
+      if (my !== seq || !body.isConnected) return; // the user moved on while it loaded
       picks.forEach((p) => { p.D = derive(p); p.flags = redFlags(p, p.D); });
       const amount = +$("#cmpAmt").value || 0;
       const fit = await fitInfo(picks, amount);
@@ -548,7 +549,7 @@
       const pf = fit ? Object.entries(fit.weights).map(([k, w]) => `${k}:${w.toFixed(4)}`).join(",") : "";
       const addFrac = fit && fit.total ? Math.min(0.5, Math.max(0.01, amount / (fit.total + amount))) : 0.1;
       const R = await get(`/api/compare?symbols=${encodeURIComponent(syms.join(","))}&base=${base || ""}&pf=${encodeURIComponent(pf)}&add=${addFrac.toFixed(3)}`);
-      if (my !== seq) return;
+      if (my !== seq || !body.isConnected) return;
       const mixed = picks.some((p) => p.f) && picks.some((p) => !p.f);
       const secs = sections(picks, R, fit);
       const sc = scorecard(secs, picks, mode, $("#cmpInc").checked);

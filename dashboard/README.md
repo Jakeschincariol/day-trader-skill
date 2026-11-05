@@ -57,18 +57,6 @@ minutes; results are cached for hours.
 
 Results use past prices only. They are not a forecast or advice.
 
-## Assistant chat
-
-Tap **Ask** (bottom right, on every page) and ask about your stocks in plain words: *How is my portfolio doing today? Why is Lumentum down? Is ASML a good buy now? Compare KLAC vs AMAT. What events are coming this week?* Answers are built from the dashboard's own data through read-only tools (your holdings, live prices, news with impact tags, long-term scores, Compare, the calendar and correlation). It can't place orders. Choose the engine in ⚙:
-
-| Engine | Cost | What you get |
-|---|---|---|
-| **Built-in** (default) | Free | Fixed rules: understands the common questions above. No AI service. |
-| **Ollama** | Free | A real AI running on your PC. Install from ollama.com, run `ollama pull qwen3:8b` once (about 5 GB, needs 16 GB of memory), keep Ollama open. No web search. |
-| **Claude** | Pay per question (about €0.02-0.10 with Opus 5.5, less with Sonnet 5.5 or Haiku 5.5) | The best answers, plus web search for breaking news. Needs an API key from console.anthropic.com with some credit (separate from a Claude app subscription). |
-
-Settings and the key are saved only on your PC in `dashboard/.ai.json` (git-ignored, never sent to the browser). With Claude, your question and the data needed to answer it go to Anthropic; Built-in and Ollama stay on your PC.
-
 ## Use Revolut
 
 Revolut has no API for personal investing accounts, so the dashboard reads your statement file:
