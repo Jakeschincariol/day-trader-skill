@@ -115,7 +115,8 @@ not at the broker, a price too old to use, an early close today.
    limit yourself.
 4. If the order changes in any way, run the check again. trader-broker matches
    each order to its verdict by fingerprint, so an edited order is not ready
-   until it passes again, and a verdict from yesterday does not count today.
+   until it passes again. A verdict also goes stale: after 15 minutes
+   (`"risk_pass_max_minutes"`), or for an entry after the entry cutoff.
 
 ## Example: the reel
 

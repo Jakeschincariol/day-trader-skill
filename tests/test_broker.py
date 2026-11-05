@@ -66,6 +66,25 @@ class ExplicitYes(unittest.TestCase):
         for r in ("yes 9", "yes 10 TSLA", "yes but stop at 357", "yes, stop 358.32", "yes AAPL", "sure"):
             self.assertFalse(self.yes(r, o, ["TSLA", "AAPL"]), r)
 
+    def test_a_yes_that_contradicts_the_order_does_not_count(self):
+        o = tsla()
+        for r in ("yes MSFT", "yes buy MSFT", "yes 8 of NVDA",              # a stock outside the batch
+                  "yes 8 shares at 400", "yes 1000 shares at 370.04",       # one matching number is not enough
+                  "yes 46.88 shares", "yes $8",                             # a number in the wrong role
+                  "yes sell it", "yes short it", "yes limit",               # another side or order type
+                  "yes eighty", "yes لا", "yes don’t"):      # words it cannot read
+            self.assertFalse(self.yes(r, o, ["TSLA"]), r)
+        for r in ("yes 8 shares", "yes buy 8 TSLA", "yes $46.88", "yes, this one please", "yes market order"):
+            self.assertTrue(self.yes(r, o, ["TSLA"]), r)
+        sell = {"symbol": "KO", "side": "sell", "qty": "3", "type": "market", "time_in_force": "day"}
+        self.assertFalse(self.yes("yes buy it", sell, ["KO"]))
+
+    def test_a_symbol_with_a_dot(self):
+        o = {"symbol": "BRK.B", "side": "buy", "qty": "2", "type": "market", "time_in_force": "day"}
+        self.assertTrue(self.yes("yes BRK.B", o, ["BRK.B"]))
+        self.assertTrue(self.yes("yes 2 brk.b.", o, ["BRK.B"]))
+        self.assertFalse(self.yes("yes BRK.A", o, ["BRK.B"]))
+
 
 class TicketShape(unittest.TestCase):
     def test_tool_input_is_the_alpaca_call(self):
@@ -250,6 +269,58 @@ class Flow(unittest.TestCase):
         self.run_risk(now="2026-10-16 10:15")
         code, text, _ = run(self.args("show", "--index", "1"))
         self.assertIn("not today", text)
+
+    def test_a_pass_goes_stale(self):
+        self.run_risk()
+        self.assertIn("READY: trader-risk PASS", run(self.args("show", now="2026-10-19 10:30"))[1])
+        code, text, _ = run(self.args("show", now="2026-10-19 10:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("NOT READY: the risk check is 16 minutes old", text)
+        self.assertNotIn("Reply \"yes\"", text)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes", now="2026-10-19 10:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("not ready", err)
+        self.assertFalse(os.path.exists(self.state))
+        self.run_risk(now="2026-10-19 10:31")           # a new check makes it READY again
+        self.assertEqual(run(self.args("approve", "--index", "1", "--reply", "yes", now="2026-10-19 10:31"))[0], 0)
+
+    def test_the_stale_limit_comes_from_the_config(self):
+        with open(self.cfg) as fh:
+            c = json.load(fh)
+        c["risk_pass_max_minutes"] = 5
+        with open(self.cfg, "w") as fh:
+            json.dump(c, fh)
+        self.run_risk()
+        self.assertEqual(run(self.args("show", now="2026-10-19 10:20"))[0], 0)
+        self.assertEqual(run(self.args("show", now="2026-10-19 10:21"))[0], 1)
+
+    def test_a_pass_does_not_outlive_the_entry_cutoff(self):
+        self.assertEqual(self.run_risk(now="2026-10-19 15:25"), 0)
+        self.assertEqual(run(self.args("show", now="2026-10-19 15:30"))[0], 0)
+        code, text, _ = run(self.args("show", now="2026-10-19 15:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("NOT READY: no new entries after 15:30", text)
+
+    def test_the_cutoff_moves_on_an_early_close(self):
+        self.assertEqual(self.run_risk(now="2026-11-27 12:25"), 0)
+        self.assertEqual(run(self.args("show", now="2026-11-27 12:30"))[0], 0)
+        code, text, _ = run(self.args("show", now="2026-11-27 12:31"))
+        self.assertEqual(code, 1)
+        self.assertIn("no new entries after 12:30", text)
+
+    def test_a_check_with_an_unusable_time_does_not_count(self):
+        self.run_risk(now="2026-10-19 10:30")           # timed after the clock
+        code, text, _ = run(self.args("show", now="2026-10-19 10:15"))
+        self.assertEqual(code, 1)
+        self.assertIn("later than now", text)
+        with open(self.risk) as fh:
+            doc = json.load(fh)
+        del doc["now_new_york"]
+        with open(self.risk, "w") as fh:
+            json.dump(doc, fh)
+        code, text, _ = run(self.args("show", now="2026-10-19 10:30"))
+        self.assertEqual(code, 1)
+        self.assertIn("has no time on it", text)
 
     def test_blocked_orders_are_never_ready(self):
         self.assertEqual(self.run_risk(now="2026-10-19 09:40"), 1)

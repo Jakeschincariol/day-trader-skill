@@ -23,7 +23,10 @@ The Order Executor is the only skill in this pack that can lead to a real
 order, so it is the strictest. An order reaches the market only after three
 separate gates, every time, for every order:
 
-1. **trader-risk passed this exact order today** (matched by fingerprint).
+1. **trader-risk passed this exact order in the last 15 minutes** (matched by
+   fingerprint), and an entry is still inside the entry window. An older PASS
+   shows NOT READY: run `/trader-risk` again. `"risk_pass_max_minutes"` in
+   `trader/config.json` changes the 15.
 2. **The user typed an explicit yes for this one order** in the chat.
 3. **The user clicked Allow once** on Claude's own permission card, which
    appears because the order tool is set to "Needs approval".
@@ -50,7 +53,7 @@ is a real yes for that order, builds the flatten ticket, and keeps the log in
 | file | what |
 | --- | --- |
 | `trader/orders.json` | the proposed orders (trader-budget writes it; `flatten` replaces it) |
-| `trader/state/risk.json` | trader-risk's verdicts; only a PASS from today is READY |
+| `trader/state/risk.json` | trader-risk's verdicts; only a recent PASS is READY |
 | `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss |
 | `trader/portfolio.json` | cash and shares, updated by `fill` and by `result --filled-qty` |
 | `trader/plan.json` | the flat-by time for `flatten` |
@@ -143,8 +146,9 @@ that draft orders to Needs approval too.
    per question. Never offer "yes to all".
 3. Run `ticket.py approve --index N --reply "<the user's reply, word for word>"`.
    If it prints "Not recorded", the reply was not an explicit yes for this
-   order (for example "sure", "yes to all", or a yes that names a different
-   stock or amount). Ask again. Never turn a reply into a yes yourself.
+   order (for example "sure", "yes to all", a yes that names a different
+   stock, side or amount, or a yes with words the check cannot read). Ask
+   again. Never turn a reply into a yes yourself.
 4. Only after "Recorded your yes", call `place_stock_order` with exactly the
    JSON the ticket printed. Claude's card appears: Allow once or Deny.
 5. Record what happened: `ticket.py result --index N --status placed
@@ -205,7 +209,7 @@ buttons: Allow once, Deny. Allow once sends it to the paper account. The
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
-  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
+  passed that exact order in the last 15 minutes, the user typed an explicit yes for that one order in the chat, and the
   user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
   (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.

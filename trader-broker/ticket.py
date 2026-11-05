@@ -8,11 +8,13 @@ work around the one moment that matters, your yes:
             exact JSON Claude will send to Alpaca's place_stock_order tool.
             A bracket order shows its stop-loss, take-profit and the max loss
             at the stop. An order is READY only if trader-risk passed THIS
-            exact order today (matched by fingerprint) and nobody has decided
-            on it yet.
+            exact order (matched by fingerprint) in the last 15 minutes, an
+            entry is still inside the entry window, and nobody has decided on
+            it yet.
   approve   records your explicit yes for ONE order, with your reply word for
             word. It refuses "yes to all", "sure", "ok", a yes that names a
-            different stock or amount, and any order that is not READY.
+            different stock, side or amount, a yes with words it cannot read,
+            and any order that is not READY.
   decline   records a no.
   result    records what happened after the Allow once / Deny card:
             placed (with the broker's order id), denied, or failed.
@@ -53,6 +55,16 @@ YES_WORDS = ("yes", "y")
 BATCH_WORDS = {"all", "every", "everything", "rest", "remaining", "them", "both", "batch", "each"}
 DOUBT_WORDS = {"no", "not", "dont", "don't", "wait", "cancel", "stop", "but", "maybe", "later",
                "hold", "unless", "if"}
+# Besides the order's own symbol, side and type, the only words a yes may carry.
+# Anything else means asking again: a misread yes costs money, a repeat costs a line.
+OK_WORDS = {"yes", "y", "please", "place", "send", "confirm", "confirmed", "go", "ahead", "it", "this", "that",
+            "one", "order", "trade", "ticket", "the", "a", "to", "of", "at", "for", "share", "shares", "max",
+            "loss", "target", "take", "profit", "thanks", "thank", "you"}
+SIDE_WORDS = {"buy", "sell"}
+TYPE_WORDS = {"market", "limit"}
+WORD = r"[^\W\d_]+(?:'[^\W\d_]+)*"
+NUMBER = r"\d[\d,]*(?:\.\d+)?|\.\d+"
+RISK_PASS_MAX_MINUTES = 15   # how long a PASS holds; "risk_pass_max_minutes" in the config changes it
 
 
 class TicketError(Exception):
@@ -268,6 +280,10 @@ def amount_numbers(order):
     return nums
 
 
+def _num(text):
+    return float(text.replace(",", ""))
+
+
 def parse_yes(reply, order, batch_symbols=()):
     """Is this reply an explicit yes for THIS one order? Returns (ok, why)."""
     raw = (reply or "").strip()
@@ -275,7 +291,7 @@ def parse_yes(reply, order, batch_symbols=()):
         return False, "the reply is empty"
     if "?" in raw:
         return False, "the reply is a question, not a yes"
-    words = re.findall(r"[a-z']+", raw.lower())
+    words = re.findall(WORD, raw.lower().replace("\u2019", "'"))
     if not words or words[0] not in YES_WORDS:
         return False, "only a reply that starts with \"yes\" counts (not ok, sure, go, do it)"
     if BATCH_WORDS & set(words):
@@ -288,12 +304,28 @@ def parse_yes(reply, order, batch_symbols=()):
     named = tokens & others
     if named:
         return False, "the reply names %s, but this order is for %s" % (", ".join(sorted(named)), sym)
-    nums = [float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*(?:\.\d+)?", raw)]
-    if nums:
-        want = amount_numbers(order)
-        if not any(abs(n - w) < 0.005 for n in nums for w in want):
-            return False, "the reply says %s, but this order is %s" % (
-                ", ".join(_str_num(n) for n in nums), plain(order))
+    side = str(order.get("side", "")).lower()
+    typ = str(order.get("type", "market")).lower()
+    text = raw.replace("\u2019", "'")
+    if sym:
+        text = re.sub(r"(?<![A-Za-z0-9.\-])%s(?![A-Za-z0-9])" % re.escape(sym), " ", text, flags=re.I)
+    for w in re.findall(WORD, text.lower()):
+        if w in SIDE_WORDS and w != side:
+            return False, "the reply says %s, but this order is %s" % (w, plain(order))
+        if w not in OK_WORDS and w != side and not (w in TYPE_WORDS and w == typ):
+            return False, "the reply has a word this check cannot read (%s); ask for a plain yes" % w
+    want = amount_numbers(order)
+    qty = _f(order.get("qty"))
+    bad = [n for n in map(_num, re.findall(NUMBER, text)) if not any(abs(n - w) < 0.005 for w in want)]
+    for n in map(_num, re.findall(r"(%s)\s*shares?\b" % NUMBER, text, flags=re.I)):
+        if qty is None or abs(n - qty) >= 0.005:
+            bad.append(n)
+    for n in map(_num, re.findall(r"\$\s*(%s)" % NUMBER, text)):
+        if not any(abs(n - w) < 0.005 for w in want if w != qty):
+            bad.append(n)
+    if bad:
+        return False, "the reply says %s, but this order is %s" % (
+            ", ".join(_str_num(n) for n in sorted(set(bad))), plain(order))
     return True, "explicit yes for %s" % plain(order)
 
 
@@ -323,7 +355,29 @@ def risk_verdict(risk, fp, today):
     return None, "this exact order was not in the last risk check (it changed or is new); run check.py again"
 
 
-def status_of(order, risk, state, today):
+def pass_expired(order, rv, risk, now, cfg):
+    """Why a PASS can no longer be relied on, or None. Prices, holdings and the
+    entry window move after a check, so a PASS holds only for a short time.
+    Anything that cannot be read counts as expired."""
+    now_et = to_eastern(now).replace(second=0, microsecond=0)
+    try:
+        checked = datetime.datetime.strptime(str(risk.get("now_new_york")), "%Y-%m-%d %H:%M")
+    except ValueError:
+        return "the risk check has no time on it; run check.py again"
+    age = (now_et - checked).total_seconds() / 60
+    limit = _f(cfg.get("risk_pass_max_minutes")) or RISK_PASS_MAX_MINUTES
+    if age < 0:
+        return "the risk check is timed later than now (%s); run check.py again" % risk.get("now_new_york")
+    if age > limit:
+        return "the risk check is %d minutes old (the limit is %g); run check.py again" % (age, limit)
+    cutoff = risk.get("entries_until")
+    if cutoff and kind_of(order, rv) == "entry" and now_et.strftime("%H:%M") > cutoff:
+        return "no new entries after %s New York (it is %s); this entry has missed the window" % (
+            cutoff, now_et.strftime("%H:%M"))
+    return None
+
+
+def status_of(order, risk, state, today, now, cfg):
     """(ready, label, risk_result)"""
     fp = fingerprint(order)
     rv, why = risk_verdict(risk, fp, today)
@@ -337,6 +391,9 @@ def status_of(order, risk, state, today):
         if st == "approved":
             return False, "APPROVED by you at %s, waiting for the place_stock_order call" % rec.get("at"), rv
         return False, "DONE: %s at %s" % (st, rec.get("at")), rv
+    expired = pass_expired(order, rv, risk, now, cfg)
+    if expired:
+        return False, "NOT READY: " + expired, rv
     return True, "READY: trader-risk PASS, waiting for your yes", rv
 
 
@@ -349,8 +406,8 @@ def kind_of(order, rv):
 
 # ---------------------------------------------------------------- rendering
 
-def render(order, idx, total, cfg, risk, state, today):
-    ready, label, rv = status_of(order, risk, state, today)
+def render(order, idx, total, cfg, risk, state, today, now):
+    ready, label, rv = status_of(order, risk, state, today, now, cfg)
     broker = str(cfg.get("broker", "alpaca")).lower()
     paper = cfg.get("paper", True)
     acct = "PAPER account" if paper else "LIVE ACCOUNT, REAL MONEY"
@@ -379,8 +436,8 @@ def render(order, idx, total, cfg, risk, state, today):
     return "\n".join(lines), ready
 
 
-def ticket_json(order, idx, cfg, risk, state, today):
-    ready, label, rv = status_of(order, risk, state, today)
+def ticket_json(order, idx, cfg, risk, state, today, now):
+    ready, label, rv = status_of(order, risk, state, today, now, cfg)
     loss, stop = max_loss(order)
     return {"index": idx, "ready": ready, "status": label, "plain": plain(order),
             "fingerprint": fingerprint(order), "paper": bool(cfg.get("paper", True)),
@@ -483,12 +540,12 @@ def cmd_show(a):
     orders, cfg, risk, state, today, now = _load(a)
     picks = [(a.index, _pick(orders, a.index))] if a.index else list(enumerate(orders, 1))
     if a.json:
-        out = [ticket_json(o, i, cfg, risk, state, today) for i, o in picks]
+        out = [ticket_json(o, i, cfg, risk, state, today, now) for i, o in picks]
         print(json.dumps(out[0] if a.index else out, indent=2))
         return 0 if any(t["ready"] for t in out) else 1
     blocks, any_ready = [], False
     for i, o in picks:
-        text, ready = render(o, i, len(orders), cfg, risk, state, today)
+        text, ready = render(o, i, len(orders), cfg, risk, state, today, now)
         blocks.append(text)
         any_ready = any_ready or ready
     print("\n\n".join(blocks))
@@ -500,7 +557,7 @@ def cmd_show(a):
 def cmd_approve(a):
     orders, cfg, risk, state, today, now = _load(a)
     order = _pick(orders, a.index)
-    ready, label, rv = status_of(order, risk, state, today)
+    ready, label, rv = status_of(order, risk, state, today, now, cfg)
     if not ready:
         raise TicketError("order %d is not ready: %s" % (a.index, label))
     ok, why = parse_yes(a.reply, order, [o.get("symbol", "") for o in orders])

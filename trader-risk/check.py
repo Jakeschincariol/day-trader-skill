@@ -242,6 +242,17 @@ def window_check(now_et, c):
     return [], warns
 
 
+def entry_cutoff(now_et, c):
+    """The last minute for a new entry today, "HH:MM" New York, or None when there is no cutoff.
+    trader-broker holds a PASS to it, so an entry passed before the cutoff cannot be approved after it."""
+    after = hhmm(c.get("no_entries_after"), "no_entries_after")
+    if after is None:
+        return None
+    if now_et.date().isoformat() in NYSE_EARLY_CLOSE:
+        after = _shift(after, 3)
+    return after.strftime("%H:%M")
+
+
 def business_days(today, n=5):
     """The last n NYSE trading days up to and including today, newest first."""
     out, d = [], today
@@ -694,6 +705,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     return {
         "date": today,
         "now_new_york": now_et.strftime("%Y-%m-%d %H:%M"),
+        "entries_until": entry_cutoff(now_et, c),
         "paper": bool(c.get("paper", True)),
         "results": results,
         "pass": sum(1 for r in results if r["verdict"] == "PASS"),
