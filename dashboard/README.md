@@ -47,25 +47,14 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
-## Demo mode (for screenshots and videos)
+## Right moment to buy? (long-term entry check)
 
-Double-click **`start-demo.bat`** (or run `python3 dashboard/server.py --demo --port 8214`). It opens a separate copy on http://127.0.0.1:8214 that:
+On every stock page in Long-term mode, above the Long-term view. It answers "should I buy it all now, in parts, or wait?":
 
-- shows an **example portfolio** (EUR 500 a month since January 2022 in a world fund, Microsoft, ASML, Nvidia, SAP, Costco and Novo Nordisk, bought at real past prices) instead of your accounts;
-- never reads your Trading 212 key or Revolut statement, and switches off linking them;
-- replaces buy/sell language with neutral wording (Strong Buy → Very strong, Accumulate+ → Below usual price, Trim → Above target, ...), hides order tickets, buy buttons and "Pick for me", and shows a "Demo, not investment advice" banner.
-
-It runs next to your normal dashboard (port 8212) without touching it. The market data still comes from free sources meant for personal use, so the demo is for showing the tool, not for hosting it publicly.
-
-## Time Machine
-
-**Time Machine** (a tab on the PC; **More** on the iPhone; a button on every stock page) goes back in time with real prices:
-
-1. **What if I had invested**: a stock or ETF, a start month, a monthly amount and/or a one-off. Shows what it would be worth today in your currency (dividends reinvested, each month's exchange rate), growth a year on the money as it went in, the worst fall, how far below your deposits the account ever was, and the same deposits in a world fund (VWRL; ACWI or the S&P 500 before 2012).
-2. **Past crashes**: replays today's holdings (buy and hold from the market peak, in your currency) through the 2008 financial crisis, the 2020 COVID crash, the 2022 bear market and the 2025 tariff drop: the fall, the money lost at the bottom, the months to recover and the holdings hit hardest, next to the world index. Holdings that weren't listed yet are replaced by the index and flagged.
-3. **Replay a trade**: entry, stop and target (filled from the dashboard's plan) replayed 10,000 times over the next 5-60 trading days, drawing whole days from the stock's own last two years. Shows the odds of target first, stop first or neither, the average R, the win rate needed to break even, a fan chart and the real record of the dashboard's buy rule on that stock. A day touching both levels counts as the stop; gaps fill at the open.
-
-Results use past prices only. They are not a forecast or advice.
+- **Trend state today**: *Still falling* (below a falling 50-day average and making new 1-month lows), *Steadying after a drop*, *Pullback in an uptrend*, *Rising trend* or *No clear trend*, combined with the long-term buy zone, upcoming results and the market mood into one verdict.
+- **Buy in parts**: a third now and the rest at two lower prices when it is still falling; half and half when steadying; most now in a pullback; all now in a rising trend. The lower prices are how far the stock typically fell further within 3 months after past days in the same state (10 years of daily prices). Set them as limit orders or price alerts. The **Buy an amount** dialog splits the amount you type the same way.
+- **What usually happens after buying**: the typical (and 1-in-5) further dip within 3 months after days like today and after any day, and how often it was higher 12 months later. A dip right after buying is normal.
+- **If you already own it at a loss**: whether adding at the lower prices makes sense (good long-term score) or not (weak score: don't average down just to get even).
 
 ## Use Revolut
 

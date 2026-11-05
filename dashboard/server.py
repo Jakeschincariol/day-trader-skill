@@ -1585,7 +1585,7 @@ def period_returns(h):
 def build_lots(manual, include_t212=True, include_revolut=True):
     lots, notes = [], []
     base = None
-    if include_revolut and (DEMO["on"] or os.path.exists(REVOLUT_FILE)):
+    if include_revolut and os.path.exists(REVOLUT_FILE):
         try:
             rl, base = revolut_lots()
             lots += rl
@@ -2846,39 +2846,7 @@ def parse_revolut(rows):
     return {"trades": trades, "skipped": skipped, "otherTypes": types, "snapshot": snapshot}
 
 
-DEMO = {"on": False, "trades": None}
-DEMO_MIX = [("VWRL.L", 0.40), ("MSFT", 0.12), ("ASML", 0.12), ("NVDA", 0.10), ("SAP.DE", 0.09), ("COST", 0.09), ("NOVO-B.CO", 0.08)]
-DEMO_MONTHLY, DEMO_START = 500.0, "2022-01"
-
-
-def demo_trades():
-    """An example investor: EUR 500 a month since January 2022 split over a world fund and six large companies."""
-    if DEMO["trades"] is not None:
-        return DEMO["trades"]
-    trades = []
-    for sym, share in DEMO_MIX:
-        try:
-            prices, ccy = _monthly(sym)
-            fx, _ = _fx_monthly(ccy, "EUR")
-        except Exception:
-            continue
-        unit, scale = _unit(ccy)
-        for ym in sorted(m for m in prices if m >= DEMO_START)[:-1]:
-            eur = DEMO_MONTHLY * share
-            px = prices[ym] * scale  # trade price in the main unit (pounds, not pence)
-            qty = eur / (prices[ym] * fx(ym))
-            ts = calendar.timegm(time.strptime(ym + "-15", "%Y-%m-%d"))
-            trades.append({"ts": ts, "kind": "buy", "symbol": sym, "qty": round(qty, 6), "price": round(px, 4),
-                           "amount": round(qty * px, 2), "ccy": unit, "name": None})
-    trades.sort(key=lambda t: t["ts"])
-    DEMO["trades"] = trades
-    return trades
-
-
 def revolut_load():
-    if DEMO["on"]:
-        return {"currency": "EUR", "trades": demo_trades(), "file": "example portfolio", "imported": int(time.time()) // 86400 * 86400,
-                "skipped": 0, "otherTypes": {}, "snapshot": False}
     if not os.path.exists(REVOLUT_FILE):
         return None
     with open(REVOLUT_FILE) as f:
@@ -3018,7 +2986,7 @@ def revolut_portfolio():
             elif t["kind"] == "fee":
                 tot["fees"] += amt
         positions.sort(key=lambda x: -x["value"])
-        return {"linked": True, "broker": "Example" if DEMO["on"] else "Revolut", "demo": DEMO["on"], "currency": acct, "positions": positions, "file": d.get("file"),
+        return {"linked": True, "broker": "Revolut", "currency": acct, "positions": positions, "file": d.get("file"),
                 "imported": d.get("imported"), "warnings": warn, "snapshot": d.get("snapshot"),
                 "totals": {k: round(v, 2) for k, v in tot.items()}, "ppl": round(tot["value"] - tot["cost"], 2),
                 "fetched": int(time.time())}
@@ -3041,292 +3009,147 @@ def revolut_lots():
     return lots, d.get("currency")
 
 
-# ---------------------------------------------------------------- Time Machine: what-if, crash replay, trade replay
+# ---------------------------------------------------------------- long-term entry check: buy now, in parts, or wait?
 
-def _unit(ccy):
-    """('GBP', 0.01) for pence quotes, else (ccy, 1)."""
-    if ccy in ("GBp", "GBX"):
-        return "GBP", 0.01
-    if ccy in ("ZAc", "ILA"):
-        return ("ZAR" if ccy == "ZAc" else "ILS"), 0.01
-    return (ccy or "USD").upper(), 1.0
-
-
-def _monthly(sym):
-    """{YYYY-MM: dividend-adjusted month-end close} for the whole listing history, and the currency."""
-    d, ccy = _daily_adj(sym, "max")
-    out = {}
-    for day in sorted(d):
-        out[day[:7]] = d[day]
-    return out, ccy
+ENTRY_STATES = {
+    "falling": ("Still falling", "down", "The price is below its 50-day average, that average is pointing down, and it made a new 1-month low in the last few days."),
+    "steadying": ("Steadying after a drop", "flat", "It fell, but it hasn't made a new 1-month low for two weeks and it's back above its 20-day average."),
+    "pullback": ("Pullback in an uptrend", "up", "A dip below the 50-day average while the long-term (200-day) trend is still rising."),
+    "uptrend": ("Rising trend", "up", "Above its 50-day and 200-day averages: no discount, but no sign of trouble."),
+    "sideways": ("No clear trend", "flat", "Moving sideways around its averages."),
+}
 
 
-def _fx_monthly(ccy, base):
-    unit, scale = _unit(ccy)
-    if unit == base:
-        return (lambda ym: scale), None
-    try:
-        s, _ = _monthly("%s%s=X" % (unit, base))
-    except Exception:
-        return (lambda ym: scale), "No %s to %s rate: shown in %s" % (unit, base, unit)
-    keys = sorted(s)
-
-    def at(ym):
-        if ym in s:
-            return s[ym] * scale
-        older = [k for k in keys if k <= ym]
-        return (s[older[-1]] if older else s[keys[0]]) * scale
-    return at, None
-
-
-def _dca(prices, fx, months, monthly, lump):
-    units = invested = 0.0
-    flows, val, inv, worst_gap, peak, dd = [], [], [], 0.0, 0.0, 0.0
-    for i, ym in enumerate(months):
-        px = prices[ym] * fx(ym)
-        add = monthly + (lump if i == 0 else 0)
-        if add:
-            units += add / px
-            invested += add
-            flows.append((i / 12.0, -add))
-        v = units * px
-        val.append(round(v, 2))
-        inv.append(round(invested, 2))
-        worst_gap = max(worst_gap, invested - v)
-        peak = max(peak, px)
-        dd = min(dd, px / peak - 1)
-    final = val[-1] if val else 0
-    flows.append(((len(months) - 1) / 12.0, final))
-    irr = _irr(flows) if invested and len(months) > 1 else None
-    return {"value": val, "invested": inv, "final": round(final, 2), "totalIn": round(invested, 2),
-            "gain": round(final - invested, 2), "multiple": round(final / invested, 2) if invested else None,
-            "irr": round(100 * irr, 1) if irr is not None else None, "worstDrop": round(100 * dd, 1),
-            "worstLoss": round(worst_gap, 2), "worstLossPct": round(100 * worst_gap / invested, 1) if invested else None}
+def _entry_state(c, s20, s50, s200, i):
+    if i < 220 or s50[i] is None or s200[i] is None or s50[i - 20] is None or s200[i - 20] is None:
+        return None
+    px = c[i]
+    low20 = min(c[i - 19:i + 1])
+    new_low_5 = min(c[i - 4:i + 1]) <= low20 * 1.0001
+    new_low_10 = min(c[i - 9:i + 1]) <= low20 * 1.0001
+    slope50 = s50[i] / s50[i - 20] - 1
+    slope200 = s200[i] / s200[i - 20] - 1
+    drop3m = px / max(c[i - 62:i + 1]) - 1
+    if px < s50[i] and slope50 < 0 and new_low_5:
+        return "falling"
+    if (px < s200[i] or drop3m < -0.10) and not new_low_10 and s20[i] and px > s20[i]:
+        return "steadying"
+    if px < s50[i] and px > s200[i] and slope200 > 0:
+        return "pullback"
+    if px > s50[i] > s200[i]:
+        return "uptrend"
+    return "sideways"
 
 
-def tm_whatif(symbol, start="2015-01", monthly=0.0, lump=0.0, base="EUR"):
-    """What a lump sum and/or a monthly amount in `symbol` since `start` would be worth today, with dividends,
-    in the investor's currency, next to the same deposits in a world index fund."""
-    symbol, base = symbol.upper(), (base or "EUR").upper()[:3]
-    if monthly <= 0 and lump <= 0:
-        raise ValueError("Enter a monthly amount, a one-off amount, or both.")
-    prices, ccy = _monthly(symbol)
-    if not prices:
-        raise ValueError("No price history for %s" % symbol)
-    first = min(prices)
-    notes = []
-    if start < first:
-        notes.append("%s only has prices from %s: the simulation starts there." % (symbol, first))
-        start = first
-    months = [m for m in sorted(prices) if m >= start]
-    if len(months) < 2:
-        raise ValueError("Pick a start date at least two months ago.")
-    fx, note = _fx_monthly(ccy, base)
-    if note:
-        notes.append(note)
-    me = _dca(prices, fx, months, monthly, lump)
-    bench, bsym = None, None
-    for b in ("VWRL.L", "ACWI", "SPY"):
-        try:
-            bp, bc = _monthly(b)
-        except Exception:
-            continue
-        if min(bp) <= months[0]:
-            bfx, _ = _fx_monthly(bc, base)
-            bm = [m for m in months if m in bp]
-            if len(bm) == len(months):
-                bench, bsym = _dca(bp, bfx, months, monthly, lump), b
-                break
-    if bsym and bsym != "VWRL.L":
-        notes.append("Before VWRL existed (2012) the world fund is %s, which tracks a similar index." % ("ACWI" if bsym == "ACWI" else "the S&P 500 (SPY)"))
-    names = directory_names()
-    return {"symbol": symbol, "name": names.get(symbol), "currency": base, "start": months[0], "end": months[-1],
-            "years": round((len(months) - 1) / 12.0, 1), "months": months, "me": me, "bench": bench, "benchSymbol": bsym,
-            "monthly": monthly, "lump": lump, "notes": notes}
+def _q(xs, f):
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, max(0, int(f * len(xs))))] if xs else None
 
 
-TM_CRASHES = [("2008 financial crisis", "2007-10-09", "2009-03-09")] + CRASHES
+def lt_entry(symbol):
+    """Is this a good moment to buy for the long term, and at which prices to add if it keeps falling?
+    Uses 10 years of dividend-adjusted daily closes: today's trend state, and what happened after
+    every past day in the same state (how much further it dipped within 3 months, the 12-month result)."""
+    sym = symbol.upper()
 
+    def load():
+        res = _chart(sym, "range=10y&interval=1d", 3600)
+        pts = _adj(res)
+        if len(pts) < 300:
+            raise ValueError("Not enough price history for %s (needs about 15 months)" % sym)
+        c = [p for _, p in pts]
+        s20, s50, s200 = sma(c, 20), sma(c, 50), sma(c, 200)
+        n = len(c)
+        i = n - 1
+        state = _entry_state(c, s20, s50, s200, i)
+        dips, rets, same_dips, same_rets = [], [], [], []
+        for j in range(220, n - 63):
+            dip = min(c[j + 1:j + 64]) / c[j] - 1
+            ret = c[j + 252] / c[j] - 1 if j + 252 < n else None
+            dips.append(dip)
+            if ret is not None:
+                rets.append(ret)
+            if _entry_state(c, s20, s50, s200, j) == state:
+                same_dips.append(dip)
+                if ret is not None:
+                    same_rets.append(ret)
 
-def _daily_since(sym, start="2007-09-01"):
-    t0 = calendar.timegm(time.strptime(start, "%Y-%m-%d"))
-    res = _chart(sym, "period1=%d&period2=%d&interval=1d" % (t0, int(time.time()) // 3600 * 3600), 6 * 3600)
-    return {_day(t): c for t, c in _adj(res)}, (res.get("meta") or {}).get("currency")
-
-
-def tm_crashes(weights, base="EUR", value=None):
-    """Replay today's holdings (buy and hold from each crash's market peak) through past crashes, in the
-    investor's currency. Holdings not listed yet stand in as the world index and are flagged."""
-    base = (base or "EUR").upper()[:3]
-    syms = [s for s, w in sorted(weights.items(), key=lambda x: -x[1]) if w > 0][:25]
-    tot = sum(weights[s] for s in syms) or 1.0
-    w = {s: weights[s] / tot for s in syms}
-    proxies = ("ACWI", "SPY")  # world fund; the S&P 500 stands in before ACWI existed (March 2008)
-
-    def load(s):
-        try:
-            return s, _daily_since(s)
-        except Exception:
-            return s, (None, None)
-    data = dict(POOL.map(load, syms + list(proxies)))
-    fxs = {}
-    for s, (series, ccy) in data.items():
-        unit, scale = _unit(ccy)
-        if series and unit != base and unit not in fxs:
-            try:
-                fxs[unit] = _daily_since("%s%s=X" % (unit, base))[0]
-            except Exception:
-                fxs[unit] = {}
-
-    def conv(s):
-        series, ccy = data[s]
-        if not series:
-            return None
-        unit, scale = _unit(ccy)
-        if unit == base:
-            return {d: p * scale for d, p in series.items()}
-        f, out, last = fxs.get(unit) or {}, {}, None
-        for d in sorted(series):
-            last = f.get(d, last)
-            if last:
-                out[d] = series[d] * scale * last
-        return out
-    cs = {s: conv(s) for s in syms + list(proxies)}
-    out = []
-    for name, peak, trough in TM_CRASHES:
-        proxy = next((p for p in proxies if cs.get(p) and min(cs[p]) <= peak), None)
-        if not proxy:
-            continue
-        days = sorted(d for d in cs[proxy] if d >= peak)
-        if not days:
-            continue
-        p0 = days[0]
-        use, stand_in = {}, []
-        for s in syms:
-            c = cs.get(s)
-            if c and min(c) <= p0 and p0 in c:
-                use[s] = c
-            else:
-                stand_in.append(s)
-        series = []
-        for d in days:
-            v, ok = 0.0, True
-            for s in syms:
-                c = use.get(s) or cs[proxy]
-                base_px = c.get(p0)
-                if d not in c or not base_px:
-                    ok = False
-                    break
-                v += w[s] * c[d] / base_px
-            if ok:
-                series.append((d, v))
-        if not series:
-            continue
-        window = [x for x in series if x[0] <= trough] or series[:1]
-        low_d, low = min(window, key=lambda x: x[1])
-        rec = next((d for d, v in series if d > low_d and v >= 1.0), None)
-        bser = [(d, cs[proxy][d] / cs[proxy][p0]) for d in days if d in cs[proxy]]
-        bwin = [x for x in bser if x[0] <= trough]
-        blow_d, blow = min(bwin, key=lambda x: x[1])
-        brec = next((d for d, v in bser if d > blow_d and v >= 1.0), None)
-
-        def months_between(a, b):
-            if not b:
+        def stats(d, r):
+            if len(d) < 40:
                 return None
-            ta, tb = (calendar.timegm(time.strptime(x, "%Y-%m-%d")) for x in (a, b))
-            return round((tb - ta) / (30.44 * 86400), 1)
-        per = []
-        for s in syms:
-            c = use.get(s)
-            if not c:
-                continue
-            seg = [c[d] / c[p0] for d in days if d in c and d <= trough]
-            per.append({"symbol": s, "drop": round(100 * (min(seg) - 1), 1) if seg else None})
-        per.sort(key=lambda x: x["drop"] if x["drop"] is not None else 0)
-        step = max(1, len(series) // 300)
-        span = [x for x in series if x[0] <= (rec or series[-1][0])]
-        out.append({"name": name, "peak": p0, "trough": low_d, "drop": round(100 * (low - 1), 1),
-                    "lost": round(value * (1 - low), 2) if value else None,
-                    "recovered": rec, "recoveryMonths": months_between(low_d, rec), "underwaterMonths": months_between(p0, rec),
-                    "bench": {"symbol": proxy, "name": "World index (ACWI)" if proxy == "ACWI" else "S&P 500 (SPY)",
-                              "drop": round(100 * (blow - 1), 1), "recovered": brec, "recoveryMonths": months_between(blow_d, brec)},
-                    "covered": round(100 * sum(w[s] for s in use), 0), "standIn": stand_in, "worst": per[:3], "best": per[-2:][::-1],
-                    "path": [[d, round(100 * (v - 1), 2)] for d, v in span[::step]]})
-    return {"base": base, "value": value, "crashes": out,
-            "note": "Buy and hold today's mix from each crash's market peak, dividends in, converted to %s. Holdings that weren't listed yet "
-                    "are replaced by the world index (ACWI; the S&P 500 for 2008, before ACWI existed)." % base}
-
-
-def tm_trade(symbol, entry, stop, target, days=20, n=10000, seed=19):
-    """Replay a swing trade 10,000 times by drawing whole days (open, high, low and close moves) from the
-    stock's own last two years. Stop is checked before target on the same day; gaps fill at the open."""
-    import random
-    symbol = symbol.upper()
-    if not (stop < entry < target):
-        raise ValueError("The stop must be below the entry and the target above it.")
-    days = max(2, min(int(days), 120))
-    n = max(500, min(int(n), 20000))
-    bars = get_bars(symbol, "2y")["bars"]
-    moves = [(b["o"] / a["c"], b["h"] / a["c"], b["l"] / a["c"], b["c"] / a["c"]) for a, b in zip(bars, bars[1:]) if a["c"]]
-    if len(moves) < 60:
-        raise ValueError("Not enough price history for %s" % symbol)
-    rnd = random.Random(seed)
-    risk = entry - stop
-    reward = (target - entry) / risk
-    hits = {"target": 0, "stop": 0, "open": 0}
-    Rs, hit_days = [], []
-    paths = [[0.0] * (days + 1) for _ in range(n)]
-    for k in range(n):
-        px, outcome = entry, None
-        paths[k][0] = entry
-        for d in range(1, days + 1):
-            o, h, l, c = (px * x for x in rnd.choice(moves))
-            if outcome is None:
-                if o <= stop:
-                    outcome, R = "stop", (o - entry) / risk
-                elif o >= target:
-                    outcome, R = "target", (o - entry) / risk
-                elif l <= stop:
-                    outcome, R = "stop", -1.0
-                elif h >= target:
-                    outcome, R = "target", reward
-                if outcome:
-                    hit_days.append(d)
-            px = c
-            paths[k][d] = px
-        if outcome is None:
-            outcome, R = "open", (px - entry) / risk
-        hits[outcome] += 1
-        Rs.append(R)
-    pct = lambda x: round(100.0 * x / n, 1)
-    bands = []
-    for d in range(days + 1):
-        col = sorted(p[d] for p in paths)
-        q = lambda f: round(col[min(n - 1, int(f * n))], 4)
-        bands.append({"day": d, "p10": q(0.1), "p25": q(0.25), "p50": q(0.5), "p75": q(0.75), "p90": q(0.9)})
-    decided = hits["target"] + hits["stop"]
-    win = 100.0 * hits["target"] / decided if decided else None
-    breakeven = 100.0 / (1 + reward)
-    edge = None if win is None else win - breakeven
-    verdict = ("Not enough decided replays to judge." if win is None else
-               "Close to break-even: the odds roughly pay for the risk, no real edge." if abs(edge) < 5 else
-               ("Strongly toward the target." if edge >= 15 else "Leans toward the target.") if edge > 0 else
-               ("Strongly toward the stop." if edge <= -15 else "Leans toward the stop."))
-    Rs.sort()
-    hist = None
+            return {"days": len(d), "typicalDip": round(100 * _q(d, 0.5), 1), "deepDip": round(100 * _q(d, 0.2), 1),
+                    "up12m": round(100.0 * sum(1 for x in r if x > 0) / len(r), 0) if len(r) >= 40 else None,
+                    "median12m": round(100 * _q(r, 0.5), 1) if len(r) >= 40 else None}
+        anyday, same = stats(dips, rets), stats(same_dips, same_rets)
+        ref = same or anyday
+        px = c[i]
+        # where to add more: the typical and the deep further dip seen after days like today
+        lv2 = px * (1 + min(-0.03, ref["typicalDip"] / 100)) if ref else px * 0.93
+        lv3 = px * (1 + min(-0.06, ref["deepDip"] / 100)) if ref else px * 0.85
+        if lv3 > lv2 * 0.97:
+            lv3 = lv2 * 0.95
+        supports = []
+        if s200[i] and s200[i] < px * 0.98:
+            supports.append({"name": "200-day average", "price": r(s200[i])})
+        low52 = min(c[-252:])
+        if low52 < px * 0.98:
+            supports.append({"name": "52-week low", "price": r(low52)})
+        title, tone, why = ENTRY_STATES.get(state, ENTRY_STATES["sideways"])
+        plan = {"falling": [("Now", 1 / 3), ("If it drops to", 1 / 3, lv2), ("If it drops to", 1 / 3, lv3)],
+                "steadying": [("Now", 1 / 2), ("If it drops to", 1 / 2, lv2)],
+                "pullback": [("Now", 2 / 3), ("If it drops to", 1 / 3, lv2)],
+                "uptrend": [("Now", 1.0)], "sideways": [("Now", 1 / 2), ("If it drops to", 1 / 2, lv2)]}[state or "sideways"]
+        return {"symbol": sym, "price": r(px), "currency": (res.get("meta") or {}).get("currency"), "state": state,
+                "title": title, "tone": tone, "why": why,
+                "sma50": r(s50[i]), "sma200": r(s200[i]), "fromHigh3m": round(100 * (px / max(c[-63:]) - 1), 1),
+                "same": same, "any": anyday, "years": round(n / 252.0, 1),
+                "ladder": [{"label": p[0], "share": round(p[1], 4), "price": r(p[2]) if len(p) > 2 else None} for p in plan],
+                "supports": supports}
+    out = dict(cached(("entry", sym), 3600, load))
+    e = next_earnings(sym, wait=False)
+    if e and e["days"] <= 14:
+        out["earnings"] = e
     try:
-        bt = backtest(symbol)
-        hist = {k: bt.get(k) for k in ("n", "years", "hitTarget", "winRate", "expectancy", "profitFactor", "medianDays", "note")}
+        reg = market_regime()
+        if reg.get("level") == "red":
+            out["marketWeak"] = reg.get("label")
     except Exception:
         pass
-    hit_days.sort()
-    return {"symbol": symbol, "entry": entry, "stop": stop, "target": target, "days": days, "replays": n, "rewardR": round(reward, 2),
-            "target1st": pct(hits["target"]), "stop1st": pct(hits["stop"]), "neither": pct(hits["open"]),
-            "avgR": round(sum(Rs) / n, 2), "medianR": round(Rs[n // 2], 2), "winRateDecided": round(win, 1) if win is not None else None,
-            "breakeven": round(breakeven, 1), "verdict": verdict, "medianDaysToHit": hit_days[len(hit_days) // 2] if hit_days else None,
-            "bands": bands, "samples": [[round(x, 4) for x in p] for p in paths[:40]], "history": hist, "basedOn": len(moves),
-            "note": "Each replay draws whole trading days at random from the last %d days of %s. A day that touches both the stop and the target counts as the stop; "
-                    "a gap past either fills at the open. It is a simulation from the stock's own past, not a prediction." % (len(moves), symbol)}
+    try:
+        p = lt_profile(sym)
+        out.update(zone=p.get("zone"), zoneWhy=p.get("zoneWhy"), score=p.get("score"), band=p.get("band"))
+    except Exception:
+        pass
+    out["verdict"] = _entry_verdict(out)
+    return out
+
+
+def _entry_verdict(e):
+    """One plain sentence combining the trend state with the long-term buy zone."""
+    st, zone = e.get("state"), e.get("zone")
+    if zone == "Speculative":
+        v = ("Careful", "down", "Weak long-term score: if you buy, keep it small, whatever the timing.")
+    elif st == "falling":
+        v = ("Don't buy it all at once", "down", "It's still falling. Split your amount: a third now, the rest only if it drops to the levels below.")
+    elif st == "steadying":
+        v = ("A reasonable moment to start, in parts", "flat", "The drop seems to be slowing. Buy half now and keep half for a lower price.")
+    elif st == "pullback":
+        v = ("Historically one of the better moments", "up", "A dip in a rising trend. Most of your amount now, a little kept back in case it dips further.")
+    elif zone == "Stretched":
+        v = ("Fine, but no discount", "flat", "Rising and priced above its usual range: keep to small regular amounts rather than one big buy.")
+    elif st == "uptrend":
+        v = ("Fine for your regular amount", "up", "Rising trend and no warning signs. Waiting for a dip often means paying more later.")
+    else:
+        v = ("Your regular amount is fine", "flat", "No clear trend either way. Splitting into two buys smooths the price.")
+    notes = []
+    if e.get("earnings"):
+        notes.append("Results on %s (in %d days): prices often move 5-15%% that day. Consider buying only part before, the rest after." %
+                     (e["earnings"]["date"], e["earnings"]["days"]))
+    if e.get("marketWeak"):
+        notes.append("The whole market is weak right now: dips can go further than usual.")
+    if zone == "Accumulate+" and st in ("falling", "steadying", "pullback"):
+        notes.append("The business also scores well and trades below its usual price: a good candidate for adding over the next weeks.")
+    return {"title": v[0], "tone": v[1], "text": v[2], "notes": notes}
 
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -3455,6 +3278,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/lt":
                 ss = syms(q.get("symbols")) + one
                 purge(lambda k: k[0] == "lt" and k[1] in ss)
+            elif path == "/api/ltentry":
+                purge(lambda k: k[0] in ("entry", "lt") and k[1] in one)
             elif path == "/api/t212/dividends":
                 _divs["at"] = 0
             elif path == "/api/regime":
@@ -3545,6 +3370,8 @@ class Handler(BaseHTTPRequestHandler):
             if q.get("symbols"):
                 return self.send_json(lt_many(syms(q.get("symbols"))[:120]))
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
+        if path == "/api/ltentry":
+            return self.send_json(lt_entry(q.get("symbol", "SPY")))
         if path == "/api/ltbacktest":
             return self.send_json(lt_backtest(q.get("symbol", "SPY").upper()))
         if path == "/api/t212/dividends":
@@ -3558,8 +3385,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/t212/journal":
             return self.send_json(trade_journal())
         if path == "/api/t212/status":
-            if DEMO["on"]:
-                return self.send_json({"linked": False, "env": "demo", "demo": True, "source": "demo"})
             return self.send_json({"linked": bool(T212["key"]), "env": T212["env"],
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})
         if path == "/api/t212/portfolio":
@@ -3577,21 +3402,6 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             return self.send_json(briefing(syms(q.get("symbols")), w))
-        if path == "/api/tm/whatif":
-            f = lambda k: float(q.get(k) or 0)
-            return self.send_json(tm_whatif(q.get("symbol") or "VWRL.L", (q.get("start") or "2015-01")[:7], f("monthly"), f("lump"), q.get("base") or "EUR"))
-        if path == "/api/tm/crashes":
-            w = {}
-            for part in (q.get("w") or "").split(","):
-                k, _, v = part.partition(":")
-                try:
-                    w[k.strip().upper()] = float(v)
-                except ValueError:
-                    pass
-            return self.send_json(tm_crashes(w, q.get("base") or "EUR", float(q.get("value") or 0) or None))
-        if path == "/api/tm/trade":
-            f = lambda k: float(q.get(k) or 0)
-            return self.send_json(tm_trade(q.get("symbol") or "", f("entry"), f("stop"), f("target"), int(f("days") or 20)))
         if path == "/api/correlation":
             return self.send_json(holdings_correlation(syms(q.get("symbols"))[:30]))
         self.send_json({"error": "not found"}, 404)
@@ -3610,8 +3420,6 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             return self.send_json({"error": "bad JSON"}, 400)
-        if DEMO["on"] and path in ("/api/t212/connect", "/api/revolut/import", "/api/revolut/clear"):
-            return self.send_json({"error": "Linking accounts is switched off in the demo."}, 403)
         if path == "/api/revolut/import":
             try:
                 return self.send_json(revolut_import(body))
@@ -3714,12 +3522,9 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8212)))
     p.add_argument("--phone", action="store_true", help="also serve your phone on the same Wi-Fi (protected by a secret key)")
     p.add_argument("--new-key", action="store_true", help="with --phone: make a new secret key (logs out phones)")
-    p.add_argument("--demo", action="store_true", help="example portfolio, no account links, neutral wording (for screenshots and videos)")
     p.add_argument("--host", default=None, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
-    DEMO["on"] = a.demo
-    if not a.demo:
-        load_creds()
+    load_creds()
     phone = a.phone or (a.host not in (None, "127.0.0.1", "localhost", "::1"))
     host = a.host or ("0.0.0.0" if phone else "127.0.0.1")
     srv = ThreadingHTTPServer((host, a.port), Handler)
@@ -3731,10 +3536,7 @@ def main(argv=None):
         print("click 'Use on iPhone' at the bottom and scan the QR code, or open:")
         print("    http://%s:%d/?key=%s" % (ip or "<this-computer-ip>", a.port, srv.phone_token))
         print("Keep that link private: it unlocks your dashboard.")
-    if a.demo:
-        print("DEMO MODE: example portfolio, your Trading 212 and Revolut accounts are not used.")
-    else:
-        print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
+    print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

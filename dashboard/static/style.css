@@ -451,7 +451,6 @@ td a.sym:hover { color: var(--accent); }
   .tabs.more-open a.hide-m[data-tab="news"] { bottom: calc(72px + env(safe-area-inset-bottom)); }
   .tabs.more-open a.hide-m[data-tab="compare"] { bottom: calc(126px + env(safe-area-inset-bottom)); }
   .tabs.more-open a.hide-m[data-tab="map"] { bottom: calc(180px + env(safe-area-inset-bottom)); }
-  .tabs.more-open a.hide-m[data-tab="timemachine"] { bottom: calc(234px + env(safe-area-inset-bottom)); }
   .tabs a.active { background: transparent; color: var(--accent); }
   .tabs a.active svg.lucide { opacity: 1; }
   .ticker-strip { padding: 8px 12px; }
@@ -668,20 +667,9 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
 /* chip buttons */
 .chip-btn { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); border-radius: 999px; padding: 7px 12px; font: 13px var(--font); cursor: pointer; text-align: left; }
 .chip-btn:hover { border-color: var(--accent); }
-/* time machine */
-.tm-tabs { flex-wrap: wrap; }
-.tm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; align-items: end; }
-.tm-lead { font-size: 16px; line-height: 1.5; margin: 0 0 12px; }
-.tm-tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-.tm-notes { margin: 12px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
-.tm-notes li { margin: 4px 0; }
+/* small chips */
 .quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-muted); }
 .chip-btn.sm { padding: 4px 10px; font-size: 12.5px; }
-.tm-bar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; background: var(--surface-3); font: 600 13px var(--mono); }
-.tm-bar span { display: grid; place-items: center; color: #fff; min-width: 0; }
-.tm-bar .t { background: var(--good); } .tm-bar .s { background: var(--bad); } .tm-bar .n { background: var(--surface-3); }
-.tm-crash .ret-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 600px) { .tm-crash .ret-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* medium screens: the page tabs move to their own row instead of squeezing the search box */
 @media (min-width: 761px) and (max-width: 1640px) {
@@ -690,8 +678,16 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
   .top .search { margin-left: auto; }
 }
 
-/* demo mode: example portfolio, nothing that links an account or prepares an order */
-.demo-banner { background: rgba(250,178,25,.14); color: var(--warning); text-align: center; font-size: 13px; padding: 6px 12px; border-bottom: 1px solid rgba(250,178,25,.3); }
-body.demo #link, body.demo #revBox, body.demo #ticketBtn, body.demo a[href*="ticket=1"], body.demo #ltBuy, body.demo #ltPlan,
-body.demo .pick-card, body.demo #cmpJump, body.demo #journalCard, body.demo .card:has(#mform), body.demo .card:has(#divBox),
-body.demo .card:has(#sform), body.demo .card:has(#planBox), body.demo #phoneBtn { display: none !important; }
+
+/* entry check */
+.entry-head { display: grid; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border-left: 4px solid var(--text-muted); }
+.entry-head b { font-size: 17px; }
+.entry-head span { color: var(--text-secondary); font-size: 14px; line-height: 1.45; }
+.entry-head.up { border-left-color: var(--good); } .entry-head.down { border-left-color: var(--bad); } .entry-head.flat { border-left-color: var(--warning); }
+.entry-state { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin: 10px 0 6px; }
+.entry-note { font-size: 13.5px; margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: rgba(250,178,25,.10); color: var(--text-primary); }
+.entry-ladder { width: 100%; border-collapse: collapse; font-size: 14px; }
+.entry-ladder td { padding: 8px 4px; border-bottom: 1px solid var(--grid); }
+.entry-ladder td.r { text-align: right; }
+.entry-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.entry-own { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; line-height: 1.5; }

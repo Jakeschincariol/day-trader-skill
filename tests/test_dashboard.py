@@ -476,170 +476,55 @@ class Insights(unittest.TestCase):
         self.assertIn("unavailable", out["error"])
 
 
-class TimeMachine(unittest.TestCase):
-    def months(self, n, start=2015):
-        return ["%d-%02d" % (start + i // 12, i % 12 + 1) for i in range(n)]
+class EntryCheck(unittest.TestCase):
+    def series(self, closes):
+        c = list(closes)
+        return c, srv.sma(c, 20), srv.sma(c, 50), srv.sma(c, 200)
 
-    def test_dca_math(self):
-        m = self.months(3)
-        prices = {m[0]: 10.0, m[1]: 20.0, m[2]: 40.0}
-        out = srv._dca(prices, lambda ym: 1.0, m, 100.0, 0.0)
-        # 10 + 5 + 2.5 units, worth 17.5 * 40 = 700 from 300 put in
-        self.assertEqual(out["totalIn"], 300)
-        self.assertAlmostEqual(out["final"], 700)
-        self.assertEqual(out["value"], [100, 300, 700])
-        self.assertEqual(out["worstDrop"], 0)
-        m = self.months(25)
-        steady = srv._dca({x: 100 * 1.1 ** (i / 12) for i, x in enumerate(m)}, lambda ym: 1.0, m, 100.0, 0.0)
-        self.assertAlmostEqual(steady["irr"], 10.0, delta=0.2)  # a steady 10% a year comes back as 10% a year
+    def test_states(self):
+        up = [100 * 1.001 ** i for i in range(400)]
+        self.assertEqual(srv._entry_state(*self.series(up), 399), "uptrend")
+        fall = up[:300] + [up[299] * 0.995 ** k for k in range(1, 101)]
+        self.assertEqual(srv._entry_state(*self.series(fall), 399), "falling")
+        dip = up[:380] + [up[379] * 0.985 ** k for k in range(1, 21)]  # sharp 3-week dip, long trend still rising
+        self.assertIn(srv._entry_state(*self.series(dip), 399), ("pullback", "falling"))
+        self.assertIsNone(srv._entry_state(*self.series(up[:150]), 149))
 
-    def test_dca_converts_currency_and_tracks_losses(self):
-        m = self.months(3)
-        prices = {m[0]: 10.0, m[1]: 5.0, m[2]: 10.0}
-        out = srv._dca(prices, lambda ym: 0.5, m, 0.0, 1000.0)  # one-off only, price in USD, 0.5 EUR per USD
-        self.assertEqual(out["totalIn"], 1000)
-        self.assertAlmostEqual(out["final"], 1000)
-        self.assertEqual(out["worstDrop"], -50.0)
-        self.assertEqual(out["worstLoss"], 500)
+    def test_verdicts(self):
+        v = lambda **k: srv._entry_verdict(k)
+        self.assertEqual(v(state="falling", zone="Accumulate")["title"], "Don't buy it all at once")
+        self.assertEqual(v(state="uptrend", zone="Accumulate")["tone"], "up")
+        self.assertEqual(v(state="uptrend", zone="Speculative")["title"], "Careful")
+        self.assertEqual(v(state="uptrend", zone="Stretched")["title"], "Fine, but no discount")
+        notes = v(state="falling", zone="Accumulate+", earnings={"date": "2026-11-20", "days": 5}, marketWeak="red")["notes"]
+        self.assertEqual(len(notes), 3)
 
-    def test_whatif_uses_a_world_fund_and_clamps_the_start(self):
-        m = self.months(36, 2020)
-        stock = {x: 100.0 * (1.01 ** i) for i, x in enumerate(m)}
-        world = {x: 50.0 for x in self.months(60, 2018)}
-        old = srv._monthly
-        srv._monthly = lambda sym: (stock, "EUR") if sym == "ABC" else (world, "EUR") if sym == "VWRL.L" else ({}, "EUR")
-        old_n = srv.directory_names
-        srv.directory_names = lambda: {}
+    def test_ladder_from_past_dips(self):
+        import random
+        rnd = random.Random(3)
+        px, c = 100.0, []
+        for i in range(2600):
+            px *= 1 + rnd.gauss(0.0004, 0.02)
+            c.append(px)
+        res = {"meta": {"currency": "USD"}}
+        old = (srv._chart, srv._adj, srv.next_earnings, srv.market_regime, srv.lt_profile)
+        srv._chart = lambda sym, q, ttl: res
+        srv._adj = lambda r: [(i * 86400, x) for i, x in enumerate(c)]
+        srv.next_earnings = lambda s, wait=True: None
+        srv.market_regime = lambda: {"level": "green"}
+        srv.lt_profile = lambda s: {"zone": "Accumulate", "score": 70}
+        srv.purge(lambda k: k[0] == "entry")
         try:
-            r = srv.tm_whatif("abc", "2010-01", 100, 0, "EUR")
+            e = srv.lt_entry("TEST")
         finally:
-            srv._monthly, srv.directory_names = old, old_n
-        self.assertEqual(r["start"], "2020-01")
-        self.assertTrue(any("only has prices" in n for n in r["notes"]))
-        self.assertEqual(r["benchSymbol"], "VWRL.L")
-        self.assertAlmostEqual(r["bench"]["final"], r["bench"]["totalIn"])
-        self.assertGreater(r["me"]["final"], r["me"]["totalIn"])
-
-    def test_whatif_needs_money(self):
-        with self.assertRaises(ValueError):
-            srv.tm_whatif("ABC", "2015-01", 0, 0)
-
-    def test_crash_replay_with_stand_in(self):
-        days = ["2020-02-%02d" % d for d in range(19, 29)] + ["2020-03-%02d" % d for d in range(1, 31)] + ["2020-04-%02d" % d for d in range(1, 30)]
-        def path(depth):
-            out = {}
-            for i, d in enumerate(days):
-                out[d] = 100 * (1 - depth * min(i, 20) / 20) if i <= 20 else 100 * (1 - depth) + (i - 20) * 100 * depth / 25
-            return out
-        series = {"AAA": path(0.5), "ACWI": path(0.2), "SPY": path(0.2)}
-        old, old_c = srv._daily_since, srv.TM_CRASHES
-        srv._daily_since = lambda s, start="2007-09-01": (series[s], "EUR") if s in series else ({}, None)
-        srv.TM_CRASHES = [("Test crash", "2020-02-19", "2020-03-23")]
-        try:
-            r = srv.tm_crashes({"AAA": 50, "NEWCO": 50}, "EUR", 1000)
-        finally:
-            srv._daily_since, srv.TM_CRASHES = old, old_c
-        c = r["crashes"][0]
-        self.assertEqual(c["covered"], 50)
-        self.assertEqual(c["standIn"], ["NEWCO"])
-        self.assertAlmostEqual(c["drop"], -35.0)  # half at -50%, half standing in at -20%
-        self.assertAlmostEqual(c["lost"], 350)
-        self.assertEqual(c["bench"]["drop"], -20.0)
-        self.assertIsNotNone(c["recovered"])
-
-    def bars(self, moves):
-        out, px = [], 100.0
-        for o, h, l, c in moves:
-            out.append({"o": px * o, "h": px * h, "l": px * l, "c": px * c, "t": 0, "v": 0})
-            px *= c
-        return out
-
-    def run_trade(self, move, **kw):
-        bars = self.bars([move] * 100)
-        old, oldb = srv.get_bars, srv.backtest
-        srv.get_bars = lambda s, rng="2y": {"bars": bars, "meta": {}}
-        srv.backtest = lambda s: {}
-        try:
-            return srv.tm_trade("X", 100, 95, 110, n=500, **kw)
-        finally:
-            srv.get_bars, srv.backtest = old, oldb
-
-    def test_trade_always_up_hits_target(self):
-        r = self.run_trade((1.0, 1.04, 0.99, 1.03))
-        self.assertEqual(r["target1st"], 100)
-        self.assertEqual(r["avgR"], 2.0)
-        self.assertEqual(r["verdict"], "Strongly toward the target.")
-
-    def test_trade_same_day_touch_counts_as_stop(self):
-        r = self.run_trade((1.0, 1.12, 0.94, 1.0))  # every day touches both
-        self.assertEqual(r["stop1st"], 100)
-        self.assertEqual(r["avgR"], -1.0)
-
-    def test_trade_gap_fills_at_open(self):
-        r = self.run_trade((0.9, 0.91, 0.89, 0.9))  # opens 10% lower: below the stop
-        self.assertEqual(r["stop1st"], 100)
-        self.assertAlmostEqual(r["avgR"], -2.0)  # (90 - 100) / 5
-
-    def test_trade_flat_stays_open(self):
-        r = self.run_trade((1.0, 1.001, 0.999, 1.0), days=5)
-        self.assertEqual(r["neither"], 100)
-        self.assertEqual(len(r["bands"]), 6)
-
-    def test_trade_rejects_bad_levels(self):
-        with self.assertRaises(ValueError):
-            srv.tm_trade("X", 100, 105, 110)
-
-
-class Demo(unittest.TestCase):
-    def setUp(self):
-        self.saved = dict(srv.DEMO)
-        srv.DEMO.update(on=True, trades=[{"ts": 1700000000, "kind": "buy", "symbol": "MSFT", "qty": 1.0, "price": 300.0, "amount": 300.0, "ccy": "USD", "name": None}])
-        self.httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
-        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-
-    def tearDown(self):
-        srv.DEMO.clear()
-        srv.DEMO.update(self.saved)
-        self.httpd.shutdown()
-        self.httpd.server_close()
-
-    def req(self, method, path, body=None):
-        c = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
-        c.request(method, path, body=body, headers={"Content-Type": "application/json"} if body is not None else {})
-        r = c.getresponse()
-        return r.status, json.loads(r.read() or b"{}")
-
-    def test_status_says_demo_and_never_linked(self):
-        srv.T212.update(key="REAL-KEY", secret="s")
-        try:
-            status, body = self.req("GET", "/api/t212/status")
-        finally:
-            srv.T212.update(key=None, secret=None)
-        self.assertTrue(body["demo"])
-        self.assertFalse(body["linked"])
-
-    def test_account_links_are_switched_off(self):
-        for path in ("/api/t212/connect", "/api/revolut/import", "/api/revolut/clear"):
-            status, body = self.req("POST", path, json.dumps({"key": "x", "data": "x"}))
-            self.assertEqual(status, 403, path)
-            self.assertIn("demo", body["error"])
-
-    def test_example_portfolio_replaces_the_statement(self):
-        d = srv.revolut_load()
-        self.assertEqual(d["currency"], "EUR")
-        self.assertEqual(d["trades"][0]["symbol"], "MSFT")
-        old = srv.revolut_portfolio
-        srv.revolut_portfolio = lambda: {"positions": []}  # no network in tests
-        try:
-            lots, base, notes = srv.build_lots([], include_t212=False)
-        finally:
-            srv.revolut_portfolio = old
-        self.assertEqual(base, "EUR")
-        self.assertEqual(notes, [])
-        self.assertEqual(lots[0]["qty"], 1.0)
-
-    def test_demo_mix_adds_up(self):
-        self.assertAlmostEqual(sum(w for _, w in srv.DEMO_MIX), 1.0)
+            srv._chart, srv._adj, srv.next_earnings, srv.market_regime, srv.lt_profile = old
+            srv.purge(lambda k: k[0] == "entry")
+        self.assertAlmostEqual(sum(l["share"] for l in e["ladder"]), 1.0, places=3)
+        prices = [l["price"] for l in e["ladder"] if l["price"]]
+        self.assertEqual(prices, sorted(prices, reverse=True))
+        self.assertTrue(all(p < e["price"] * 0.98 for p in prices))
+        self.assertLess(e["any"]["typicalDip"], 0)
+        self.assertLessEqual(e["any"]["deepDip"], e["any"]["typicalDip"])
 
 
 class Projection(unittest.TestCase):

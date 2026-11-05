@@ -53,7 +53,7 @@
   // Refresh buttons: rf("key") renders "Updated hh:mm:ss  ↻"; RF[key] reloads that section with fresh data.
   let RF = {};
   const RF_NAMES = { market: "market signals", wl: "watchlist", hnews: "news", screener: "market table", signals: "signals", quote: "quote and plan", chart: "chart",
-    perf: "performance", fund: "fundamentals", brief: "briefing", corr: "correlation", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
+    perf: "performance", fund: "fundamentals", brief: "briefing", corr: "correlation", entry: "entry check", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
   const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh ${RF_NAMES[key] || "this section"}"><i data-lucide="rotate-cw"></i></button></span>`;
   const stamp = (key) => $$(`[data-upd="${key}"]`).forEach((el) => (el.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })));
   async function runRefresh(key, btn) {
@@ -495,8 +495,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="hdrBadges">${isLT() ? "" : ratingBadge(a.rating) + " " + entryBadge(a.entryStatus)}
           ${a.earnings ? `<span class="badge ${a.earnings.days <= 7 ? "e-wait" : "e-none"}" title="Next earnings report"><i data-lucide="calendar-clock" class="ico"></i> Earnings ${a.earnings.days === 0 ? "today" : "in " + a.earnings.days + "d"}</span>` : ""}
           <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button>
-          <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button>
-          <a class="btn sm" href="#/timemachine?tab=${isLT() ? "whatif" : "trade"}&s=${encodeURIComponent(a.symbol)}"><i data-lucide="history"></i> Time machine</a> ${rf("quote")}</div>
+          <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button> ${rf("quote")}</div>
       </div>
       <div class="grid g2">
         <div class="card chart-card">
@@ -509,7 +508,8 @@
           <div id="fcNote" class="muted" style="font-size:12px;margin-top:6px"></div>
         </div>
         <div class="grid" style="align-content:start">
-          ${isLT() ? `<div class="card"><div class="card-head"><h2 style="margin:0">Long-term view</h2>${rf("ltv")}</div><div id="ltCard"></div><div id="ltBt" style="margin-top:14px"></div></div>
+          ${isLT() ? `<div class="card entry-card"><div class="card-head"><h2 style="margin:0"><i data-lucide="crosshair"></i>Right moment to buy?</h2>${rf("entry")}</div><div id="ltEntry"></div></div>
+          <div class="card"><div class="card-head"><h2 style="margin:0">Long-term view</h2>${rf("ltv")}</div><div id="ltCard"></div><div id="ltBt" style="margin-top:14px"></div></div>
           <details class="card swing" id="swingBox"><summary><h2 style="margin:0;display:inline">Swing trading plan</h2> <span class="muted" style="font-size:13px">entry, stop, targets for short trades</span></summary>` : `<div class="card">`}
             <div class="card-head"><h2 style="margin:0">${isLT() ? "" : "Best moment to buy"}</h2>${isLT() ? "" : rf("quote")}</div>
             <div>${entryBadge(a.entryStatus)}</div>
@@ -606,6 +606,9 @@
         if (lp && $("#hdrBadges")) $("#hdrBadges").insertAdjacentHTML("afterbegin", window.LT.bandBadge(lp.band) + " " + window.LT.zoneBadge(lp.zone) + " ");
       });
       window.LT.backtestCard(a.symbol, $("#ltBt"));
+      const owned = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
+      RF.entry = async () => { $("#ltEntry").dataset.fresh = "1"; await window.LT.entryCard(a, $("#ltEntry"), owned); };
+      window.LT.entryCard(a, $("#ltEntry"), owned).then(() => stamp("entry"));
     }
 
     // ---- performance overview
@@ -1006,12 +1009,6 @@
 
 
 
-  // ------------------------------------------------------------ time machine
-  pages.timemachine = async function (arg, params) {
-    if (!window.TimeMachine) { view.innerHTML = `<p class="error">Time Machine module missing.</p>`; return; }
-    current = await window.TimeMachine.page(view, params);
-  };
-
   // ------------------------------------------------------------ compare 2-3 stocks
   pages.compare = async function (arg, params) {
     if (!window.Compare) { view.innerHTML = `<p class="error">Compare module missing.</p>`; return; }
@@ -1240,7 +1237,7 @@
     const tab = { stock: "markets" }[page] || page;
     const nav = $("#tabs");
     nav.classList.remove("more-open"); $("#tabMore") && $("#tabMore").setAttribute("aria-expanded", "false");
-    nav.classList.toggle("more-active", ["compare", "news", "map", "timemachine"].includes(tab));
+    nav.classList.toggle("more-active", ["compare", "news", "map"].includes(tab));
     $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
     const first = routeId === 1;

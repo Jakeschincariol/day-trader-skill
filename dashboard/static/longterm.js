@@ -28,6 +28,46 @@
     return (cache[sym] = await T().api("/api/lt?symbol=" + encodeURIComponent(sym)));
   }
 
+
+  // ------------------------------------------------------------ entry check: buy now, in parts, or wait?
+  const entryCache = {};
+  async function entry(sym, fresh) {
+    if (!fresh && entryCache[sym]) return entryCache[sym];
+    return (entryCache[sym] = await T().api("/api/ltentry?symbol=" + encodeURIComponent(sym)));
+  }
+  function ladderHtml(e, amount, ccy) {
+    const td = T();
+    return `<table class="entry-ladder"><tbody>${e.ladder.map((l) => `<tr><td>${td.esc(l.label)}${l.price != null ? ` <b class="num">${td.priceStr(l.price, e.currency)}</b> <span class="muted">(${((l.price / e.price - 1) * 100).toFixed(0)}%)</span>` : ""}</td>
+      <td class="r num"><b>${amount ? td.money(amount * l.share, ccy) : Math.round(l.share * 100) + "%"}</b></td></tr>`).join("")}</tbody></table>`;
+  }
+  async function entryCard(a, el, held) {
+    const td = T();
+    el.innerHTML = td.skeleton(5);
+    let e;
+    try { e = await entry(a.symbol, el.dataset.fresh); } catch (err) { el.innerHTML = `<p class="muted">Entry check unavailable: ${td.esc(err.message)}</p>`; return; }
+    delete el.dataset.fresh;
+    if (!el.isConnected) return;
+    const v = e.verdict, s = e.same, any = e.any;
+    const mine = held && held.avgPrice && held.qty ? held : null;
+    const down = mine && e.price ? 100 * (e.price / mine.avgPrice - 1) : null;
+    el.innerHTML = `<div class="entry-head ${v.tone}"><b>${td.esc(v.title)}</b><span>${td.esc(v.text)}</span></div>
+      <p class="entry-state"><span class="badge ${e.tone === "down" ? "e-avoid" : e.tone === "up" ? "e-now" : "e-wait"}">${td.esc(e.title)}</span> ${td.esc(e.why)}
+        ${e.fromHigh3m < -3 ? ` It is <b class="down">${td.pct(e.fromHigh3m)}</b> from its 3-month high.` : ""}</p>
+      ${v.notes.map((n) => `<p class="entry-note">${td.esc(n)}</p>`).join("")}
+      <h3 class="h3">Buy in parts</h3>
+      ${ladderHtml(e, 0, "")}
+      <p class="muted" style="font-size:12.5px;margin:4px 0 0">The lower prices are how far ${td.esc(e.symbol)} typically fell further within 3 months after days like today. Set them as <b>limit orders</b> (or price alerts) so you don't have to watch it.</p>
+      ${s || any ? `<h3 class="h3">What usually happens after buying</h3><div class="ret-grid entry-stats">
+        ${s ? `<div class="perf-tile"><div class="k">After days like today</div><div class="v num down">${td.pct(s.typicalDip)}</div><div class="b">typical further dip within 3 months · 1 in 5 times ${td.pct(s.deepDip)} or more</div></div>` : ""}
+        ${s && s.up12m != null ? `<div class="perf-tile"><div class="k">12 months later</div><div class="v num ${td.cls(s.median12m)}">${s.up12m}% higher</div><div class="b">median ${td.pct(s.median12m)} (${s.days} past days like today)</div></div>` : ""}
+        ${any ? `<div class="perf-tile"><div class="k">After any day</div><div class="v num down">${td.pct(any.typicalDip)}</div><div class="b">typical dip within 3 months, ${any.up12m ?? "–"}% higher a year later</div></div>` : ""}</div>
+        <p class="muted" style="font-size:12.5px;margin:6px 0 0">So a drop right after you buy is normal: over ${e.years} years, half of all buys in ${td.esc(e.symbol)} saw the price fall at least ${Math.abs(any ? any.typicalDip : s.typicalDip).toFixed(1)}% within 3 months. What matters for a long-term investor is the business and the price you pay on average.</p>` : ""}
+      ${mine && down < -3 ? `<div class="entry-own"><b>You own it at ${td.priceStr(mine.avgPrice, e.currency)} (${td.pct(down)}).</b> ${e.score != null && e.score >= 60 && e.zone !== "Speculative"
+        ? "The long-term score is still good, so adding at the lower levels above brings your average price down. Keep the holding under about 10% of your portfolio."
+        : "The long-term score is weak: check the reasons before adding more, don't average down just to get even."}</div>` : ""}
+      <p class="muted" style="font-size:11.5px;margin:8px 0 0">Based on ${e.years} years of daily prices with dividends. Past patterns, not a forecast or advice.</p>`;
+  }
+
   // ------------------------------------------------------------ stock page card
   async function stockCard(a, el) {
     const td = T();
@@ -95,17 +135,20 @@
       const px = a.price * rate;
       const qty = px ? Math.floor(amt / px * 1e4) / 1e4 : 0;
       const fee = a.currency && a.currency !== acct.ccy ? amt * 0.0015 : 0;
+      const split = dlg._entry && dlg._entry.ladder.length > 1;
       $("#bySum", dlg).innerHTML = `<div class="tk-grid">
           <div><span>Amount</span><b class="num">${td.money(amt, acct.ccy)}</b></div>
           <div><span>About</span><b class="num">${td.shares(qty)} shares</b></div>
           <div><span>Price</span><b class="num">${td.priceStr(a.price, a.currency)}</b></div>
           <div><span>FX fee (0.15%)</span><b class="num">${fee ? td.money(fee, acct.ccy) : "none"}</b></div></div>
         ${acct.free != null && amt > acct.free ? `<ul class="tk-warn"><li>More than your free cash (${td.money(acct.free, acct.ccy)}).</li></ul>` : ""}
+        ${dlg._entry && dlg._entry.ladder.length > 1 ? `<h3 class="h3">${td.esc(dlg._entry.verdict.title)}: split it</h3>${ladderHtml(dlg._entry, amt, acct.ccy)}
+          <p class="muted" style="font-size:12px;margin:2px 0 0">Buy the first part now; set limit orders for the rest at those prices.</p>` : ""}
         ${p.zone === "Stretched" ? `<ul class="tk-warn"><li>Stretched: consider a smaller amount this month and the rest later.</li></ul>` : ""}
         ${p.zone === "Speculative" ? `<ul class="tk-warn"><li>Speculative: keep it a small part of the portfolio.</li></ul>` : ""}
         <h3 class="h3">In Trading 212</h3>
         <ol class="steps tk-steps"><li>Search <b>${td.esc(a.symbol)}</b> → <b>Buy</b> → switch the amount to <b>Value</b>.</li>
-          <li>Enter <b class="num">${td.money(amt, acct.ccy)}</b> → review → confirm. (A market order fills at the next price; ${td.esc(a.symbol)} trades in ${td.esc(a.currency || "")}.)</li>
+          <li>Enter <b class="num">${td.money(split ? amt * dlg._entry.ladder[0].share : amt, acct.ccy)}</b>${split ? " (the first part)" : ""} → review → confirm. (A market order fills at the next price; ${td.esc(a.symbol)} trades in ${td.esc(a.currency || "")}.)</li>
           <li>Regular buying? Put it in a <b>Pie</b> with <b>AutoInvest</b> monthly so it happens automatically.</li></ol>`;
       dlg._ticket = `BUY ${a.symbol} by value: ${td.money(amt, acct.ccy)} (~${td.shares(qty)} shares at ${td.priceStr(a.price, a.currency)})`;
     };
@@ -117,6 +160,8 @@
       <div class="tk-actions"><button class="btn primary" id="byCopy" type="button"><i data-lucide="copy"></i> Copy</button><button class="btn" data-close type="button">Close</button></div></div>`;
     if (!dlg._wired) { dlg.addEventListener("click", (e) => { if (e.target === dlg || e.target.closest("[data-close]")) dlg.close(); }); dlg._wired = true; }
     $("#byAmt", dlg).addEventListener("input", draw);
+    dlg._entry = null;
+    entry(a.symbol).then((e) => { dlg._entry = e; if (dlg.open) draw(); }).catch(() => {});
     $("#byCopy", dlg).addEventListener("click", async () => { try { await navigator.clipboard.writeText(dlg._ticket); td.toast("Copied"); } catch (e) { td.toast("Copy blocked: select the text instead"); } });
     draw();
     if (!dlg.open) dlg.showModal();
@@ -276,5 +321,5 @@
     } catch (e) { el.innerHTML = `<p class="muted">Dividends unavailable: ${td.esc(e.message)}</p>`; }
   }
 
-  window.LT = { mode, profiles, profile, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
+  window.LT = { mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
 })();
