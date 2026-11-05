@@ -689,3 +689,9 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
   .top .tabs { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
   .top .search { margin-left: auto; }
 }
+
+/* demo mode: example portfolio, nothing that links an account or prepares an order */
+.demo-banner { background: rgba(250,178,25,.14); color: var(--warning); text-align: center; font-size: 13px; padding: 6px 12px; border-bottom: 1px solid rgba(250,178,25,.3); }
+body.demo #link, body.demo #revBox, body.demo #ticketBtn, body.demo a[href*="ticket=1"], body.demo #ltBuy, body.demo #ltPlan,
+body.demo .pick-card, body.demo #cmpJump, body.demo #journalCard, body.demo .card:has(#mform), body.demo .card:has(#divBox),
+body.demo .card:has(#sform), body.demo .card:has(#planBox), body.demo #phoneBtn { display: none !important; }

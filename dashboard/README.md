@@ -47,6 +47,16 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Demo mode (for screenshots and videos)
+
+Double-click **`start-demo.bat`** (or run `python3 dashboard/server.py --demo --port 8214`). It opens a separate copy on http://127.0.0.1:8214 that:
+
+- shows an **example portfolio** (EUR 500 a month since January 2022 in a world fund, Microsoft, ASML, Nvidia, SAP, Costco and Novo Nordisk, bought at real past prices) instead of your accounts;
+- never reads your Trading 212 key or Revolut statement, and switches off linking them;
+- replaces buy/sell language with neutral wording (Strong Buy → Very strong, Accumulate+ → Below usual price, Trim → Above target, ...), hides order tickets, buy buttons and "Pick for me", and shows a "Demo, not investment advice" banner.
+
+It runs next to your normal dashboard (port 8212) without touching it. The market data still comes from free sources meant for personal use, so the demo is for showing the tool, not for hosting it publicly.
+
 ## Time Machine
 
 **Time Machine** (a tab on the PC; **More** on the iPhone; a button on every stock page) goes back in time with real prices:

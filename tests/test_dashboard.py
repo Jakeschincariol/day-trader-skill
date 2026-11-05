@@ -590,6 +590,58 @@ class TimeMachine(unittest.TestCase):
             srv.tm_trade("X", 100, 105, 110)
 
 
+class Demo(unittest.TestCase):
+    def setUp(self):
+        self.saved = dict(srv.DEMO)
+        srv.DEMO.update(on=True, trades=[{"ts": 1700000000, "kind": "buy", "symbol": "MSFT", "qty": 1.0, "price": 300.0, "amount": 300.0, "ccy": "USD", "name": None}])
+        self.httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        srv.DEMO.clear()
+        srv.DEMO.update(self.saved)
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+    def req(self, method, path, body=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
+        c.request(method, path, body=body, headers={"Content-Type": "application/json"} if body is not None else {})
+        r = c.getresponse()
+        return r.status, json.loads(r.read() or b"{}")
+
+    def test_status_says_demo_and_never_linked(self):
+        srv.T212.update(key="REAL-KEY", secret="s")
+        try:
+            status, body = self.req("GET", "/api/t212/status")
+        finally:
+            srv.T212.update(key=None, secret=None)
+        self.assertTrue(body["demo"])
+        self.assertFalse(body["linked"])
+
+    def test_account_links_are_switched_off(self):
+        for path in ("/api/t212/connect", "/api/revolut/import", "/api/revolut/clear"):
+            status, body = self.req("POST", path, json.dumps({"key": "x", "data": "x"}))
+            self.assertEqual(status, 403, path)
+            self.assertIn("demo", body["error"])
+
+    def test_example_portfolio_replaces_the_statement(self):
+        d = srv.revolut_load()
+        self.assertEqual(d["currency"], "EUR")
+        self.assertEqual(d["trades"][0]["symbol"], "MSFT")
+        old = srv.revolut_portfolio
+        srv.revolut_portfolio = lambda: {"positions": []}  # no network in tests
+        try:
+            lots, base, notes = srv.build_lots([], include_t212=False)
+        finally:
+            srv.revolut_portfolio = old
+        self.assertEqual(base, "EUR")
+        self.assertEqual(notes, [])
+        self.assertEqual(lots[0]["qty"], 1.0)
+
+    def test_demo_mix_adds_up(self):
+        self.assertAlmostEqual(sum(w for _, w in srv.DEMO_MIX), 1.0)
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 

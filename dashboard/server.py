@@ -1585,7 +1585,7 @@ def period_returns(h):
 def build_lots(manual, include_t212=True, include_revolut=True):
     lots, notes = [], []
     base = None
-    if include_revolut and os.path.exists(REVOLUT_FILE):
+    if include_revolut and (DEMO["on"] or os.path.exists(REVOLUT_FILE)):
         try:
             rl, base = revolut_lots()
             lots += rl
@@ -2846,7 +2846,39 @@ def parse_revolut(rows):
     return {"trades": trades, "skipped": skipped, "otherTypes": types, "snapshot": snapshot}
 
 
+DEMO = {"on": False, "trades": None}
+DEMO_MIX = [("VWRL.L", 0.40), ("MSFT", 0.12), ("ASML", 0.12), ("NVDA", 0.10), ("SAP.DE", 0.09), ("COST", 0.09), ("NOVO-B.CO", 0.08)]
+DEMO_MONTHLY, DEMO_START = 500.0, "2022-01"
+
+
+def demo_trades():
+    """An example investor: EUR 500 a month since January 2022 split over a world fund and six large companies."""
+    if DEMO["trades"] is not None:
+        return DEMO["trades"]
+    trades = []
+    for sym, share in DEMO_MIX:
+        try:
+            prices, ccy = _monthly(sym)
+            fx, _ = _fx_monthly(ccy, "EUR")
+        except Exception:
+            continue
+        unit, scale = _unit(ccy)
+        for ym in sorted(m for m in prices if m >= DEMO_START)[:-1]:
+            eur = DEMO_MONTHLY * share
+            px = prices[ym] * scale  # trade price in the main unit (pounds, not pence)
+            qty = eur / (prices[ym] * fx(ym))
+            ts = calendar.timegm(time.strptime(ym + "-15", "%Y-%m-%d"))
+            trades.append({"ts": ts, "kind": "buy", "symbol": sym, "qty": round(qty, 6), "price": round(px, 4),
+                           "amount": round(qty * px, 2), "ccy": unit, "name": None})
+    trades.sort(key=lambda t: t["ts"])
+    DEMO["trades"] = trades
+    return trades
+
+
 def revolut_load():
+    if DEMO["on"]:
+        return {"currency": "EUR", "trades": demo_trades(), "file": "example portfolio", "imported": int(time.time()) // 86400 * 86400,
+                "skipped": 0, "otherTypes": {}, "snapshot": False}
     if not os.path.exists(REVOLUT_FILE):
         return None
     with open(REVOLUT_FILE) as f:
@@ -2986,7 +3018,7 @@ def revolut_portfolio():
             elif t["kind"] == "fee":
                 tot["fees"] += amt
         positions.sort(key=lambda x: -x["value"])
-        return {"linked": True, "broker": "Revolut", "currency": acct, "positions": positions, "file": d.get("file"),
+        return {"linked": True, "broker": "Example" if DEMO["on"] else "Revolut", "demo": DEMO["on"], "currency": acct, "positions": positions, "file": d.get("file"),
                 "imported": d.get("imported"), "warnings": warn, "snapshot": d.get("snapshot"),
                 "totals": {k: round(v, 2) for k, v in tot.items()}, "ppl": round(tot["value"] - tot["cost"], 2),
                 "fetched": int(time.time())}
@@ -3526,6 +3558,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/t212/journal":
             return self.send_json(trade_journal())
         if path == "/api/t212/status":
+            if DEMO["on"]:
+                return self.send_json({"linked": False, "env": "demo", "demo": True, "source": "demo"})
             return self.send_json({"linked": bool(T212["key"]), "env": T212["env"],
                                    "source": "env" if os.environ.get("T212_API_KEY") else ("file" if os.path.exists(CRED_FILE) else "memory")})
         if path == "/api/t212/portfolio":
@@ -3576,6 +3610,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             return self.send_json({"error": "bad JSON"}, 400)
+        if DEMO["on"] and path in ("/api/t212/connect", "/api/revolut/import", "/api/revolut/clear"):
+            return self.send_json({"error": "Linking accounts is switched off in the demo."}, 403)
         if path == "/api/revolut/import":
             try:
                 return self.send_json(revolut_import(body))
@@ -3618,6 +3654,7 @@ class Handler(BaseHTTPRequestHandler):
                                            include_revolut=bool(body.get("revolut", True)))
             base = base or (body.get("base") or "USD").upper()[:3]
             out = portfolio_history(lots, base)
+            out.setdefault("base", base)
             out["warnings"] = notes + out["warnings"]
             return self.send_json(out)
         if path == "/api/t212/disconnect":
@@ -3677,9 +3714,12 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8212)))
     p.add_argument("--phone", action="store_true", help="also serve your phone on the same Wi-Fi (protected by a secret key)")
     p.add_argument("--new-key", action="store_true", help="with --phone: make a new secret key (logs out phones)")
+    p.add_argument("--demo", action="store_true", help="example portfolio, no account links, neutral wording (for screenshots and videos)")
     p.add_argument("--host", default=None, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
-    load_creds()
+    DEMO["on"] = a.demo
+    if not a.demo:
+        load_creds()
     phone = a.phone or (a.host not in (None, "127.0.0.1", "localhost", "::1"))
     host = a.host or ("0.0.0.0" if phone else "127.0.0.1")
     srv = ThreadingHTTPServer((host, a.port), Handler)
@@ -3691,7 +3731,10 @@ def main(argv=None):
         print("click 'Use on iPhone' at the bottom and scan the QR code, or open:")
         print("    http://%s:%d/?key=%s" % (ip or "<this-computer-ip>", a.port, srv.phone_token))
         print("Keep that link private: it unlocks your dashboard.")
-    print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
+    if a.demo:
+        print("DEMO MODE: example portfolio, your Trading 212 and Revolut accounts are not used.")
+    else:
+        print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

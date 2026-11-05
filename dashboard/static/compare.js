@@ -215,7 +215,7 @@
   async function fitInfo(picks, amount) {
     const td = T();
     const manual = td.store.get("manual", []);
-    const pos = td.brokerPositions().map((p) => ({ symbol: p.symbol, v: p.source === "Revolut" ? p.valueAcct || 0 : (p.qty || 0) * (p.price || 0) })).concat(manual.map((m) => ({ symbol: m.symbol, v: m.qty * m.avgPrice })));
+    const pos = td.brokerPositions().map((p) => ({ symbol: p.symbol, v: p.source !== "Trading 212" && p.valueAcct != null ? p.valueAcct : (p.qty || 0) * (p.price || 0) })).concat(manual.map((m) => ({ symbol: m.symbol, v: m.qty * m.avgPrice })));
     if (!pos.length) return null;
     const L = await get("/api/lookthrough");
     const total = pos.reduce((a, p) => a + p.v, 0);

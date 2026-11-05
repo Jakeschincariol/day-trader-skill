@@ -100,7 +100,7 @@
   // every broker position (Trading 212 + Revolut import), each tagged with its source
   function brokerPositions() {
     const t = state.t212 && !state.t212.error ? state.t212.positions.map((p) => Object.assign({ source: "Trading 212" }, p)) : [];
-    const r = state.revolut && state.revolut.linked ? state.revolut.positions.map((p) => Object.assign({ source: "Revolut" }, p)) : [];
+    const r = state.revolut && state.revolut.linked ? state.revolut.positions.map((p) => Object.assign({ source: state.revolut.broker || "Revolut" }, p)) : [];
     return t.concat(r);
   }
   async function getT212(force) {
@@ -864,7 +864,7 @@
     if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     $("#pstats").innerHTML = `
-      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? rv.broker || "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
