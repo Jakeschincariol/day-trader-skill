@@ -19,7 +19,7 @@
   };
   const priceStr = (x, ccy) => (ccy === "GBp" || ccy === "GBX" ? fmt(x, 2) + "p" : money(x, ccy));
   const shares = (q) => (q == null ? "–" : Number(q).toLocaleString(undefined, { maximumFractionDigits: 4 }));
-  const pct = (x, d) => (x == null ? "–" : x >= 1000 ? "×" + Math.round(1 + x / 100).toLocaleString() : (x > 0 ? "+" : "") + Number(x).toFixed(d == null ? 2 : d) + "%");
+  const pct = (x, d) => (x == null ? "–" : x >= 1000 ? "×" + Math.round(1 + x / 100).toLocaleString() : (x > 0 ? "+" : "") + Number(x).toFixed(d == null ? (Math.abs(x) >= 10 ? 1 : 2) : d) + "%");
   const cls = (x) => (x == null ? "" : x >= 0 ? "up" : "down");
   const ago = (t) => {
     if (!t) return "";
@@ -115,7 +115,7 @@
   async function loadStrip() {
     const u = await getUniverse();
     const rows = await api("/api/quotes?symbols=" + encodeURIComponent(u.indices.join(",")));
-    const names = { "^VIX": "VIX", "BTC-USD": "Bitcoin", "EURUSD=X": "EUR/USD", SPY: "S&P 500", QQQ: "Nasdaq 100", DIA: "Dow", IWM: "Russell 2000", GLD: "Gold" };
+    const names = { "^VIX": "VIX", "BTC-USD": "Bitcoin", "EURUSD=X": "EUR/USD", SPY: "S&P 500 (SPY)", QQQ: "Nasdaq 100 (QQQ)", DIA: "Dow (DIA)", IWM: "Russell 2000 (IWM)", GLD: "Gold (GLD)" };
     $("#strip").innerHTML = `<a class="chip mood-chip" href="#/" id="moodChip" title="Market mood"></a>` + rows.filter((r) => !r.error).map((r) =>
       `<a class="chip" href="#/stock/${encodeURIComponent(r.symbol)}"><span class="s">${esc(names[r.symbol] || r.symbol)}</span>` +
       `<span class="num">${fmt(r.price, dp(r.price))}</span><span class="num ${cls(r.changePct)}">${pct(r.changePct)}</span></a>`).join("");
@@ -220,13 +220,13 @@
   document.addEventListener("click", (e) => { const b = e.target.closest("#modeSeg button"); if (b) setMode(b.dataset.m); });
 
   // ------------------------------------------------------------ live day-trend rows (quote board)
-  const fmtChg = (x) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, Math.abs(x) < 2 ? 4 : 2));
+  const fmtChg = (x) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, Math.abs(x) < 0.1 ? 3 : 2));
   function liveRowsHtml(items, extra) {
     if (!items.length) return `<p class="empty">Nothing here yet.</p>`;
     return `<ul class="live-list">${items.map((q) => `<li><a href="#/stock/${encodeURIComponent(q.symbol)}" class="live-row">
       ${logo(q.symbol, 30)}
       <span class="lr-name"><b>${esc(q.symbol)}</b><span>${esc(q.name || "")}</span></span>
-      <span class="lr-spark">${TChart.daySpark(q.spark, q.prev, 110, 34)}</span>
+      <span class="lr-spark">${TChart.daySpark(q.spark, q.prev, 110, 34, q.change != null ? q.change >= 0 : null)}</span>
       <span class="lr-px">${q.price == null ? `<span class="muted">…</span>` : `<b class="num">${fmt(q.price, dp(q.price))}</b><span class="num ${cls(q.change)}">${fmtChg(q.change)} (${pct(q.changePct)})</span>`}</span>
       ${extra ? `<span class="lr-extra">${extra(q)}</span>` : ""}</a></li>`).join("")}</ul>`;
   }
@@ -309,7 +309,7 @@
     const breadth = Math.round(100 * stocks.filter((r) => r.sma50 && r.price > r.sma50).length / (stocks.length || 1));
     const pf = portfolioSummary(t212, rows);
     $("#stats").innerHTML = `
-      <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${ratingBadge(spy.rating)} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
+      <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${(isLT() ? "" : ratingBadge(spy.rating))} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
       <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
       <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 or Revolut →</a></div>`}</div>`;
@@ -826,8 +826,9 @@
       if (p.source === "Manual") p.ppl = (p.qty || 0) * ((p.price || 0) - p.avgPrice);
       const trail = q.chandelier; // highest close of the last 22 days minus 3 ATR
       const samePx = q.price && p.price && Math.abs(q.price / p.price - 1) < 0.2; // same units (pence vs pounds guard)
-      p.alert = !q.price ? "" : q.rating === "Strong Sell" || q.rating === "Sell" ? "Rating turned " + q.rating
-        : q.entryStatus === "Avoid" ? "In a downtrend" : trail && samePx && q.price < trail ? "Below trailing stop " + fmt(trail, dp(trail))
+      p.alert = !q.price ? "" : trail && samePx && q.price < trail ? "Below trailing stop " + fmt(trail, dp(trail))
+        : q.rating === "Strong Sell" || q.rating === "Sell" ? "Rating turned " + q.rating
+        : q.entryStatus === "Avoid" ? "In a downtrend"
         : q.earnings && q.earnings.days <= 7 ? "Earnings in " + q.earnings.days + "d: gap risk"
         : q.rsi > 75 ? "Overbought: consider taking profit" : p.plPct > 20 && q.price < q.sma20 ? "Lost 20-day avg: protect gains" : "OK";
     }
@@ -870,7 +871,7 @@
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? rv.broker || "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "down" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "warn" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
     if (window.Insights && $("#corrBox")) {
       const bySym = {};
       positions.forEach((p) => { bySym[p.symbol] = (bySym[p.symbol] || 0) + (p.valueAcct || p.mv || 0); });
@@ -948,7 +949,7 @@
     $("#pret").innerHTML = (isLT() && tw.years ? `<div class="perf-tile"><div class="k">Growth a year</div><div class="v num ${cls(tw.cagr)}">${tw.cagr != null ? pct(tw.cagr) : "–"}</div><div class="b">${tw.cagr != null ? "over " + tw.years + " years" : "after 1 year of history"}</div></div>
       <div class="perf-tile"><div class="k">Worst fall</div><div class="v num down">${pct(tw.maxdd)}</div><div class="b">peak to bottom</div></div>` : "") +
       (isLT() && h.bench && h.bench.length ? (() => { const bv = h.bench[h.bench.length - 1], v = h.value[h.value.length - 1]; return bv ? `<div class="perf-tile"><div class="k">vs world index fund</div><div class="v num ${cls(v - bv)}">${v - bv >= 0 ? "+" : ""}${m(v - bv)}</div><div class="b">same deposits in VWRL: ${m(bv)}</div></div>` : ""; })() : "") +
-      ["1D", "1W", "1M", "YTD", "1Y", "5Y", "Max"].map((k) => {
+      ["1D", "1W", "1M", "YTD", "1Y", "5Y", "Max"].filter((k) => !(k === "Max" && h.returns.Max && h.returns["5Y"] && h.returns.Max.pct === h.returns["5Y"].pct && h.returns["5Y"].partial)).map((k) => {
       const r = h.returns[k];
       return `<div class="perf-tile"><div class="k">${label[k]}</div>${r ? `<div class="v num ${cls(r.gain)}" ${r.pct != null ? `data-count="${r.pct}" data-fmt="pct"` : ""}>${pct(r.pct)}</div><div class="b num ${cls(r.gain)}">${r.gain >= 0 ? "+" : ""}${m(r.gain)}</div>`
         : `<div class="v muted">–</div><div class="b">history too short</div>`}${r && r.partial ? `<div class="b">since your first buy</div>` : ""}</div>`;
@@ -1255,7 +1256,17 @@
     $$("button:not([type])").forEach((b) => { if (!b.closest("form")) b.setAttribute("type", "button"); });
   }).observe(view, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
   // shared with trade.js (order ticket, alerts, risk, journal, backtest)
-  window.TD = { logo, isLT, api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, getRevolut, brokerPositions, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
+  async function copyText(text) {
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) { /* fall back */ }
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+  window.TD = { copyText, logo, isLT, api, post, esc, fmt, money, pct, cls, dp, toast, store, settings, state, getT212, getRevolut, brokerPositions, priceStr, entryBadge, ratingBadge, shares, sparkline, skeleton, rf, stamp, RF: () => RF, watchlist };
   window.addEventListener("hashchange", route);
   syncModeUI();
   route();

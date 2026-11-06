@@ -132,7 +132,7 @@
     $$("#tkQty,#tkLimit,#tkStop", d).forEach((x) => x.addEventListener("input", draw));
     draw();
     $("#tkCopy", d).addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(d._ticket); T().toast("Ticket copied"); }
+      try { if (!(await T().copyText(d._ticket))) throw new Error("blocked"); T().toast("Ticket copied"); }
       catch (e) { T().toast("Copy blocked by the browser: select the text instead"); }
     });
     $("#tkAlerts", d).addEventListener("click", () => {
@@ -240,12 +240,13 @@
       const icon = { green: "circle-check", amber: "triangle-alert", red: "octagon-alert" }[r.level] || "circle-help";
       if (td.isLT && td.isLT()) r.label = { green: "Market healthy: keep your monthly plan",
         amber: "Market mixed: nothing to change for long-term investing, keep your monthly plan",
-        red: "Market weak: stay the course. For long-term buyers these are good months to add quality" }[r.level] || r.label;
+        red: "Market weak: keep your monthly plan, but buy in parts: dips can go further than usual" }[r.level] || r.label;
+      const okN = r.notes.filter((n) => n.ok).length;
       el.innerHTML = compact
         ? `<span class="mood-dot ${r.level}"></span><span class="s">Market</span><b>${r.level === "unknown" ? "–" : r.level}</b>`
         : `<div class="mood ${r.level}"><i data-lucide="${icon}"></i><div><b>${td.esc(r.label)}</b>
             <div class="mood-notes">${r.notes.map((n) => `<span class="${n.ok ? "up" : "down"}">${n.ok ? "✓" : "✕"} ${td.esc(n.text)}</span>`).join("")}</div></div>
-            <span class="mood-score num" title="Market health points">${r.score == null ? "–" : r.score + "/" + r.max}</span></div>`;
+            <span class="mood-score num" title="Healthy checks">${r.notes.length ? okN + "/" + r.notes.length : "–"}</span></div>`;
       return r;
     } catch (e) { el.innerHTML = ""; return null; }
   }
@@ -265,7 +266,9 @@
           <div><span>Win rate</span><b class="num">${b.winRate}%</b></div>
           <div><span>Avg per trade</span><b class="num ${good ? "up" : "down"}">${b.expectancy > 0 ? "+" : ""}${b.expectancy}R</b></div>
           <div><span>Median hold</span><b class="num">${b.medianDays}d</b></div>
+          ${b.buyHold != null ? `<div><span>Just holding it</span><b class="num ${b.buyHold >= 0 ? "up" : "down"}">${td.pct(b.buyHold, 0)}</b></div>` : ""}
         </div>
+        ${b.buyHold != null ? `<p class="muted" style="font-size:12px;margin:4px 0 0">The signal was in the market ${b.inMarket}% of the time. Compare its total (${b.equity[b.equity.length - 1]}R, about ${b.equity[b.equity.length - 1]}% at 1% risk a trade) with simply holding the stock.</p>` : ""}
         <div class="bt-curve" title="Running total in R (1R = the risk of one trade)">${td.sparkline([0].concat(b.equity), 320, 46)}<span class="muted">cumulative ${b.equity[b.equity.length - 1]}R</span></div>
         <details><summary>Last trades</summary><table class="kvt"><tbody>${b.trades.map((t) => `<tr><td>${t.date}</td><td>${td.esc(t.setup)}</td><td class="r num ${t.R >= 0 ? "up" : "down"}">${t.R > 0 ? "+" : ""}${t.R}R</td><td class="r muted">${t.days}d · ${td.esc(t.outcome)}</td></tr>`).join("")}</tbody></table></details>
         <p class="muted" style="font-size:11.5px;margin:6px 0 0">${td.esc(b.note)} 1R = the amount risked. Past results don't guarantee future ones.</p></div>`;
@@ -290,7 +293,8 @@
       p.stopOrder = stopOrder ? stopOrder.stopPrice : null;
       p.suggestedStop = p.q.chandelier || null;
       const stop = p.stopOrder || p.suggestedStop;
-      p.riskAcct = stop && p.price > stop ? (p.qty || 0) * (p.price - stop) * rate : stop ? 0 : null;
+      p.stopBroken = !!(stop && p.price <= stop);
+      p.riskAcct = stop && p.price > stop ? (p.qty || 0) * (p.price - stop) * rate : null;
       if (p.riskAcct) heat += p.riskAcct;
       p.unprotected = p.source === "Trading 212" && acct.pending != null && !stopOrder;
       if (p.unprotected) unprot++;
@@ -300,7 +304,8 @@
     const invested = positions.reduce((s, p) => s + (p.valueAcct || 0), 0);
     const largest = positions.slice().sort((a, b) => (b.valueAcct || 0) - (a.valueAcct || 0))[0];
     const topSector = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
-    return { heat, heatPct: 100 * heat / acct.total, unprot, invested, cashPct: acct.free != null ? 100 * acct.free / acct.total : null,
+    const broken = positions.filter((p) => p.stopBroken).map((p) => p.symbol);
+    return { broken, heat, heatPct: 100 * heat / acct.total, unprot, invested, cashPct: acct.free != null ? 100 * acct.free / acct.total : null,
       largest, largestPct: largest ? 100 * largest.valueAcct / acct.total : 0, topSector, topSectorPct: topSector ? 100 * topSector[1] / acct.total : 0, pendingKnown: acct.pending != null };
   }
 
@@ -309,6 +314,7 @@
     const row = (label, value, ok, hint) => `<li class="${ok ? "" : "no"}"><span>${label}</span><b class="num">${value}</b>${hint ? `<small>${hint}</small>` : ""}</li>`;
     el.innerHTML = `<ul class="risk-list">
       ${row("Open risk if every stop hits", `${td.money(R.heat, acct.ccy)} · ${R.heatPct.toFixed(1)}%`, R.heatPct <= acct.maxHeatPct, `limit ${acct.maxHeatPct}% · uses your Trading 212 stops, else the suggested trailing stop`)}
+      ${R.broken && R.broken.length ? row("Already below their stop", R.broken.map(td.esc).join(", "), false, "the stop was hit: these aren't counted in the open risk above. Sell, or decide on a new lower stop") : ""}
       ${R.pendingKnown ? row("Positions without a stop order", R.unprot, R.unprot === 0, R.unprot ? "set a Stop order in Trading 212 for each" : "every position is protected") : row("Stop orders", "unknown", false, "your API key can't read orders: enable the 'orders: read' permission")}
       ${row("Largest position", R.largest ? `${td.esc(R.largest.symbol)} · ${R.largestPct.toFixed(0)}%` : "–", R.largestPct <= acct.maxPosPct, `limit ${acct.maxPosPct}%`)}
       ${row("Biggest sector", R.topSector ? `${td.esc(R.topSector[0])} · ${R.topSectorPct.toFixed(0)}%` : "–", R.topSectorPct <= 40, "over 40% in one sector moves as one bet")}

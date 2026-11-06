@@ -56,11 +56,14 @@
       ${v.notes.map((n) => `<p class="entry-note">${td.esc(n)}</p>`).join("")}
       <h3 class="h3">Buy in parts</h3>
       ${ladderHtml(e, 0, "")}
-      <p class="muted" style="font-size:12.5px;margin:4px 0 0">The lower prices are how far ${td.esc(e.symbol)} typically fell further within 3 months after days like today. Set them as <b>limit orders</b> (or price alerts) so you don't have to watch it.</p>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 0">The lower prices are how far ${td.esc(e.symbol)} typically fell further within 3 months after days like today. Set them as <b>limit orders</b> or price alerts. They may never fill: that's fine, it means you bought the first part at a good price.
+        ${e.stopAdding ? ` <b>Stop adding</b> if it closes below ${td.priceStr(e.stopAdding, e.currency)} or its long-term score falls under 45: then something bigger is wrong.` : ""}</p>
       ${s || any ? `<h3 class="h3">What usually happens after buying</h3><div class="ret-grid entry-stats">
-        ${s ? `<div class="perf-tile"><div class="k">After days like today</div><div class="v num down">${td.pct(s.typicalDip)}</div><div class="b">typical further dip within 3 months · 1 in 5 times ${td.pct(s.deepDip)} or more</div></div>` : ""}
-        ${s && s.up12m != null ? `<div class="perf-tile"><div class="k">12 months later</div><div class="v num ${td.cls(s.median12m)}">${s.up12m}% higher</div><div class="b">median ${td.pct(s.median12m)} (${s.days} past days like today)</div></div>` : ""}
-        ${any ? `<div class="perf-tile"><div class="k">After any day</div><div class="v num down">${td.pct(any.typicalDip)}</div><div class="b">typical dip within 3 months, ${any.up12m ?? "–"}% higher a year later</div></div>` : ""}</div>
+        ${s ? `<div class="perf-tile"><div class="k">After days like today</div><div class="v num down">${td.pct(s.typicalDip, 1)}</div><div class="b">typical further dip within 3 months · 1 in 5 times ${td.pct(s.deepDip, 1)} or more</div></div>` : ""}
+        ${s && s.up12m != null ? `<div class="perf-tile"><div class="k">A year later</div><div class="v num ${td.cls(s.median12m)}">higher ${s.up12m}% of the time</div><div class="b">typical result ${td.pct(s.median12m, 0)} · from ${s.episodes} separate past drops</div></div>`
+          : s ? `<div class="perf-tile"><div class="k">A year later</div><div class="v num muted">too few cases</div><div class="b">only ${s.episodes} separate past episodes like today</div></div>` : ""}
+        ${any ? `<div class="perf-tile"><div class="k">After any day</div><div class="v num down">${td.pct(any.typicalDip)}</div><div class="b">typical dip within 3 months, higher a year later ${any.up12m ?? "–"}% of the time</div></div>` : ""}</div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">This is only ${td.esc(e.symbol)}'s own past, which includes its best years. It does not repeat by itself.</p>
         <p class="muted" style="font-size:12.5px;margin:6px 0 0">So a drop right after you buy is normal: over ${e.years} years, half of all buys in ${td.esc(e.symbol)} saw the price fall at least ${Math.abs(any ? any.typicalDip : s.typicalDip).toFixed(1)}% within 3 months. What matters for a long-term investor is the business and the price you pay on average.</p>` : ""}
       ${mine && down < -3 ? `<div class="entry-own"><b>You own it at ${td.priceStr(mine.avgPrice, e.currency)} (${td.pct(down)}).</b> ${e.score != null && e.score >= 60 && e.zone !== "Speculative"
         ? "The long-term score is still good, so adding at the lower levels above brings your average price down. Keep the holding under about 10% of your portfolio."
@@ -162,7 +165,7 @@
     $("#byAmt", dlg).addEventListener("input", draw);
     dlg._entry = null;
     entry(a.symbol).then((e) => { dlg._entry = e; if (dlg.open) draw(); }).catch(() => {});
-    $("#byCopy", dlg).addEventListener("click", async () => { try { await navigator.clipboard.writeText(dlg._ticket); td.toast("Copied"); } catch (e) { td.toast("Copy blocked: select the text instead"); } });
+    $("#byCopy", dlg).addEventListener("click", async () => { try { if (!(await td.copyText(dlg._ticket))) throw new Error("blocked"); td.toast("Copied"); } catch (e) { td.toast("Copy blocked: select the text instead"); } });
     draw();
     if (!dlg.open) dlg.showModal();
   }
@@ -270,7 +273,7 @@
     const total = positions.reduce((s, p) => s + (p.valueAcct || p.mv || 0), 0);
     const syms = [...new Set(positions.map((p) => p.symbol).concat(Object.keys(targets)))];
     const cur = Object.fromEntries(syms.map((s) => [s, positions.filter((p) => p.symbol === s).reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0)]));
-    const monthly = st.monthly || 200;
+    const monthly = st.monthly || 1200;
     let tsum = syms.reduce((a, s) => a + (+targets[s] || 0), 0);
     const implicit = !tsum && total > 0; // no targets yet: keep today's mix
     if (implicit) { syms.forEach((s) => { targets[s] = Math.round(1000 * cur[s] / total) / 10; }); tsum = 100; }

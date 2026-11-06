@@ -570,14 +570,14 @@
   }
 
   /** Intraday area sparkline like a quote board: red/green fill, dotted previous close. SVG string. */
-  function daySpark(values, prev, w, h) {
+  function daySpark(values, prev, w, h, upHint) {
     w = w || 120; h = h || 36;
     const v = (values || []).filter((x) => x != null);
     if (v.length < 2) return `<svg width="${w}" height="${h}" aria-hidden="true"></svg>`;
     const lo = Math.min(...v, prev ?? Infinity), hi = Math.max(...v, prev ?? -Infinity);
     const y = (x) => (h - 3 - (x - lo) / (hi - lo || 1) * (h - 6)).toFixed(1);
     const x = (i) => (i / (v.length - 1) * w).toFixed(1);
-    const up = v[v.length - 1] >= (prev ?? v[0]);
+    const up = upHint != null ? upHint : v[v.length - 1] >= (prev ?? v[0]);
     const col = up ? "#3fcf3f" : "#ff6b6b", fill = up ? "rgba(12,163,12,.28)" : "rgba(208,59,59,.30)";
     const pts = v.map((c, i) => `${x(i)},${y(c)}`).join(" ");
     const gid = "g" + Math.random().toString(36).slice(2, 8);

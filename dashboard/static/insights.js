@@ -113,8 +113,8 @@
         formatter: (p) => `${c.symbols[p.value[1]]} + ${c.symbols[p.value[0]]}: <b>${p.value[2] === "-" ? "n/a" : (+p.value[2]).toFixed(2)}</b>` },
       xAxis: { type: "category", data: c.symbols, axisLabel: { color: css("--text-muted"), rotate: 60, fontSize: 11 }, axisLine: { show: false }, splitArea: { show: false } },
       yAxis: { type: "category", data: c.symbols, inverse: true, axisLabel: { color: css("--text-muted"), fontSize: 11 }, axisLine: { show: false } },
-      visualMap: { show: false, min: -0.2, max: 1, inRange: { color: ["#199e70", "#2c2c2a", "#c98500", "#d03b3b"] } },
-      series: [{ type: "heatmap", data, label: { show: n <= 12, fontSize: 10, color: "#f0efec", formatter: (p) => p.value[2] === "-" ? "" : (+p.value[2]).toFixed(1) },
+      visualMap: { show: false, min: -0.2, max: 1, inRange: { color: ["#1d2733", "#1f4f8a", "#3987e5", "#9cc8ff"] } },
+      series: [{ type: "heatmap", data, label: { show: n <= 12, fontSize: 10, color: "#f0efec", textBorderColor: "rgba(0,0,0,.6)", textBorderWidth: 2, formatter: (p) => p.value[2] === "-" ? "" : (+p.value[2]).toFixed(1) },
         itemStyle: { borderColor: css("--surface-1"), borderWidth: 1 } }],
     }, true);
   }

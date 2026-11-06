@@ -343,6 +343,9 @@ def rule(ind, i, bench63=None, vol_frac=1.0):
     elif pct >= 55:
         status, entry, trigger = "Watch", None, hi20
         why = "Trend is fine but price is between levels. Buy a pullback to %.2f or a breakout above %.2f on strong volume." % (a20 or price, hi20)
+    elif pct < 35:
+        status, entry, trigger = "Avoid", None, None
+        why = "Weak trend and momentum (score %d of 100): no buy setup. Wait until it trades back above its 50-day average." % round(pct)
     else:
         status, entry, trigger = "No setup", None, None
         why = "Signals are mixed. No clear edge on either side right now."
@@ -525,6 +528,9 @@ def analyse(symbol, with_series=False):
     return out
 
 
+BT_COST = 0.004  # about 0.15% FX fee each way at Trading 212 plus about 0.1% spread
+
+
 def backtest(symbol, hold=40):
     """Replay the same rules over 5 years: buy the next open after a 'Buy' verdict, exit at the stop,
     at 2R, or after `hold` days. One trade at a time; no costs, earnings or market filter."""
@@ -566,8 +572,9 @@ def backtest(symbol, hold=40):
                 j += 1
             if exit_px is None:  # still open at the end of the data
                 break
+            cost = BT_COST * e  # FX fee both ways plus spread, in price terms
             trades.append({"date": d, "setup": res["status"].split(": ")[-1], "entry": r(e), "exit": r(exit_px),
-                           "R": round((exit_px - e) / risk, 2), "days": j - i, "outcome": outcome})
+                           "R": round((exit_px - e - cost) / risk, 2), "days": j - i, "outcome": outcome})
             i = j + 1
         Rs = [t["R"] for t in trades]
         pos, neg = sum(x for x in Rs if x > 0), -sum(x for x in Rs if x < 0)
@@ -584,7 +591,9 @@ def backtest(symbol, hold=40):
             "profitFactor": round(pos / neg, 2) if neg else None,
             "medianDays": days[len(days) // 2] if days else None,
             "equity": eq, "trades": trades[-12:][::-1],
-            "note": "Next-day open entry, stop or 2R target, %d-day time exit. Ignores costs, earnings and the market filter." % hold,
+            "buyHold": round(100 * (c[-1] / c[260] - 1), 1) if n > 261 else None,
+            "inMarket": round(100.0 * sum(t["days"] for t in trades) / max(1, n - 261), 0),
+            "note": "Next-day open entry, stop or 2R target, %d-day time exit, 0.4%% costs per trade (FX fee and spread). Ignores earnings and the market filter." % hold,
         }
     return cached(("backtest", symbol, hold), 6 * 3600, load)
 
@@ -801,6 +810,8 @@ def performance(symbol):
     bench = benchmark_for(symbol)
     me, spy = POOL.map(lambda s: series(s), [symbol, bench if bench != symbol else "SPY"])
     first = me[1][0][0] if me[1] else None
+    if first:  # same start for both, so "Max" compares like with like
+        spy = ([x for x in spy[0] if x[0] >= first], [x for x in spy[1] if x[0] >= first])
     return {"symbol": symbol, "since": first, "returns": _ret_table(*me), "spy": _ret_table(*spy), "benchmark": bench, "totalReturn": True}
 
 
@@ -3062,7 +3073,7 @@ def lt_entry(symbol):
         n = len(c)
         i = n - 1
         state = _entry_state(c, s20, s50, s200, i)
-        dips, rets, same_dips, same_rets = [], [], [], []
+        dips, rets, same_dips, same_rets, same_idx = [], [], [], [], []
         for j in range(220, n - 63):
             dip = min(c[j + 1:j + 64]) / c[j] - 1
             ret = c[j + 252] / c[j] - 1 if j + 252 < n else None
@@ -3070,17 +3081,26 @@ def lt_entry(symbol):
             if ret is not None:
                 rets.append(ret)
             if _entry_state(c, s20, s50, s200, j) == state:
+                same_idx.append(j)
                 same_dips.append(dip)
                 if ret is not None:
                     same_rets.append(ret)
 
-        def stats(d, r):
-            if len(d) < 40:
+        def episodes(idx):
+            """Separate stretches (more than a month apart): neighbouring days are not independent."""
+            return sum(1 for k, j in enumerate(idx) if k == 0 or j - idx[k - 1] > 21)
+
+        def stats(d, r, eps):
+            if len(d) < 40 or eps < 3:
                 return None
-            return {"days": len(d), "typicalDip": round(100 * _q(d, 0.5), 1), "deepDip": round(100 * _q(d, 0.2), 1),
-                    "up12m": round(100.0 * sum(1 for x in r if x > 0) / len(r), 0) if len(r) >= 40 else None,
-                    "median12m": round(100 * _q(r, 0.5), 1) if len(r) >= 40 else None}
-        anyday, same = stats(dips, rets), stats(same_dips, same_rets)
+            enough = len(r) >= 40 and eps >= 8  # the 12-month figure needs enough separate episodes
+            return {"days": len(d), "episodes": eps, "typicalDip": round(100 * _q(d, 0.5), 1), "deepDip": round(100 * _q(d, 0.2), 1),
+                    "up12m": round(100.0 * sum(1 for x in r if x > 0) / len(r), 0) if enough else None,
+                    "median12m": round(100 * _q(r, 0.5), 1) if enough else None}
+        anyday = stats(dips, rets, max(1, (n - 283) // 252))
+        same = stats(same_dips, same_rets, episodes(same_idx))
+        if anyday:
+            anyday["episodes"] = None
         ref = same or anyday
         px = c[i]
         # where to add more: the typical and the deep further dip seen after days like today
@@ -3104,6 +3124,7 @@ def lt_entry(symbol):
                 "sma50": r(s50[i]), "sma200": r(s200[i]), "fromHigh3m": round(100 * (px / max(c[-63:]) - 1), 1),
                 "same": same, "any": anyday, "years": round(n / 252.0, 1),
                 "ladder": [{"label": p[0], "share": round(p[1], 4), "price": r(p[2]) if len(p) > 2 else None} for p in plan],
+                "stopAdding": r(lv3 * 0.95) if len(plan) > 2 else r(lv2 * 0.92),
                 "supports": supports}
     out = dict(cached(("entry", sym), 3600, load))
     e = next_earnings(sym, wait=False)
@@ -3129,6 +3150,10 @@ def _entry_verdict(e):
     st, zone = e.get("state"), e.get("zone")
     if zone == "Speculative":
         v = ("Careful", "down", "Weak long-term score: if you buy, keep it small, whatever the timing.")
+    elif st in ("falling", "steadying", "sideways") and (e.get("same") or {}).get("median12m") is not None and \
+            (e["same"]["median12m"] < 0 or (e["same"]["up12m"] or 0) < 50):
+        v = ("Wait, or buy only a small part", "down", "After past days like today this stock was more often lower than higher a year later. "
+             "Keep it small until the trend turns up.")
     elif st == "falling":
         v = ("Don't buy it all at once", "down", "It's still falling. Split your amount: a third now, the rest only if it drops to the levels below.")
     elif st == "steadying":
