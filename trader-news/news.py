@@ -49,6 +49,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -303,11 +304,11 @@ def collect_moves(fetcher, watch, errors=None):
         name = "chart-%s.json" % t
         try:
             try:
-                data = fetcher.get(CHART % ("query2", yahoo_symbol(t)), name)
+                data = fetcher.get(CHART % ("query2", urllib.parse.quote(yahoo_symbol(t), safe="")), name)
             except NewsError as exc:
                 if fetcher.offline or not re.search(r"HTTP (429|5\d\d)", str(exc)):
                     raise
-                data = fetcher.get(CHART % ("query1", yahoo_symbol(t)), name)
+                data = fetcher.get(CHART % ("query1", urllib.parse.quote(yahoo_symbol(t), safe="")), name)
             out.append(parse_chart(data, t))
         except NewsError as exc:
             if not (fetcher.offline and "no file" in str(exc)):
@@ -374,7 +375,7 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
     items = []
     for t in sorted(watch):
         try:
-            items += parse_rss(fetcher.get(YAHOO % yahoo_symbol(t), "yahoo-%s.xml" % t), t)
+            items += parse_rss(fetcher.get(YAHOO % urllib.parse.quote(yahoo_symbol(t), safe=""), "yahoo-%s.xml" % t), t)
         except NewsError as exc:
             errors.append("headlines for %s: %s" % (t, exc))
     if sec:

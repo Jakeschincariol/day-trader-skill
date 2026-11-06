@@ -59,6 +59,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 UA = "Mozilla/5.0 (compatible; day-trader-skill/2.0; +https://github.com/Jakeschincariol/day-trader-skill)"
@@ -209,7 +210,7 @@ def yahoo_symbol(sym):
 
 
 def chart_path(sym, rng, interval):
-    return "/v8/finance/chart/%s?range=%s&interval=%s" % (yahoo_symbol(sym), rng, interval)
+    return "/v8/finance/chart/%s?range=%s&interval=%s" % (urllib.parse.quote(yahoo_symbol(sym), safe=""), rng, interval)
 
 
 def chart_range(day, today, interval):
