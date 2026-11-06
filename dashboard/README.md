@@ -47,6 +47,14 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Compare: Challenger
+
+At the end of Compare, the **Challenger** looks for one stock or ETF that beats **every** stock you compared: a higher long-term score, a better 5-year return per unit of downside risk, and a worst fall no more than 5 points deeper than your mildest pick. It shows two: one from the **same group** (theme or sector of your picks) and one from **outside the AI theme** (to spread risk). If nothing beats them all it says so and names the closest. **Swap** replaces your weakest pick with the challenger. It searches the stocks and ETFs the dashboard tracks; the first search takes 1-3 minutes.
+
+## Radar: every sector
+
+The Radar (formerly AI Radar) now scans about 120 stocks in every sector: AI and tech, healthcare and biotech, oil and gas, clean energy and nuclear, defense, banks and fintech, consumer and retail, industrials, mining, software. Its pattern also learns from winners outside AI (Eli Lilly, Vistra, Axon, Celsius, Robinhood). Filter with **All sectors / Not AI / AI & tech** or by theme. The first full scan takes about 4 minutes.
+
 ## Expert review (November 2026)
 
 Four reviewers (long-term investing, trading and risk, visual design, mobile use) checked the dashboard. Changes made:

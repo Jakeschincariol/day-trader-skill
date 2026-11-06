@@ -996,7 +996,8 @@ def fundamentals(symbol):
 
 # ---------------------------------------------------------------- AI multibagger radar
 
-RADAR_WINNERS = ["NVDA", "MU", "SNDK", "ASML", "WDC", "PLTR", "APP", "AVGO"]
+RADAR_WINNERS = ["NVDA", "MU", "SNDK", "ASML", "WDC", "PLTR", "APP", "AVGO",
+                 "LLY", "VST", "AXON", "CELH", "HOOD"]  # big winners outside AI too: health, power, defense, consumer, finance
 RADAR_THEMES = {
     "Memory & storage": ["MU", "SNDK", "WDC", "STX"],
     "Chip equipment": ["ASML", "AMAT", "LRCX", "KLAC", "TER", "ONTO", "ACMR"],
@@ -1005,7 +1006,18 @@ RADAR_THEMES = {
     "Power & data centers": ["VRT", "VST", "CEG", "OKLO", "NBIS", "CRWV", "IREN", "BE"],
     "Quantum & space": ["IONQ", "RGTI", "QBTS", "RKLB", "ASTS"],
     "AI software": ["PLTR", "APP", "SNOW", "CRWD", "NET", "DDOG"],
+    # every other sector
+    "Healthcare & biotech": ["LLY", "NVO", "VRTX", "REGN", "ISRG", "ABBV", "BSX", "HIMS", "VKTX", "ARGX"],
+    "Energy: oil & gas": ["XOM", "CVX", "COP", "OXY", "EOG", "SLB", "FANG"],
+    "Clean energy & nuclear": ["NEE", "FSLR", "ENPH", "CCJ", "LEU", "NXT", "SMR"],
+    "Defense & aerospace": ["LMT", "RTX", "NOC", "GD", "LHX", "AXON", "KTOS", "HWM"],
+    "Banks & fintech": ["JPM", "GS", "V", "MA", "HOOD", "COIN", "SOFI", "NU", "IBKR"],
+    "Consumer & retail": ["COST", "AMZN", "WMT", "CELH", "ELF", "CMG", "ONON", "DECK", "LULU"],
+    "Industrials & infrastructure": ["GE", "CAT", "ETN", "PWR", "URI", "DE", "GEV"],
+    "Materials & mining": ["FCX", "NEM", "SCCO", "MP", "ALB", "AEM"],
+    "Software & internet": ["MSFT", "GOOGL", "META", "NOW", "SHOP", "MELI", "UBER", "SPOT"],
 }
+AI_RADAR_THEMES = {"Memory & storage", "Chip equipment", "AI chips", "Networking & optics", "Power & data centers", "Quantum & space", "AI software"}
 # more listings of the same themes, for portfolio checks (not scanned by the radar)
 LT_EXTRA_THEMES = {
     "Memory & storage": ["000660.KS", "HY9H.F", "HY9H.DE", "005930.KS"],
@@ -1199,6 +1211,7 @@ def radar():
                     pass
                 return {
                     "symbol": sym, "name": meta.get("name") or sym, "theme": theme_of[sym], "price": r(c[-1]),
+                    "group": "AI & tech" if theme_of[sym] in AI_RADAR_THEMES else "Other sectors",
                     "currency": meta.get("currency"), "changePct": r(100 * (c[-1] / c[-2] - 1)),
                     "features": {k: r(x, 4) for k, x in f.items()}, "similarity": sim, "growth": g, "score": score,
                     "growthWhy": [{"text": a, "ok": b} for a, b in gwhy], "stage": stage,
@@ -1220,7 +1233,8 @@ def radar():
             "asOf": int(time.time()), "profile": {k: r(x, 4) for k, x in prof.items()},
             "features": [{"key": k, "label": lab, "scale": sc} for k, lab, sc in FEATURES],
             "winners": winners, "candidates": rows,
-            "themes": sorted([{"theme": k, "avg": round(sum(v) / len(v)), "n": len(v), "top": max(v)} for k, v in themes.items()], key=lambda x: -x["avg"]),
+            "themes": sorted([{"theme": k, "avg": round(sum(v) / len(v)), "n": len(v), "top": max(v),
+                               "group": "AI & tech" if k in AI_RADAR_THEMES else "Other sectors"} for k, v in themes.items()], key=lambda x: -x["avg"]),
         }
     return cached(("radar",), 1800, load)
 
@@ -3192,6 +3206,106 @@ def _entry_verdict(e):
     return {"title": v[0], "tone": v[1], "text": v[2], "notes": notes}
 
 
+
+# ---------------------------------------------------------------- Compare: a challenger that beats every pick
+
+def _quick_stats(sym, years=5):
+    """Yearly growth, worst fall and return per unit of downside risk over the last `years` (dividends in)."""
+    def load():
+        d, _ = _daily_adj(sym, "10y")
+        days = sorted(d)[-(252 * years + 1):]
+        if len(days) < 252 * 3:
+            return None
+        c = [d[x] for x in days]
+        rets = [c[k] / c[k - 1] - 1 for k in range(1, len(c)) if c[k - 1]]
+        yrs = len(rets) / 252.0
+        cagr = (c[-1] / c[0]) ** (1 / yrs) - 1
+        down = [x for x in rets if x < 0]
+        dd = math.sqrt(sum(x * x for x in down) / len(rets)) * math.sqrt(252) if down else None
+        peak, worst = c[0], 0.0
+        for x in c:
+            peak = max(peak, x)
+            worst = min(worst, x / peak - 1)
+        return {"cagr": round(100 * cagr, 1), "maxdd": round(100 * worst, 1),
+                "sortino": round((cagr - 0.03) / dd, 2) if dd else None, "years": round(yrs, 1)}
+    return cached(("qstats", sym, years), 6 * 3600, load)
+
+
+def _peers(symbols):
+    """Stocks in the same themes (radar lists) or the same sector lists as the compared ones."""
+    themes = list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items())
+    same = set()
+    for _, lst in themes:
+        if any(s in lst for s in symbols):
+            same.update(lst)
+    for grp in ("stocks", "etfs"):
+        for lst in UNIVERSE.get(grp, {}).values():
+            if any(s in lst for s in symbols):
+                same.update(lst)
+    return [s for s in same if s not in symbols]
+
+
+def _outside_ai():
+    ai = set()
+    for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()):
+        if th in AI_RADAR_THEMES:
+            ai.update(lst)
+    pool = set()
+    for th, lst in RADAR_THEMES.items():
+        if th not in AI_RADAR_THEMES:
+            pool.update(lst)
+    for lst in UNIVERSE.get("stocks", {}).values():
+        pool.update(lst)
+    for e in ("VWCE.DE", "VWRL.L", "IWDA.AS", "CSPX.L"):
+        pool.add(e)
+    return [s for s in pool if s not in ai]
+
+
+def challenger(symbols):
+    """For 2-3 compared stocks: the best stock that beats ALL of them on long-term score and on return per unit of
+    downside risk (5 years), without a deeper worst fall. One from the same group, one from outside the AI theme."""
+    syms = [s.upper() for s in symbols][:3]
+    if len(syms) < 2:
+        raise ValueError("Compare at least two stocks first.")
+
+    def info(s):
+        try:
+            p = lt_profile(s)
+            q = _quick_stats(s)
+        except Exception:
+            return s, None
+        if not q or p.get("score") is None:
+            return s, None
+        return s, {"symbol": s, "name": p.get("name"), "score": p["score"], "zone": p.get("zone"), "band": p.get("band"),
+                   "fundamentals": p.get("fundamentals"), **q}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:  # own pool: lt_profile uses POOL inside
+        mine = dict(ex.map(info, syms))
+    picks = [v for v in mine.values() if v]
+    if len(picks) < 2:
+        raise ValueError("Not enough history to judge these picks.")
+    bar = {"score": max(p["score"] for p in picks), "sortino": max((p["sortino"] or -9) for p in picks),
+           "maxdd": max(p["maxdd"] for p in picks) - 5}  # worst fall: no more than 5 points deeper than the mildest pick
+
+    def search(pool, limit):
+        pool = sorted(set(pool))[:limit]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            rows = [v for _, v in ex.map(info, pool) if v]
+        win, near = [], []
+        for c in rows:
+            ok = {"score": c["score"] > bar["score"], "sortino": (c["sortino"] or -9) > bar["sortino"], "maxdd": c["maxdd"] >= bar["maxdd"]}
+            c["beats"] = ok
+            c["rank"] = round(c["score"] + 20 * (c["sortino"] or 0), 1)
+            (win if all(ok.values()) else near).append(c)
+        win.sort(key=lambda c: -c["rank"])
+        near.sort(key=lambda c: (-sum(c["beats"].values()), -c["rank"]))
+        return {"winner": win[0] if win else None, "others": win[1:3], "closest": None if win else (near[0] if near else None),
+                "searched": len(rows)}
+    same = search(_peers(syms), 45)
+    other = search(_outside_ai(), 80)
+    return {"picks": picks, "bar": bar, "sameGroup": same, "outsideAI": other,
+            "note": "Beats all = higher long-term score, better 5-year return per unit of downside risk, and a worst fall no more than "
+                    "5 points deeper than your mildest pick. Searches the stocks and ETFs this dashboard tracks, not the whole market."}
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".ico": "image/x-icon",
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
@@ -3371,6 +3485,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 page = 1
             return self.send_json(directory_page(q.get("q", ""), q.get("type", ""), q.get("region", ""), page))
+        if path == "/api/challenger":
+            return self.send_json(challenger(syms(q.get("symbols"))))
         if path == "/api/themes":
             return self.send_json({sym: th for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst})
         if path == "/api/ltthemes":

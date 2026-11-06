@@ -527,6 +527,47 @@ class EntryCheck(unittest.TestCase):
         self.assertLessEqual(e["any"]["deepDip"], e["any"]["typicalDip"])
 
 
+class Challenger(unittest.TestCase):
+    def run_with(self, data):
+        old = (srv.lt_profile, srv._quick_stats, srv._peers, srv._outside_ai)
+        srv.lt_profile = lambda s: {"name": s, "score": data[s][0], "zone": "Accumulate", "fundamentals": True}
+        srv._quick_stats = lambda s, years=5: {"cagr": 10.0, "sortino": data[s][1], "maxdd": data[s][2], "years": 5.0}
+        srv._peers = lambda syms: ["P1", "P2"]
+        srv._outside_ai = lambda: ["O1", "O2"]
+        try:
+            return srv.challenger(["A", "B"])
+        finally:
+            srv.lt_profile, srv._quick_stats, srv._peers, srv._outside_ai = old
+
+    def test_winner_must_beat_every_pick(self):
+        data = {"A": (70, 0.8, -50), "B": (75, 0.6, -40), "P1": (80, 0.9, -42), "P2": (90, 0.5, -30),
+                "O1": (85, 1.2, -35), "O2": (88, 1.0, -60)}
+        c = self.run_with(data)
+        self.assertEqual(c["sameGroup"]["winner"]["symbol"], "P1")  # P2 has a higher score but a weaker risk-adjusted return
+        self.assertEqual(c["outsideAI"]["winner"]["symbol"], "O1")  # O2's worst fall is too deep
+        self.assertEqual(c["bar"], {"score": 75, "sortino": 0.8, "maxdd": -45})
+
+    def test_no_winner_reports_the_closest(self):
+        data = {"A": (90, 1.5, -20), "B": (85, 1.4, -25), "P1": (80, 1.6, -15), "P2": (60, 0.2, -70),
+                "O1": (50, 0.1, -80), "O2": (40, 0.1, -80)}
+        c = self.run_with(data)
+        self.assertIsNone(c["sameGroup"]["winner"])
+        self.assertEqual(c["sameGroup"]["closest"]["symbol"], "P1")
+
+    def test_needs_two_picks(self):
+        with self.assertRaises(ValueError):
+            srv.challenger(["A"])
+
+
+class RadarSectors(unittest.TestCase):
+    def test_every_sector_is_scanned(self):
+        other = [t for t in srv.RADAR_THEMES if t not in srv.AI_RADAR_THEMES]
+        for want in ("Healthcare & biotech", "Energy: oil & gas", "Banks & fintech", "Consumer & retail", "Defense & aerospace"):
+            self.assertIn(want, other)
+        self.assertGreaterEqual(sum(len(srv.RADAR_THEMES[t]) for t in other), 60)
+        self.assertTrue(set(srv.AI_RADAR_THEMES) <= set(srv.RADAR_THEMES))
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 

@@ -731,3 +731,10 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
   #moodBanner .mood-notes { display: none; } /* the full checklist is on the PC; the phone shows the verdict and the count */
   #moodBanner .mood svg { width: 22px; height: 22px; }
 }
+
+/* compare: challenger */
+.chal + .chal { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.chal-win { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border-left: 4px solid var(--good); }
+.chal-win > div { flex: 1; min-width: 200px; }
+.chal-why { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
+.chal-none { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }

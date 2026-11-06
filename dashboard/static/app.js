@@ -1082,13 +1082,13 @@
     view.innerHTML = `
       <section class="ai-hero">
         <div class="ai-hero-text">
-          <span class="ai-kicker">✦ AI pattern scanner</span>
-          <h1>Find the next NVIDIA</h1>
-          <p>The radar learned what <b>NVIDIA, Micron, SanDisk, ASML, Western Digital, Palantir, AppLovin and Broadcom</b> looked like on the day their 100% to 1,000% runs began. Every day it scans ${"<span id='nScan'>45</span>"} AI-economy stocks for the same fingerprint, then checks the earnings growth behind them.</p>
+          <span class="ai-kicker">✦ Pattern scanner · every sector</span>
+          <h1>Find the next big winner</h1>
+          <p>The radar learned what <b>NVIDIA, Micron, ASML, Palantir, Broadcom, Eli Lilly, Vistra, Axon, Celsius, Robinhood</b> and others looked like on the day their 100% to 1,000% runs began. Every day it scans ${"<span id='nScan'>120</span>"} stocks in every sector (AI and tech, health, energy, defense, banks, consumer, industry, mining, software) for the same fingerprint, then checks the earnings growth behind them.</p>
           <div class="ai-stats" id="aiStats">${skeleton(2)}</div>
           <p class="ai-warn">⚠ Pattern matching, not a promise. Most stocks that look like past winners don't become one, and these stocks can fall 50% or more. Size positions small.</p>
         </div>
-        <div class="ai-scope" id="scope"><div class="scope-loading"><div class="pulse"></div><p>Scanning the AI economy…<br><span class="muted">first scan takes about 2 minutes</span></p></div></div>
+        <div class="ai-scope" id="scope"><div class="scope-loading"><div class="pulse"></div><p>Scanning every sector…<br><span class="muted">first scan of all sectors takes about 4 minutes, then it's quick</span></p></div></div>
       </section>
       <div class="card-head" style="margin:22px 0 10px"><h2 style="margin:0">The legends: what they did after the launch signal</h2>${rf("radar")}</div>
       <div class="legends" id="legends">${[1, 2, 3, 4].map(() => `<div class="card">${skeleton(4)}</div>`).join("")}</div>
@@ -1096,6 +1096,7 @@
       <div class="heat" id="heat">${skeleton(2)}</div>
       <div class="toolbar" style="margin-top:22px">
         <h2 style="margin:0 12px 0 0">Candidates</h2>
+        <div class="seg" id="rGroup"><button data-g="">All sectors</button><button data-g="Other sectors">Not AI</button><button data-g="AI & tech">AI &amp; tech</button></div>
         <select id="rTheme" aria-label="Theme"><option value="">All themes</option></select>
         <select id="rStage" aria-label="Stage"><option value="">All stages</option><option>Launch pattern</option><option>Building</option><option>Not yet</option><option>Extended</option><option>Late: already ran</option></select>
         <label class="check"><input type="checkbox" id="rLeg"> Include the legends</label>
@@ -1132,7 +1133,8 @@
       const blue = (v) => `rgba(57,135,229,${(0.12 + 0.75 * Math.max(0, v - 20) / 70).toFixed(2)})`;
       $("#heat").innerHTML = data.themes.map((t) => `<button class="heat-tile" data-theme="${esc(t.theme)}" style="background:${blue(t.avg)}"><span>${esc(t.theme)}</span><b>${t.avg}</b><small>avg of ${t.n} · best ${t.top}</small></button>`).join("");
       $$("#heat .heat-tile").forEach((b) => b.addEventListener("click", () => { f.theme = f.theme === b.dataset.theme ? "" : b.dataset.theme; cards(); }));
-      $("#rTheme").innerHTML = `<option value="">All themes</option>` + data.themes.map((t) => `<option ${t.theme === f.theme ? "selected" : ""}>${esc(t.theme)}</option>`).join("");
+      $("#rTheme").innerHTML = `<option value="">All themes</option>` + ["AI & tech", "Other sectors"].map((g) => `<optgroup label="${g === "AI & tech" ? "AI &amp; tech" : "Other sectors"}">` +
+        data.themes.filter((t) => (t.group || "AI & tech") === g).map((t) => `<option ${t.theme === f.theme ? "selected" : ""}>${esc(t.theme)}</option>`).join("") + "</optgroup>").join("");
       cards();
     };
     const cards = () => {
@@ -1140,7 +1142,8 @@
       $("#rTheme").value = f.theme; $("#rStage").value = f.stage;
       $$("#rSort button").forEach((b) => b.classList.toggle("on", b.dataset.s === f.sort));
       $$("#heat .heat-tile").forEach((b) => b.classList.toggle("on", b.dataset.theme === f.theme));
-      const rows = data.candidates.filter((x) => (f.legends || !x.isPastWinner) && (!f.theme || x.theme === f.theme) && (!f.stage || x.stage === f.stage))
+      $$("#rGroup button").forEach((b) => b.classList.toggle("on", b.dataset.g === (f.group || "")));
+      const rows = data.candidates.filter((x) => (f.legends || !x.isPastWinner) && (!f.group || x.group === f.group) && (!f.theme || x.theme === f.theme) && (!f.stage || x.stage === f.stage))
         .sort((a, b) => (b[f.sort] ?? -999) - (a[f.sort] ?? -999));
       $("#cands").innerHTML = rows.map((x, i) => candCard(x, i + 1)).join("") || `<div class="card empty">No stocks match these filters.</div>`;
       $$("#cands [data-open]").forEach((b) => b.addEventListener("click", () => openDetail(b.dataset.open, b)));
@@ -1179,6 +1182,7 @@
       box.hidden = false; card.classList.add("open"); card.scrollIntoView({ behavior: "smooth", block: "nearest" }); btn.textContent = "Hide comparison ▴"; btn.setAttribute("aria-expanded", "true");
     };
     $("#rTheme").addEventListener("change", (e) => { f.theme = e.target.value; cards(); });
+    $$("#rGroup button").forEach((b) => b.addEventListener("click", () => { f.group = b.dataset.g; f.theme = ""; cards(); }));
     $("#rStage").addEventListener("change", (e) => { f.stage = e.target.value; cards(); });
     $("#rLeg").checked = !!f.legends;
     $("#rLeg").addEventListener("change", (e) => { f.legends = e.target.checked; cards(); });

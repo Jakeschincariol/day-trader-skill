@@ -634,6 +634,7 @@
       <div class="card pick-card" style="margin-top:16px"><div class="card-head"><h2><i data-lucide="sparkles"></i>Pick for me</h2><button class="btn sm" type="button" id="pickSave"><i data-lucide="bookmark-plus"></i> Save this pick</button></div>
         <div id="pickBox">${pickHtml(picks, R, fit, mode, amount)}</div>
         <p class="muted" style="font-size:12px;margin:10px 0 0">Based on the last ${R ? R.years : 5} years of shared prices and current analyst data. Past results don't predict future returns. Nobody knows which will be most profitable. This is information, not advice.</p></div>
+      <div class="card chal-card" style="margin-top:16px"><div class="card-head"><h2><i data-lucide="swords"></i>Challenger: is there something better than all of these?</h2></div><div id="chalBox"></div></div>
       <div class="card" style="margin-top:16px"><h2>Your saved picks</h2><div id="pickLog"></div></div>
       <p class="muted" style="font-size:12px;margin-top:12px">Past returns don't predict future ones. Company fundamentals come from Nasdaq.com (Zacks) for US listings only. ETF look-through weights are approximate. Returns ignore fees and tax${R && R.base ? "; the home-currency row converts with daily FX rates" : " and FX"}. This is a decision aid, not financial advice.</p>`;
     chartsInit(R, picks);
@@ -645,6 +646,44 @@
     wire();
     $("#pickSave", body).addEventListener("click", () => { savePick(picks, R, mode, fit); pickLogHtml($("#pickLog", body)); });
     pickLogHtml($("#pickLog", body));
+    loadChallenger($("#chalBox", body), picks.map((p) => p.sym));
+  }
+
+
+  // ------------------------------------------------------------ challenger: something that beats every pick
+  function challengerHtml(c, syms) {
+    const td = T();
+    const why = (w) => {
+      const b = c.picks.slice().sort((x, y) => y.score - x.score)[0];
+      return `long-term score <b>${w.score}</b> vs best pick ${b.score} · return per unit of risk <b>${w.sortino}</b> vs ${c.bar.sortino} · worst fall ${td.pct(w.maxdd, 0)} · ${td.pct(w.cagr, 0)} a year over ${w.years}y`;
+    };
+    const weakest = c.picks.slice().sort((x, y) => x.score - y.score)[0].symbol;
+    const swap = (s) => syms.map((x) => (x === weakest ? s : x)).join(",");
+    const card = (title, sub, g) => {
+      const w = g.winner;
+      if (!w) {
+        const n = g.closest;
+        return `<div class="chal"><h3 class="h3">${title}</h3><p class="chal-none">No stock in this group beats all of your picks${g.searched ? ` (${g.searched} checked)` : ""}.
+          That's a good sign: you're already choosing among the best of it.</p>
+          ${n ? `<p class="muted" style="font-size:12.5px;margin:4px 0 0">Closest: <a href="#/stock/${encodeURIComponent(n.symbol)}">${td.esc(n.symbol)}</a> (${td.esc(n.name || "")}): ${["score", "sortino", "maxdd"].filter((k) => !n.beats[k]).map((k) => ({ score: "lower score", sortino: "weaker return for its risk", maxdd: "deeper worst fall" }[k])).join(", ")}.</p>` : ""}</div>`;
+      }
+      return `<div class="chal"><h3 class="h3">${title} <span class="muted" style="font-weight:400">${sub}</span></h3>
+        <div class="chal-win">${td.logo(w.symbol, 34)}<div><b><a href="#/stock/${encodeURIComponent(w.symbol)}">${td.esc(w.symbol)}</a></b> <span class="muted">${td.esc(w.name || "")}</span>
+          ${w.zone && window.LT ? window.LT.zoneBadge(w.zone) : ""}<div class="chal-why">${why(w)}</div></div>
+          <a class="btn sm primary" href="#/compare?s=${encodeURIComponent(swap(w.symbol))}">Swap for ${td.esc(weakest)}</a></div>
+        ${g.others.length ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Also beats them all: ${g.others.map((o) => `<a href="#/stock/${encodeURIComponent(o.symbol)}">${td.esc(o.symbol)}</a> (score ${o.score})`).join(", ")}</p>` : ""}</div>`;
+    };
+    return card("Same group", "chips, sector or theme of your picks", c.sameGroup) +
+      card("Outside the AI theme", "spreads your risk: you already hold mostly chip and AI stocks", c.outsideAI) +
+      `<p class="muted" style="font-size:12px;margin:8px 0 0">${td.esc(c.note)} Past results, not a forecast: check the business before buying.</p>`;
+  }
+  async function loadChallenger(el, syms) {
+    const td = T();
+    el.innerHTML = `${td.skeleton(4)}<p class="muted" style="font-size:12.5px">Looking for a stock that beats all of ${syms.map(td.esc).join(", ")} (the first search takes 1–3 minutes, then it's quick)…</p>`;
+    try {
+      const c = await td.api("/api/challenger?symbols=" + encodeURIComponent(syms.join(",")));
+      if (el.isConnected) { el.innerHTML = challengerHtml(c, syms); if (window.lucide) window.lucide.createIcons(); }
+    } catch (e) { if (el.isConnected) el.innerHTML = `<p class="muted">Challenger unavailable: ${td.esc(e.message)}</p>`; }
   }
 
   window.Compare = { page };
