@@ -455,7 +455,7 @@ def evaluate(rules, quotes, status, state, now_utc):
             if hit and rid not in rung:
                 word = "at or above" if typ == "above" else "at or below"
                 label = {"stop": "stop", "target": "target"}.get(r["type"], "alert level")
-                rings.append({"id": rid, "symbol": sym, "message": "%s %s $%.2f: %s your %s $%s%s."
+                rings.append({"id": rid, "symbol": sym, "message": "%s %s ₹%.2f: %s your %s ₹%s%s."
                               % (sym, "is" if status["open"] else "last", p, word, label, _n(r["price"]),
                                  (" (" + r["note"] + ")") if r.get("note") else "")})
                 rung[rid] = stamp
@@ -469,7 +469,7 @@ def evaluate(rules, quotes, status, state, now_utc):
             want = r.get("direction")
             hit = abs(move) >= r["pct"] and (not want or (want == "up") == (move > 0))
             if hit and not _rang_today(rung.get(rid), today):
-                rings.append({"id": rid, "symbol": sym, "message": "%s moved %+.2f%% to $%.2f (from $%.2f)."
+                rings.append({"id": rid, "symbol": sym, "message": "%s moved %+.2f%% to ₹%.2f (from ₹%.2f)."
                               % (sym, move, p, float(ref))})
                 rung[rid] = stamp
     state["last_check"] = stamp
@@ -559,8 +559,8 @@ def cmd_quote(a):
             if q:
                 chg = ""
                 if q.get("prev_close"):
-                    chg = " (%+.2f%% vs prev close $%.2f)" % (100.0 * (q["price"] / q["prev_close"] - 1), q["prev_close"])
-                print("%-6s $%.2f%s  %s  [%s]" % (s, q["price"], chg, q.get("time", ""), q["source"]))
+                    chg = " (%+.2f%% vs prev close ₹%.2f)" % (100.0 * (q["price"] / q["prev_close"] - 1), q["prev_close"])
+                print("%-6s ₹%.2f%s  %s  [%s]" % (s, q["price"], chg, q.get("time", ""), q["source"]))
         for e in errors:
             print("error: " + e)
         if a.write and quotes:
@@ -595,7 +595,7 @@ def cmd_check(a):
             print("ALERT " + r["message"])
         if not rings:
             print("Nothing hit. %d rule(s) watched today%s." % (
-                len(watched), (", " + ", ".join("%s $%.2f" % (s, quotes[s]["price"]) for s in syms if s in quotes))
+                len(watched), (", " + ", ".join("%s ₹%.2f" % (s, quotes[s]["price"]) for s in syms if s in quotes))
                 if quotes else ""))
         for e in errors:
             print("error: " + e)

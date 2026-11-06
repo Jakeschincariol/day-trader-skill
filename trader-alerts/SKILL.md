@@ -126,7 +126,7 @@ the real 10:52 quote, 366.48, between the stop and the target:
 
 ```
 NSE OPEN (2026-10-19 10:53 IST, regular session).
-Nothing hit. 3 rule(s) watched today, TSLA $366.48.
+Nothing hit. 3 rule(s) watched today, TSLA ₹366.48.
 ```
 
 At 3:15 PM:

@@ -93,16 +93,16 @@ or-mid --target 1R --write`:
 
 ```
 Exit plan: TSLA long, Mon 2026-10-19, opening-range breakout on 5-minute bars
-  Entry         $364.18 at 10:15 AM (bar 8)
-  Stop          $358.32  opening-range midpoint: ($362.18 + $354.47) / 2 = $358.325, rounded down
-  Target        $370.04  1R (one times the risk)
-  Risk a share  $5.86 (1.61% of the entry)
+  Entry         ₹364.18 at 10:15 AM (bar 8)
+  Stop          ₹358.32  opening-range midpoint: (₹362.18 + ₹354.47) / 2 = ₹358.325, rounded down
+  Target        ₹370.04  1R (one times the risk)
+  Risk a share  ₹5.86 (1.61% of the entry)
   Reward:risk   1.0
   Flat by       15:15 IST, win or lose: no overnight hold
 ```
 
 The default 2R target would be 364.18 + 2 x 5.86 = 375.90. trader-budget then
-sizes it: a $50 max loss per trade buys floor(50 / 5.86) = 8 shares.
+sizes it: a ₹50 max loss per trade buys floor(50 / 5.86) = 8 shares.
 
 ## Rules
 

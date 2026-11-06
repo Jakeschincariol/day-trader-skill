@@ -160,13 +160,13 @@ Monday Oct 19 2026, scan at 10:15 AM over the reel's 234-ticker wall
 python3 scan.py orb --offline wall5m-2026-10-19.json.gz --now "2026-10-19 10:15" --min-price 0
 Fetched 233 of 234 charts (1 failed or had no data); 231 usable; 95 candidates, 95 confirmed with real highs and lows.
 42 of 231 charts closed above their opening-range high by 10:15 AM:
-   9:35 AM  AMC         $2.97  range 2.90 to 2.96  +0.50% over
+   9:35 AM  AMC         ₹2.97  range 2.90 to 2.96  +0.50% over
   ...
-  10:15 AM  TSLA      $364.18  range 354.47 to 362.18  +0.55% over
+  10:15 AM  TSLA      ₹364.18  range 354.47 to 362.18  +0.55% over
 ```
 
-The reel's wall had no price floor (AMC at $2.97 is one of the 42), hence
-`--min-price 0`; with the default $5 floor it is 41. TSLA's range is the 9:15
+The reel's wall had no price floor (AMC at ₹2.97 is one of the 42), hence
+`--min-price 0`; with the default ₹5 floor it is 41. TSLA's range is the 9:15
 to 9:25 bars, high 362.18, low 354.47; the 10:10 bar closed at 364.18, 0.55 %
 over the high, at 10:15 AM. The user picks TSLA and Claude hands it to
 `/trader-news TSLA`, then `/trader-entry TSLA`. In the reel the universe was

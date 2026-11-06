@@ -178,8 +178,8 @@ ORDER 1 of 1, PAPER account, Alpaca
   BUY 8 TSLA, market, good for today
   stop-loss 358.32
   take-profit 370.04
-  max loss about $46.88 if the stop fills at 358.32 (it can fill worse in a fast market)
-  why: opening-range breakout on TSLA: 8 shares, bound by your $50 max loss per trade (8 x 5.86 = $46.88 at the stop)
+  max loss about ₹46.88 if the stop fills at 358.32 (it can fill worse in a fast market)
+  why: opening-range breakout on TSLA: 8 shares, bound by your ₹50 max loss per trade (8 x 5.86 = ₹46.88 at the stop)
   READY: trader-risk PASS, waiting for your yes
   Claude will call place_stock_order with exactly:
     {"symbol": "TSLA", "side": "buy", "qty": "8", "type": "market", "time_in_force": "day",

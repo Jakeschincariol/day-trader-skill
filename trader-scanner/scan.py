@@ -810,7 +810,7 @@ def write_json(path, doc):
 
 
 def money(x):
-    return "${:,.2f}".format(x)
+    return "₹{:,.2f}".format(x)
 
 
 # ---------------------------------------------------------------- commands
@@ -887,7 +887,7 @@ def cmd_daily(a):
     local = to_ist(now)
     print("Daily scan, %s IST, closes through %s (Yahoo spark, daily closes only)." % (
         local.strftime("%a %Y-%m-%d %H:%M"), last_date.isoformat() if last_date else "nothing"))
-    print("Fetched %s of %s charts%s. %s passed the liquidity filter ($%s+ and %s+ shares)%s; "
+    print("Fetched %s of %s charts%s. %s passed the liquidity filter (₹%s+ and %s+ shares)%s; "
           "%s scanned." % ("{:,}".format(counts["fetched"]), "{:,}".format(len(symbols)),
                            (" (%s failed or had no data)" % "{:,}".format(nfailed)) if nfailed else "",
                            "{:,}".format(counts["fetched"] - counts["illiquid"]), _n(a.min_price),

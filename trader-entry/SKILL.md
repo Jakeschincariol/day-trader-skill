@@ -97,16 +97,16 @@ TSLA, Monday 2026-10-19, 5-minute bars. The opening range is 354.47 to
 362.18. At 10:12 the 10:10 bar is still open, so it waits:
 
 ```
-WAITING  last close $361.68 (10:05 bar), $0.50 under the range high $362.18 (-0.14%).
-The 10:10 bar is still forming ($364.18 so far, closes 10:15 AM); it does not count until it closes.
+WAITING  last close ₹361.68 (10:05 bar), ₹0.50 under the range high ₹362.18 (-0.14%).
+The 10:10 bar is still forming (₹364.18 so far, closes 10:15 AM); it does not count until it closes.
 ```
 
 At 10:15 the bar has closed:
 
 ```
 TSLA  Mon 2026-10-19 10:15 IST  opening-range breakout (15-minute range) on 5-minute bars (Yahoo, free, can lag)
-Opening range 9:15-9:15: high $362.18, low $354.47 (3 of 3 bars).
-TRIGGERED 10:15 AM at $364.18: the 10:10 bar (bar 8) closed above the range high $362.18 (+0.55%).
+Opening range 9:15-9:15: high ₹362.18, low ₹354.47 (3 of 3 bars).
+TRIGGERED 10:15 AM at ₹364.18: the 10:10 bar (bar 8) closed above the range high ₹362.18 (+0.55%).
 This is the moment to get in, if you take the trade. Nothing was placed.
 Next: set the stop and target BEFORE you buy: /trader-exit (exit.py plan --from trader/entry.json).
 ```

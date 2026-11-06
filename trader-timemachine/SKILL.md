@@ -2,7 +2,7 @@
 name: trader-timemachine
 description: >-
   Time Machine. Replays every possible outcome of a trade before you risk a
-  dollar: 10,000 simulated sessions plus every past time the setup fired.
+  rupee: 10,000 simulated sessions plus every past time the setup fired.
   Takes the plan from trader-exit (entry, stop, target), rebuilds the rest of
   the day 10,000 times from the stock's own 5-minute bars over the last 60
   days, and re-runs the same rule on every past session. Prints the odds of
