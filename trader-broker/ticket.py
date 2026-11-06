@@ -159,9 +159,23 @@ def tool_input(order):
     return out
 
 
+def indian_commas(text):
+    """"1234567.89" or "1,234,567.89" -> "12,34,567.89" (Indian lakh and crore grouping)."""
+    s = str(text).replace(",", "")
+    sign = "-" if s.startswith("-") else ""
+    whole, dot, frac = s.lstrip("-").partition(".")
+    if len(whole) > 3:
+        head, groups = whole[:-3], [whole[-3:]]
+        while head:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        whole = ",".join(groups)
+    return sign + whole + dot + frac
+
+
 def _money(v):
     f = float(v)
-    s = "{:,.2f}".format(f)
+    s = indian_commas("{:.2f}".format(f))
     return "₹" + (s[:-3] if s.endswith(".00") else s)
 
 

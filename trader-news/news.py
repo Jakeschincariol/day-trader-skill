@@ -182,6 +182,20 @@ class Fetcher(object):
             raise NewsError("could not reach %s: %s" % (url, exc.reason))
 
 
+def indian_commas(text):
+    """"1234567.89" or "1,234,567.89" -> "12,34,567.89" (Indian lakh and crore grouping)."""
+    s = str(text).replace(",", "")
+    sign = "-" if s.startswith("-") else ""
+    whole, dot, frac = s.lstrip("-").partition(".")
+    if len(whole) > 3:
+        head, groups = whole[:-3], [whole[-3:]]
+        while head:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        whole = ",".join(groups)
+    return sign + whole + dot + frac
+
+
 def yahoo_symbol(ticker):
     s = ticker.upper()
     return (s if s.endswith(".NS") else s.replace(".", "-"))
@@ -433,7 +447,7 @@ def render_moves(moves, move_pct=MOVE_PCT):
         flag = "MOVING" if abs(m["pct"]) >= move_pct else ""
         when = (" at %s IST" % to_ist(m["time"]).strftime("%H:%M")) if m.get("time") else ""
         out.append("%-6s %s %+.2f%% vs yesterday's close %s%s  %s" % (
-            m["ticker"], "{:,.2f}".format(m["price"]), m["pct"], "{:,.2f}".format(m["prev_close"]),
+            m["ticker"], indian_commas("{:.2f}".format(m["price"])), m["pct"], indian_commas("{:.2f}".format(m["prev_close"])),
             when, flag))
     return out
 
