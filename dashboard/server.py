@@ -1006,6 +1006,17 @@ RADAR_THEMES = {
     "Quantum & space": ["IONQ", "RGTI", "QBTS", "RKLB", "ASTS"],
     "AI software": ["PLTR", "APP", "SNOW", "CRWD", "NET", "DDOG"],
 }
+# more listings of the same themes, for portfolio checks (not scanned by the radar)
+LT_EXTRA_THEMES = {
+    "Memory & storage": ["000660.KS", "HY9H.F", "HY9H.DE", "005930.KS"],
+    "Chip equipment": ["ASM.AS", "ASMIY", "6857.T", "ATEYY", "AMKR", "BESI.AS", "ASMI.AS", "8035.T"],
+    "AI chips": ["TSM", "2330.TW", "QCOM", "SMTC", "MPWR", "SMCI", "IFX.DE", "STMPA.PA"],
+    "Networking & optics": ["CSCO", "NOK", "ERIC"],
+    "Power & data centers": ["APLD", "CORZ", "GEV", "ETN", "NRG", "TLN", "SMR", "PWR", "SU.PA", "SIE.DE"],
+}
+# themes that rise and fall together with AI spending
+AI_BUILDOUT = {"Memory & storage": "AI build-out", "Chip equipment": "AI build-out", "AI chips": "AI build-out",
+               "Networking & optics": "AI build-out", "Power & data centers": "AI build-out"}
 FEATURES = [  # (key, label, scale used to compare)
     ("r3", "3-month return", 0.30), ("r6", "6-month return", 0.50), ("r12", "12-month return", 0.80),
     ("rs6", "Beat S&P (6m)", 0.40), ("fromHigh", "Near 52-week high", 0.15), ("d200", "Above 200-day avg", 0.30),
@@ -1887,6 +1898,8 @@ def lt_profile(symbol):
             band = (None if score is None else "Core quality" if score >= 75 else "Good" if score >= 60 else "Fair" if score >= 45 else "Speculative")
         else:  # ETFs and non-US listings: judged on track record only
             band = (None if score is None else "Strong record" if score >= 75 else "Solid record" if score >= 60 else "Mixed record" if score >= 45 else "Weak record")
+            if meta.get("instrumentType") not in ("ETF", "MUTUALFUND"):
+                band = (band or "") + " · price only"  # no company figures for this listing
 
         # buy zone for accumulating
         pe_pct = None
@@ -1914,6 +1927,8 @@ def lt_profile(symbol):
             reasons.append("P/E in the %s of its ~2-year range" % ("bottom third" if pe_pct <= 33 else "top 10%" if pe_pct >= 90 else "middle"))
         if score is not None and score < 45 and has_fa:
             zone, zwhy = "Speculative", "Weak fundamentals or history: keep it a small satellite position, or research first."
+        elif cheap and (score or 0) >= 60 and not has_fa and meta.get("instrumentType") not in ("ETF", "MUTUALFUND"):
+            zone, zwhy = "Accumulate", "Below its usual price, but scored on price history only (no company figures for this listing): keep to your regular amount."
         elif cheap and (score or 0) >= 60:
             zone, zwhy = "Accumulate+", "Good business on sale: a good month to add a bit more than usual."
         elif dear:
@@ -3357,7 +3372,10 @@ class Handler(BaseHTTPRequestHandler):
                 page = 1
             return self.send_json(directory_page(q.get("q", ""), q.get("type", ""), q.get("region", ""), page))
         if path == "/api/themes":
-            return self.send_json({sym: th for th, lst in RADAR_THEMES.items() for sym in lst})
+            return self.send_json({sym: th for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst})
+        if path == "/api/ltthemes":
+            return self.send_json({"themes": {sym: th for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst},
+                                   "groups": AI_BUILDOUT})
         if path == "/api/lookthrough":
             return self.send_json(LOOKTHROUGH)
         if path == "/api/quotes":

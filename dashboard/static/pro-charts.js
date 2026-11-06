@@ -58,7 +58,8 @@
       s20: css("--series-2"), s50: css("--series-1"), s200: css("--series-5"), rsi: css("--series-7"),
     };
     const intra = opts.intraday;
-    const showRsi = !intra && s.rsi;
+    const calm = !!opts.calm && !intra;
+    const showRsi = !intra && s.rsi && !calm;
     box.classList.add("pro");
     box.setAttribute("role", "img");
     const narrow = box.clientWidth < 520;
@@ -78,23 +79,27 @@
       localization: { priceFormatter: (p) => fmt(p, dec) },
     };
     const chart = LW.createChart(mainEl, base);
-    const candles = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: true });
+    const candles = calm
+      ? chart.addAreaSeries({ lineColor: C.accent, topColor: "rgba(57,135,229,.22)", bottomColor: "rgba(57,135,229,0)", lineWidth: 2, priceLineVisible: true })
+      : chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderVisible: false, wickUpColor: C.up, wickDownColor: C.down, priceLineVisible: true });
     const n = s.c.length;
     const cdata = [], vdata = [];
     for (let i = 0; i < n; i++) {
       cdata.push({ time: T(s.t[i]), open: s.o[i], high: s.h[i], low: s.l[i], close: s.c[i] });
       vdata.push({ time: T(s.t[i]), value: s.v[i], color: s.c[i] >= s.o[i] ? "rgba(12,163,12,.35)" : "rgba(208,59,59,.35)" });
     }
-    candles.setData(cdata);
-    candles.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
-    const volume = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "", lastValueVisible: false, priceLineVisible: false });
-    volume.priceScale().applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
-    volume.setData(vdata);
+    candles.setData(calm ? cdata.map((d) => ({ time: d.time, value: d.close })) : cdata);
+    candles.priceScale().applyOptions({ scaleMargins: { top: calm ? 0.12 : 0.06, bottom: calm ? 0.04 : 0.2 } });
+    if (!calm) {
+      const volume = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "", lastValueVisible: false, priceLineVisible: false });
+      volume.priceScale().applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+      volume.setData(vdata);
+    }
     const lineOpts = (color, extra) => Object.assign({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, extra || {});
     const lineData = (arr) => arr.map((v, i) => (v == null ? { time: T(s.t[i]) } : { time: T(s.t[i]), value: v }));
     if (s.sma200) chart.addLineSeries(lineOpts(C.s200)).setData(lineData(s.sma200));
-    if (s.sma50) chart.addLineSeries(lineOpts(C.s50)).setData(lineData(s.sma50));
-    if (s.sma20) chart.addLineSeries(lineOpts(C.s20)).setData(lineData(s.sma20));
+    if (s.sma50 && !calm) chart.addLineSeries(lineOpts(C.s50)).setData(lineData(s.sma50));
+    if (s.sma20 && !calm) chart.addLineSeries(lineOpts(C.s20)).setData(lineData(s.sma20));
 
     if (intra === "day" && opts.prevClose) candles.createPriceLine({ price: opts.prevClose, color: C.muted, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "Prev close" });
     const p = !intra && opts.plan;
@@ -163,6 +168,11 @@
       const prev = intra === "day" && opts.prevClose ? opts.prevClose : i > 0 ? s.c[i - 1] : s.c[i];
       const ch = (s.c[i] / prev - 1) * 100;
       const when = intra ? new Date(s.t[i] * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : new Date(s.t[i] * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      if (calm) {
+        legend.innerHTML = `<span>${when}</span><span><b style="color:${ch >= 0 ? "var(--good-text)" : "var(--bad-text)"}">${fmt(s.c[i], dec)} (${ch >= 0 ? "+" : ""}${ch.toFixed(2)}%)</b></span>` +
+          (s.sma200 && s.sma200[i] != null ? `<span>200-day average <b>${fmt(s.sma200[i], dec)}</b></span>` : "");
+        return;
+      }
       legend.innerHTML = `<span>${when}</span><span>O <b>${fmt(s.o[i], dec)}</b></span><span>H <b>${fmt(s.h[i], dec)}</b></span><span>L <b>${fmt(s.l[i], dec)}</b></span>` +
         `<span>C <b style="color:${ch >= 0 ? "var(--good-text)" : "var(--bad-text)"}">${fmt(s.c[i], dec)} (${ch >= 0 ? "+" : ""}${ch.toFixed(2)}%)</b></span><span>Vol <b>${vol(s.v[i])}</b></span>` +
         (s.rsi && !intra && s.rsi[i] != null ? `<span>RSI <b>${s.rsi[i].toFixed(1)}</b></span>` : "");

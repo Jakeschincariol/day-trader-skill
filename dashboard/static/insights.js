@@ -131,14 +131,15 @@
         <p class="sec" style="margin-top:0">${r.positions.length} holdings from <b>${td.esc(r.file || "statement")}</b>, imported ${new Date(r.imported * 1000).toLocaleDateString()}. Prices are live; shares are as of the statement.</p>
         <div class="ret-grid" style="margin-bottom:10px">
           <div class="perf-tile"><div class="k">Value</div><div class="v num">${td.money(t.value, r.currency)}</div></div>
-          <div class="perf-tile"><div class="k">Open P/L</div><div class="v num ${td.cls(r.ppl)}">${r.ppl >= 0 ? "+" : ""}${td.money(r.ppl, r.currency)}</div></div>
-          ${t.realized ? `<div class="perf-tile"><div class="k">Realised P/L</div><div class="v num ${td.cls(t.realized)}">${td.money(t.realized, r.currency)}</div></div>` : ""}
+          <div class="perf-tile"><div class="k">Gain so far</div><div class="v num ${td.cls(r.ppl)}">${r.ppl >= 0 ? "+" : ""}${td.money(r.ppl, r.currency)}</div></div>
+          ${t.realized ? `<div class="perf-tile"><div class="k">Gain from sales</div><div class="v num ${td.cls(t.realized)}">${td.money(t.realized, r.currency)}</div></div>` : ""}
           ${t.dividends ? `<div class="perf-tile"><div class="k">Dividends</div><div class="v num up">${td.money(t.dividends, r.currency)}</div></div>` : ""}</div>
         ${(r.warnings || []).length ? `<p class="muted" style="font-size:12px">${r.warnings.map(td.esc).join(" · ")}</p>` : ""}
         <div class="form-row" style="align-items:end">${imp}<button class="btn danger" type="button" id="revDel">Remove</button></div>
         <p class="error" id="revErr" role="alert"></p>`;
     } else {
-      el.innerHTML = `<h2>Use Revolut?</h2>
+      const t212On = td.state.t212Status && td.state.t212Status.linked;
+      const body = `<h2>Use Revolut?</h2>
         <p class="sec" style="margin-top:0">Revolut has no API for personal investing accounts, so the dashboard reads your statement file instead.</p>
         <ol class="steps"><li>In the Revolut app open <b>Invest</b> → <b>…</b> (More) → <b>Documents</b> → <b>Brokerage account</b> → <b>Account statement</b>.</li>
           <li>Choose <b>Excel</b> (not PDF) and the period <b>All time</b>, then send the file to this computer (email, OneDrive, AirDrop). Menu names can differ a little between app versions. On iPhone you can pick it straight from the Files app.</li>
@@ -146,6 +147,8 @@
         <div class="form-row" style="align-items:end;margin-top:10px">${imp}</div>
         <p class="muted" style="font-size:12px;margin:0">The file stays on your computer (dashboard/.revolut.json). Works with any broker's CSV that has Symbol and Quantity columns.</p>
         <p class="error" id="revErr" role="alert"></p>`;
+      // already on Trading 212: keep the Revolut help folded away
+      el.innerHTML = t212On ? `<details class="fold-inline"><summary><b>Also use Revolut?</b> <span class="muted">import a statement</span></summary>${body.replace("<h2>Use Revolut?</h2>", "")}</details>` : body;
     }
     $("#revFile", el).addEventListener("change", (e) => {
       const f = e.target.files[0];

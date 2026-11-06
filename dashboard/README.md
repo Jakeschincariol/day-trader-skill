@@ -47,6 +47,17 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Expert review (November 2026)
+
+Four reviewers (long-term investing, trading and risk, visual design, mobile use) checked the dashboard. Changes made:
+
+- **One bet, not many**: chip, chip-equipment, memory, optics and AI-power stocks count together as the **AI build-out** theme. Diversification shows its share and warns above 40%; holdings in a full theme say *Theme full: send new money elsewhere*.
+- **Monthly plan rebalances**: with no targets set it uses a starting model (AI build-out names share at most 40%, a world ETF such as VWCE is the core when you hold nothing else) instead of copying today's mix, and stops tilting extra money into holdings when most of them are "on sale" at once.
+- **Price-only scores are labelled**: listings with no company figures (e.g. SK hynix, Advantest, ASM International) show *price only* and can't get *Good time to add*.
+- **Honest entry check**: counts separate past episodes, hides the 12-month figure when there are too few, softens the advice when the stock's own record after similar drops was poor, and says when to stop adding.
+- **Fixes**: positions already below their stop are flagged in the risk panel; the stock *Max* return compares from the same start date as the S&P 500; weak stocks say *Avoid*; swing backtests include 0.4% costs and buy-and-hold; Copy works on the iPhone; sparkline colours follow the day's change; one €1,200 monthly default.
+- **Clearer pages**: portfolio value first on the Dashboard; positions first on Portfolio; on stock pages (long-term mode) a verdict strip under the price, a full-width calm chart (price and 200-day average; tick *Trader view* for candles, volume and RSI), and Statistics / Earnings folded; plainer labels (*Good time to add*, *Keep buying as planned*, *Pricey: buy small*, *Gain so far*); compact market banner on the iPhone.
+
 ## Right moment to buy? (long-term entry check)
 
 On every stock page in Long-term mode, above the Long-term view. It answers "should I buy it all now, in parts, or wait?":

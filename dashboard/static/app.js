@@ -186,7 +186,7 @@
   const star = (sym) => `<button class="star ${watchlist().includes(sym) ? "on" : ""}" data-sym="${esc(sym)}" aria-label="Toggle watchlist ${esc(sym)}" title="Watchlist">★</button>`;
   const ltOf = (r) => ("lt" in r ? r.lt || {} : r); // market rows carry .lt; long-term profiles are used directly
   const LTC = {
-    score: { key: "lts", label: "LT score", val: (r) => ltOf(r).score, html: (r) => { const p = ltOf(r); return p.score == null ? `<span class="muted">…</span>` : `${meter(p.score)}<span class="nm">${esc(p.band || "")}</span>`; } },
+    score: { key: "lts", label: "Long-term score", val: (r) => ltOf(r).score, html: (r) => { const p = ltOf(r); return p.score == null ? `<span class="muted">…</span>` : `${meter(p.score)}<span class="nm">${esc(p.band || "")}</span>`; } },
     zone: { key: "zone", label: "Buy zone", val: (r) => ({ "Accumulate+": 4, Accumulate: 3, Stretched: 2, Speculative: 1 }[ltOf(r).zone] || 0), html: (r) => window.LT ? window.LT.zoneBadge(ltOf(r).zone) : "" },
     c5: { key: "c5", label: "5y a year", r: true, val: (r) => (ltOf(r).history || {}).cagr5, html: (r) => { const v = (ltOf(r).history || {}).cagr5; return `<span class="${cls(v)}">${pct(v, 1)}</span>`; } },
     ath: { key: "ath", label: "From high", r: true, sm: true, val: (r) => ltOf(r).fromATH, html: (r) => { const v = ltOf(r).fromATH; return `<span class="${cls(v)}">${pct(v, 0)}</span>`; } },
@@ -309,12 +309,12 @@
     const breadth = Math.round(100 * stocks.filter((r) => r.sma50 && r.price > r.sma50).length / (stocks.length || 1));
     const pf = portfolioSummary(t212, rows);
     $("#stats").innerHTML = `
+      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 or Revolut →</a></div>`}</div>
       <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${(isLT() ? "" : ratingBadge(spy.rating))} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
       <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 or Revolut →</a></div>`}</div>`;
+      <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>`;
     if (isLT() && window.LT) {
-      $("#stats").children[2].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
+      $("#stats").children[3].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
       $("#top").innerHTML = `<p class="muted" style="font-size:13px">Scoring stocks for quality and value (the first time takes about a minute)…</p>`;
       const u = await getUniverse();
       const prof = await window.LT.profiles([...new Set(Object.values(u.stocks).flat())]).catch(() => []);
@@ -497,18 +497,20 @@
           <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button>
           <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button> ${rf("quote")}</div>
       </div>
-      <div class="grid g2">
+      ${isLT() ? `<a class="entry-strip" id="entryStrip" href="#ltEntryCard" hidden></a>` : ""}
+      <div class="grid ${isLT() ? "" : "g2"}">
         <div class="card chart-card">
           <div class="card-head" style="flex-wrap:wrap"><h2 id="chartTitle">Price chart (daily)</h2>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${rf("chart")}
               <label class="check" style="font-size:13px"><input type="checkbox" id="fcOn" ${isLT() ? "" : "checked"}> Forecast</label>
+              ${isLT() ? `<label class="check" style="font-size:13px"><input type="checkbox" id="proOn" ${store.get("traderView", false) ? "checked" : ""}> Trader view</label>` : ""}
               <div class="seg" id="rng"><button data-b="1D">1D</button><button data-b="7D">7D</button><button data-b="63">3M</button><button data-b="126" class="on">6M</button><button data-b="252">1Y</button><button data-b="504">2Y</button></div></div></div>
           <div class="chart-box" id="chart"></div>
           <div class="legend" id="legend"></div>
           <div id="fcNote" class="muted" style="font-size:12px;margin-top:6px"></div>
         </div>
-        <div class="grid" style="align-content:start">
-          ${isLT() ? `<div class="card entry-card"><div class="card-head"><h2 style="margin:0"><i data-lucide="crosshair"></i>Right moment to buy?</h2>${rf("entry")}</div><div id="ltEntry"></div></div>
+        <div class="grid ${isLT() ? "g2 lt-cols" : ""}" style="align-content:start">
+          ${isLT() ? `<div class="card entry-card" id="ltEntryCard"><div class="card-head"><h2 style="margin:0"><i data-lucide="crosshair"></i>Right moment to buy?</h2>${rf("entry")}</div><div id="ltEntry"></div></div>
           <div class="card"><div class="card-head"><h2 style="margin:0">Long-term view</h2>${rf("ltv")}</div><div id="ltCard"></div><div id="ltBt" style="margin-top:14px"></div></div>
           <details class="card swing" id="swingBox"><summary><h2 style="margin:0;display:inline">Swing trading plan</h2> <span class="muted" style="font-size:13px">entry, stop, targets for short trades</span></summary>` : `<div class="card">`}
             <div class="card-head"><h2 style="margin:0">${isLT() ? "" : "Best moment to buy"}</h2>${isLT() ? "" : rf("quote")}</div>
@@ -531,8 +533,8 @@
         <div class="card"><div class="card-head"><h2>Performance overview</h2>${rf("perf")}</div><p class="muted" style="font-size:12px;margin:-6px 0 10px">Price return vs the S&amp;P 500</p><div id="perf">${skeleton(3)}</div></div>
         <div class="card"><div class="card-head"><h2>Forecast &amp; analysts</h2>${rf("fund")}</div><div id="fcCard">${skeleton(4)}</div></div>
       </div>
-      <div class="card" style="margin-top:16px"><div class="card-head"><h2>Statistics</h2>${rf("fund")}</div><p class="muted" id="statSrc" style="font-size:12px;margin:-6px 0 10px"></p><div id="stats">${skeleton(6)}</div></div>
-      <div class="card" style="margin-top:16px" id="earnCard"><div class="card-head"><h2>Earnings trends</h2>${rf("fund")}</div><p class="muted" id="nextEarn" style="font-size:13px;margin:-6px 0 10px"></p><div id="earn">${skeleton(6)}</div></div>
+      <details class="card fold" style="margin-top:16px" ${isLT() ? "" : "open"}><summary class="card-head"><h2>Statistics</h2>${rf("fund")}</summary><p class="muted" id="statSrc" style="font-size:12px;margin:-6px 0 10px"></p><div id="stats">${skeleton(6)}</div></details>
+      <details class="card fold" style="margin-top:16px" id="earnCard" ${isLT() ? "" : "open"}><summary class="card-head"><h2>Earnings trends</h2>${rf("fund")}</summary><p class="muted" id="nextEarn" style="font-size:13px;margin:-6px 0 10px"></p><div id="earn">${skeleton(6)}</div></details>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><h2>Key stats</h2><div class="kv">
           <div>52-week high<b class="num">${fmt(a.high52, dp(a.high52))}</b></div><div>52-week low<b class="num">${fmt(a.low52, dp(a.low52))}</b></div>
@@ -571,10 +573,12 @@
       }
       $("#hourlyCard").hidden = true;
       $("#chartTitle").textContent = "Price chart (daily)";
-      $("#legend").innerHTML = legendDaily + (fcOn && a.forecast ? legendFc : "");
+      const calmView = isLT() && !($("#proOn") && $("#proOn").checked);
+      $("#legend").innerHTML = (calmView ? `<span><i style="background:var(--accent)"></i>Price</span><span><i style="background:var(--series-5)"></i>200-day average (the long-term trend)</span>` : legendDaily) + (fcOn && a.forecast ? legendFc : "");
       const tgt = ui.fund && ui.fund.analyst ? ui.fund.analyst.avg : null;
       $("#fcNote").textContent = fcOn && a.forecast ? "Forecast: the last 6 months' trend (halved, since trends fade) with ranges from recent volatility. A statistical range, not a prediction." : "";
-      ui.chart = Price($("#chart"), a.series, { bars: +m, plan: isLT() ? null : p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null });
+      ui.chart = Price($("#chart"), a.series, { bars: +m, plan: isLT() ? null : p, forecast: fcOn ? a.forecast : null, target: fcOn ? tgt : null,
+        calm: isLT() && !($("#proOn") && $("#proOn").checked) });
     }
     function renderHourly(d, m) {
       const card = $("#hourlyCard"); card.hidden = false;
@@ -594,6 +598,7 @@
       ui.mode = stockMode[a.symbol] = b.dataset.b; drawChart();
     }));
     $("#fcOn").addEventListener("change", drawChart);
+    if ($("#proOn")) $("#proOn").addEventListener("change", (e) => { store.set("traderView", e.target.checked); drawChart(); });
     drawChart();
     RF.quote = () => pages.stock(a.symbol);
     RF.chart = async () => { if (/D$/.test(ui.mode)) { ui.intra = null; await drawChart(); } else await pages.stock(a.symbol); };
@@ -608,7 +613,16 @@
       window.LT.backtestCard(a.symbol, $("#ltBt"));
       const owned = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
       RF.entry = async () => { $("#ltEntry").dataset.fresh = "1"; await window.LT.entryCard(a, $("#ltEntry"), owned); };
-      window.LT.entryCard(a, $("#ltEntry"), owned).then(() => stamp("entry"));
+      window.LT.entryCard(a, $("#ltEntry"), owned).then(async () => {
+        stamp("entry");
+        const e = await window.LT.entry(a.symbol).catch(() => null), s = $("#entryStrip");
+        if (!e || !s) return;
+        const lp = window.LT.cache[a.symbol];
+        s.className = "entry-strip " + e.verdict.tone; s.hidden = false;
+        s.innerHTML = `<i data-lucide="crosshair"></i><span>Right moment to buy? <b>${esc(e.verdict.title)}</b></span>` +
+          (lp && lp.score != null ? `<span class="muted">Long-term score <b>${lp.score}</b>${lp.zone ? " · " + esc(window.LT.zoneLabel(lp.zone)) : ""}</span>` : "") + `<span class="go">Details ↓</span>`;
+        if (window.lucide) window.lucide.createIcons();
+      });
     }
 
     // ---- performance overview
@@ -745,6 +759,15 @@
     const lt = isLT();
     view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only), Revolut statement and manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only), Revolut statement and any holdings you add by hand, with a live rating and exit check on every position."}</p>
       <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
+        <div class="grid" style="align-content:start">
+          <div class="card" id="link">${skeleton(4)}</div>
+          <div class="card" id="revBox">${skeleton(3)}</div>
+          <div class="card"><div class="card-head"><h2>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
+          <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
+        </div>
+      </div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
         <div id="pret" class="ret-grid ret7">${skeleton(2)}</div>
         <div class="card-head" style="margin-top:16px;flex-wrap:wrap"><h2 style="margin:0">Money invested vs value</h2>
@@ -755,15 +778,6 @@
       </div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="grid-3x3"></i>How your holdings move together</h2>${rf("corr")}</div><div id="corrBox">${skeleton(5)}</div></div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="telescope"></i>10-year plan</h2><span class="muted" style="font-size:12.5px">what monthly investing could grow to</span></div><div id="projBox">${skeleton(5)}</div></div>
-      <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
-        <div class="grid" style="align-content:start">
-          <div class="card" id="link">${skeleton(4)}</div>
-          <div class="card" id="revBox">${skeleton(3)}</div>
-          <div class="card"><div class="card-head"><h2>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
-          <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
-        </div>
-      </div>
       ${lt ? `<div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
         <div class="card"><div class="card-head"><h2><i data-lucide="coins"></i>Dividends</h2>${rf("divs")}</div><div id="divBox"><p class="muted">Link Trading 212 to see the dividends you receive.</p></div></div></div>` : ""}
@@ -776,7 +790,7 @@
             <label class="field">Avg price<input name="avgPrice" type="number" step="any" min="0" required value="${esc(params.get("price") || "")}"></label>
             <label class="field">Buy date<input name="date" type="date" required value="${new Date().toISOString().slice(0, 10)}"></label>
             <button class="btn primary" type="submit">Add</button></div></form></div>
-        <div class="card"><h2>Risk settings</h2><form class="form" id="sform"><div class="form-row">
+        <details class="card fold" ${lt ? "" : "open"}><summary class="card-head"><h2>${lt ? "Settings (swing trading and account)" : "Risk settings"}</h2></summary><form class="form" id="sform"><div class="form-row">
           <label class="field">Risk per trade %<input name="riskPct" type="number" step="0.1" min="0.1" max="10" value="${settings().riskPct}"></label>
           <label class="field">Max position %<input name="maxPosPct" type="number" step="1" min="1" max="100" value="${settings().maxPosPct || 25}"></label>
           <label class="field">Max open risk %<input name="maxHeatPct" type="number" step="0.5" min="0.5" max="50" value="${settings().maxHeatPct || 6}"></label>
@@ -784,7 +798,7 @@
           <label class="field">Account currency (if not linked)<select name="ccy">${["USD", "EUR", "GBP", "CHF"].map((c) => `<option ${c === (settings().ccy || "USD") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
           <button class="btn" type="submit">Save</button></div>
           <p class="muted" style="margin:0;font-size:13px">Pros risk 0.5–2% of the account per trade and keep total open risk under about 6%. Every order ticket is sized from these numbers.</p></form>
-          <div class="mode-row"><span>Style</span><div class="seg" id="modeSeg2"><button data-m="lt">Long-term investing</button><button data-m="swing">Swing trading</button></div></div></div>
+          <div class="mode-row"><span>Style</span><div class="seg" id="modeSeg2"><button data-m="lt">Long-term investing</button><button data-m="swing">Swing trading</button></div></div></details>
       </div>`;
 
     $("#mform").addEventListener("submit", (e) => {
@@ -847,10 +861,12 @@
       const targets = store.get("targets", {});
       const tsum = Object.values(targets).reduce((a, b) => a + (+b || 0), 0) || 100;
       const totAcct = positions.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0) + (t && t.cash.free > 0 ? t.cash.free : 0);
+      const ts = await window.LT.themeShares(positions, totAcct);
       for (const p of positions) {
         p.weight = totAcct ? 100 * (p.valueAcct || p.mv || 0) / totAcct : 0;
         const tg = targets[p.symbol] != null ? 100 * targets[p.symbol] / tsum : null;
-        const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol));
+        const grp = ts.groupOf(p.symbol);
+        const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol), grp ? { name: grp, pct: ts.byGroup[grp] } : null);
         p.verdict = vd.v; p.verdictWhy = vd.why;
         p.alert = vd.v === "Trim" || vd.v === "Review thesis" ? vd.v : "OK";
       }
@@ -869,7 +885,7 @@
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     $("#pstats").innerHTML = `
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? rv.broker || "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Open P/L</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
+      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Gain so far (not sold)</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
       <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "warn" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
     if (window.Insights && $("#corrBox")) {
@@ -900,8 +916,8 @@
       { key: "pl", label: "P/L", r: true, val: (p) => p.plPct, html: (p) => `<span class="${cls(p.plPct)}">${pct(p.plPct)}</span><span class="nm ${cls(p.ppl)}">${p.ppl != null ? (p.ppl >= 0 ? "+" : "") + fmt(p.ppl, 2) : ""}</span>` },
       ...(lt ? [
         { key: "weight", label: "Weight", r: true, val: (p) => p.weight, html: (p) => p.weight != null ? p.weight.toFixed(1) + "%" : "–" },
-        { key: "lts", label: "LT score", val: (p) => (ltMap[p.symbol] || {}).score, html: (p) => { const x = ltMap[p.symbol]; return x && x.score != null ? `${meter(x.score)}<span class="nm">${esc(x.band || "")}</span>` : "–"; } },
-        { key: "verdict", label: "Action", val: (p) => ["Review thesis", "Trim", "Accumulate+", "Accumulate", "Hold"].indexOf(p.verdict), html: (p) => p.verdict ? `<span class="badge ${window.LT.verdictCls(p.verdict)}">${esc(p.verdict)}</span><span class="nm">${esc(p.verdictWhy || "")}</span>` : "" },
+        { key: "lts", label: "Long-term score", val: (p) => (ltMap[p.symbol] || {}).score, html: (p) => { const x = ltMap[p.symbol]; return x && x.score != null ? `${meter(x.score)}<span class="nm">${esc(x.band || "")}</span>` : "–"; } },
+        { key: "verdict", label: "Action", val: (p) => ["Review thesis", "Trim", "Accumulate+", "Accumulate", "Hold"].indexOf(p.verdict), html: (p) => p.verdict ? `<span class="badge ${window.LT.verdictCls(p.verdict)}">${esc(window.LT.zoneLabel(p.verdict))}</span><span class="nm">${esc(p.verdictWhy || "")}</span>` : "" },
       ] : [
       { key: "stop", label: "Stop", r: true, sm: true, val: (p) => p.stopOrder || p.suggestedStop, html: (p) => p.stopOrder ? `<span class="num">${fmt(p.stopOrder, dp(p.stopOrder))}</span><span class="nm">T212 stop order</span>`
         : p.suggestedStop ? `<span class="num ${p.unprotected ? "down" : "muted"}">${fmt(p.suggestedStop, dp(p.suggestedStop))}</span><span class="nm">${p.unprotected ? "⚠ none set · suggested" : "suggested"}</span>` : "–" },

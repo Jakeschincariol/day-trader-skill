@@ -699,3 +699,35 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
 .entry-ladder td.r { text-align: right; }
 .entry-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .entry-own { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; line-height: 1.5; }
+
+/* folded cards (details) */
+details.card.fold > summary { list-style: none; cursor: pointer; margin: 0; }
+details.card.fold > summary::-webkit-details-marker { display: none; }
+details.card.fold > summary h2::after { content: " ▸"; color: var(--text-muted); font-size: .8em; }
+details.card.fold[open] > summary h2::after { content: " ▾"; }
+details.card.fold:not([open]) > summary { margin-bottom: 0; }
+details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0; }
+
+/* long-term stock page: verdict strip under the price, cards side by side under a full-width chart */
+.entry-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 14px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--warning); color: var(--text-primary); text-decoration: none; }
+.entry-strip:hover { text-decoration: none; background: var(--surface-2); }
+.entry-strip.up { border-left-color: var(--good); } .entry-strip.down { border-left-color: var(--bad); }
+.entry-strip svg { width: 18px; height: 18px; color: var(--accent); }
+.entry-strip .go { margin-left: auto; color: var(--accent); font-size: 13px; }
+.lt-cols > details.swing { grid-column: 1 / -1; }
+@media (max-width: 1000px) { .lt-cols { grid-template-columns: 1fr; } }
+
+/* phone polish */
+@media (max-width: 760px) {
+  main > p.sub, #view > p.sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; }
+  .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .tabs a, .tab-more { font-size: 12px; }
+  .tabs.more-open::before { content: ""; position: fixed; inset: 0 0 calc(64px + env(safe-area-inset-bottom)) 0; background: rgba(0,0,0,.45); z-index: 40; }
+}
+@media (max-width: 760px) {
+  #moodBanner .mood { padding: 10px 12px; gap: 10px; }
+  #moodBanner .mood b { font-size: 14px; line-height: 1.35; }
+  #moodBanner .mood-notes { display: none; } /* the full checklist is on the PC; the phone shows the verdict and the count */
+  #moodBanner .mood svg { width: 22px; height: 22px; }
+}

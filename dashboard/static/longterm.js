@@ -10,7 +10,11 @@
 
   const mode = () => (T().settings().mode || "lt");
   const zoneCls = (z) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Stretched: "e-wait", Speculative: "e-avoid" }[z] || "e-none");
-  const zoneBadge = (z) => (z ? `<span class="badge ${zoneCls(z)}">${T().esc(z)}</span>` : "");
+  // plain words for the labels (the rules keep their internal names)
+  const LABELS = { "Accumulate+": "Good time to add", Accumulate: "Keep buying as planned", Stretched: "Pricey: buy small", Speculative: "Speculative",
+    Hold: "Hold", Trim: "Trim", "Review thesis": "Review it", "Theme full": "Theme full" };
+  const zoneLabel = (z) => LABELS[z] || z;
+  const zoneBadge = (z) => (z ? `<span class="badge ${zoneCls(z)}" title="${T().esc(z)}">${T().esc(zoneLabel(z))}</span>` : "");
   const bandCls = (b) => (/Core|Strong/.test(b) ? "b-strongbuy" : /Good|Solid/.test(b) ? "b-buy" : /Fair|Mixed/.test(b) ? "b-hold" : "b-sell");
   const bandBadge = (b) => (b ? `<span class="badge ${bandCls(b)}">${T().esc(b)}</span>` : "");
 
@@ -214,19 +218,38 @@
   }
 
   // ------------------------------------------------------------ portfolio: verdicts, plan, diversification, dividends
-  function verdict(pos, weight, target, p, isFund) {
+  function verdict(pos, weight, target, p, isFund, theme) {
     if (p && p.fundamentals && p.score != null && p.score < 45) return { v: "Review thesis", why: "Long-term score " + p.score + " (speculative): check the story still holds" };
     if (p && p.groups && p.groups.Growth != null && p.fundamentals && p.groups.Growth < 20) return { v: "Review thesis", why: "Growth has stalled" };
     if (!isFund && weight > 20) return { v: "Trim", why: `${weight.toFixed(0)}% of the portfolio in one company` };
     if (target && weight > target * 1.5) return { v: "Trim", why: `${weight.toFixed(0)}% vs your ${target}% target` };
+    if (theme && theme.pct > THEME_CAP) return { v: "Theme full", why: `${theme.name} is ${theme.pct.toFixed(0)}% of your portfolio: send new money elsewhere` };
     if (p && p.zone === "Accumulate+") return { v: "Accumulate+", why: "On sale: a good month to add" };
     if (target && weight < target) return { v: "Accumulate", why: `Below your ${target}% target` };
     if (p && p.zone === "Stretched") return { v: "Hold", why: "Price stretched: no rush to add" };
+    if (p && p.groups && p.groups.Quality === 0 && p.fundamentals) return { v: "Hold", why: "Quality score 0: don't add until profits improve" };
     return { v: target ? "Hold" : "Accumulate", why: target ? "At target" : "Keep the regular buy" };
   }
-  const verdictCls = (v) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Hold: "e-none", Trim: "e-wait", "Review thesis": "e-avoid" }[v] || "e-none");
+  const verdictCls = (v) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Hold: "e-none", Trim: "e-wait", "Theme full": "e-wait", "Review thesis": "e-avoid" }[v] || "e-none");
 
   async function lookthrough() { return cache.__lt || (cache.__lt = await T().api("/api/lookthrough")); }
+  async function themes() { return cache.__th || (cache.__th = await T().api("/api/ltthemes").catch(() => ({ themes: {}, groups: {} }))); }
+  const THEME_CAP = 40; // % of the portfolio in one theme that moves together
+  /** Share of the portfolio per theme and per umbrella group (AI build-out). */
+  async function themeShares(positions, total) {
+    const th = await themes();
+    const val = (p) => p.valueAcct || p.mv || 0;
+    const byTheme = {}, byGroup = {};
+    positions.forEach((p) => {
+      const t = th.themes[p.symbol];
+      if (!t) return;
+      byTheme[t] = (byTheme[t] || 0) + val(p);
+      const g = th.groups[t];
+      if (g) byGroup[g] = (byGroup[g] || 0) + val(p);
+    });
+    const pctOf = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, total ? 100 * v / total : 0]));
+    return { byTheme: pctOf(byTheme), byGroup: pctOf(byGroup), themeOf: (s) => th.themes[s], groupOf: (s) => th.groups[th.themes[s]] };
+  }
 
   async function diversification(el, positions, acct, lt) {
     const td = T(), L = await lookthrough().catch(() => null);
@@ -258,6 +281,12 @@
     positions.forEach((p) => { const s = fundIndex(p.symbol) ? "Index funds" : (lt[p.symbol] && lt[p.symbol].sector) || "Other"; secs[s] = (secs[s] || 0) + val(p); });
     const topSec = Object.entries(secs).filter(([k]) => k !== "Index funds").sort((a, b) => b[1] - a[1])[0];
     if (topSec) row("Biggest sector (single stocks)", `${td.esc(topSec[0])} · ${(100 * topSec[1] / total).toFixed(0)}%`, 100 * topSec[1] / total <= 30, "");
+    const ts = await themeShares(positions, total);
+    const ai = ts.byGroup["AI build-out"] || 0;
+    if (ai) row("AI build-out (chips, chip equipment, memory, optics, power)", ai.toFixed(0) + "%", ai <= THEME_CAP,
+      ai > THEME_CAP ? `these rise and fall together with AI spending: one bet, not ${positions.filter((p) => ts.groupOf(p.symbol)).length}. Keep it under about ${THEME_CAP}%` : "");
+    const topTheme = Object.entries(ts.byTheme).sort((a, b) => b[1] - a[1])[0];
+    if (topTheme) row("Biggest theme", `${td.esc(topTheme[0])} · ${topTheme[1].toFixed(0)}%`, topTheme[1] <= 25, topTheme[1] > 25 ? "over 25% in one theme" : "");
     const ccys = {};
     positions.forEach((p) => { const c = (p.q && p.q.currency) || p.currency || "?"; ccys[c === "GBp" ? "GBP" : c] = (ccys[c === "GBp" ? "GBP" : c] || 0) + val(p); });
     row("Currencies", Object.entries(ccys).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${c} ${(100 * v / total).toFixed(0)}%`).join(" · "), true, "");
@@ -267,7 +296,7 @@
       <p class="muted" style="font-size:11.5px">ETF weights are approximate (${td.esc(L ? L.asOf : "")}).</p>` : ""}`;
   }
 
-  function plan(el, positions, acct, lt, rerender) {
+  async function plan(el, positions, acct, lt, rerender) {
     const td = T(), st = td.settings();
     const targets = td.store.get("targets", {});
     const total = positions.reduce((s, p) => s + (p.valueAcct || p.mv || 0), 0);
@@ -275,15 +304,28 @@
     const cur = Object.fromEntries(syms.map((s) => [s, positions.filter((p) => p.symbol === s).reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0)]));
     const monthly = st.monthly || 1200;
     let tsum = syms.reduce((a, s) => a + (+targets[s] || 0), 0);
-    const implicit = !tsum && total > 0; // no targets yet: keep today's mix
-    if (implicit) { syms.forEach((s) => { targets[s] = Math.round(1000 * cur[s] / total) / 10; }); tsum = 100; }
+    const implicit = !tsum && total > 0; // no targets yet: a starting model instead of today's mix
+    const ts = await themeShares(positions, total);
+    let core = null;
+    if (implicit) {
+      // AI build-out names share at most THEME_CAP%; other holdings share the rest; with nothing else, a world ETF is the core
+      const inAI = syms.filter((s) => ts.groupOf(s));
+      const other = syms.filter((s) => !ts.groupOf(s));
+      if (inAI.length && !other.length) { core = "VWCE.DE"; syms.push(core); cur[core] = 0; other.push(core); }
+      const aiShare = inAI.length ? (other.length ? Math.min(THEME_CAP, 100 * inAI.length / syms.length) : 100) : 0;
+      inAI.forEach((s) => { targets[s] = Math.round(10 * aiShare / inAI.length) / 10; });
+      other.forEach((s) => { targets[s] = Math.round(10 * (100 - aiShare) / other.length) / 10; });
+      tsum = syms.reduce((a, s) => a + (+targets[s] || 0), 0);
+    }
+    const onSale = syms.filter((s) => lt[s] && lt[s].zone === "Accumulate+").length;
+    const herd = onSale >= Math.max(3, syms.length / 2); // most holdings "on sale" at once = the whole theme is falling
     // split new money to the holdings furthest below target, tilted by the buy zone
     const after = total + monthly, gaps = {};
     syms.forEach((s) => {
       const tw = (+targets[s] || 0) / (tsum || 1);
       let gap = Math.max(0, tw * after - cur[s]);
       const z = lt[s] && lt[s].zone;
-      gap *= z === "Accumulate+" ? 1.25 : z === "Stretched" ? 0.5 : z === "Speculative" ? 0.5 : 1;
+      gap *= z === "Accumulate+" && !herd ? 1.25 : z === "Stretched" ? 0.5 : z === "Speculative" ? 0.5 : 1;
       gaps[s] = gap;
     });
     const gsum = Object.values(gaps).reduce((a, b) => a + b, 0);
@@ -292,13 +334,14 @@
         <label class="field">Monthly amount (${td.esc(acct.ccy)})<input id="mAmt" type="number" min="0" step="10" inputmode="decimal" value="${monthly}"></label>
         <button class="btn" type="button" id="mCur">Targets = today's weights</button><button class="btn" type="button" id="mEq">Equal weights</button></div>
       <div class="table-wrap"><table class="rt"><thead><tr><th scope="col">Holding</th><th class="r" scope="col">Now</th><th class="r" scope="col">Target %</th><th class="r" scope="col">Buy this month</th></tr></thead><tbody>
-      ${syms.map((s) => `<tr style="cursor:default"><td class="c-symbol">${td.logo(s, 22)} <a class="sym" href="#/stock/${encodeURIComponent(s)}">${td.esc(s)}</a> ${lt[s] ? `<span class="tag">${td.esc(lt[s].zone)}</span>` : ""}</td>
+      ${syms.map((s) => `<tr style="cursor:default"><td class="c-symbol">${td.logo(s, 22)} <a class="sym" href="#/stock/${encodeURIComponent(s)}">${td.esc(s)}</a> ${lt[s] ? `<span class="tag">${td.esc(zoneLabel(lt[s].zone))}</span>` : ""}</td>
         <td class="r num">${total ? (100 * cur[s] / total).toFixed(1) : 0}%</td>
         <td class="r"><input class="tgt" data-s="${td.esc(s)}" type="number" min="0" max="100" step="1" inputmode="decimal" ${implicit ? `placeholder="${targets[s]}"` : `value="${targets[s] ?? ""}"`} aria-label="Target % for ${td.esc(s)}"></td>
         <td class="r num"><b>${buys[s] >= 0.5 ? td.money(buys[s], acct.ccy) : "–"}</b></td></tr>`).join("")}
       </tbody></table></div>
       <form class="form-row" id="mAdd" style="max-width:420px;margin-top:8px"><label class="field">Add a holding to the plan<input name="s" placeholder="e.g. VWRL.L" autocapitalize="characters"></label><button class="btn" type="submit">Add</button></form>
-      ${implicit ? `<p class="muted" style="font-size:12.5px">No targets set yet: using today's mix. Type your own target % to change it.</p>` : ""}
+      ${implicit ? `<p class="muted" style="font-size:12.5px">No targets set yet: a starting model is used, so new money goes to what's under-weight instead of copying today's mix. AI build-out names share at most ${THEME_CAP}%${core ? `, and a world ETF (${core}, in euros on Xetra) is the core for the rest` : ""}. Type your own target % to change it.</p>` : ""}
+      ${herd ? `<p class="muted" style="font-size:12.5px">${onSale} of your ${syms.length} holdings look "on sale" at the same time: that usually means the whole theme is falling together, so no extra money is tilted towards them this month.</p>` : ""}
       <p class="muted" style="font-size:12.5px">Targets add up to ${tsum.toFixed(0)}%${Math.abs(tsum - 100) > 0.5 && tsum ? " (they're scaled to 100%)" : ""}. New money goes to what's furthest below target, a bit more to names "on sale" and less to stretched ones, so you rebalance without selling.
       In Trading 212 a <b>Pie</b> with these target % and <b>AutoInvest</b> does the monthly buying for you; in Revolut use a <b>recurring buy</b> for each holding.</p>`;
     const save = () => { td.store.set("targets", targets); rerender(); }; // editing one target saves today's mix for the rest
@@ -324,5 +367,5 @@
     } catch (e) { el.innerHTML = `<p class="muted">Dividends unavailable: ${td.esc(e.message)}</p>`; }
   }
 
-  window.LT = { mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
+  window.LT = { zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
 })();
