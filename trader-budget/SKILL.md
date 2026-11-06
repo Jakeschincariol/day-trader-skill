@@ -9,10 +9,10 @@ description: >-
   trader/orders.json in the exact shape of Alpaca's place_stock_order. A stop
   too far away for your max loss is a plain refusal, not a smaller order.
   Nothing is placed. Use when the user says "how many shares", "size this
-  trade", "how much should I buy", "I have $5,000", "I only want to risk $50
+  trade", "how much should I buy", "I have ₹5,000", "I only want to risk ₹50
   a trade", "set my rules", "keep 10% in cash", or after /trader-exit writes
   a plan.
-argument-hint: "[budget in dollars]"
+argument-hint: "[budget in rupees]"
 ---
 
 # trader-budget
@@ -34,7 +34,7 @@ python3 "${CLAUDE_SKILL_DIR}/size.py" --limit 364.00 --json  # a limit order at 
 python3 "${CLAUDE_SKILL_DIR}/size.py" --weights AAPL=40,KO=60 --config split.json   # weights mode, below
 ```
 
-`--now "2026-10-19 10:15"` pins the clock (New York time). A plan for
+`--now "2026-10-19 10:15"` pins the clock (IST). A plan for
 another day is refused: make a new one with trader-exit.
 
 ## What it reads and writes
@@ -54,12 +54,12 @@ If `trader/config.json` does not exist, copy `config.example.json` into
 
 - **budget**: how much money this is for. Only money they can afford to lose.
 - **cash_buffer_pct**: how much always stays in cash (default 10).
-- **max_loss_per_trade_usd**: the most one trade may lose if the stop fills at the stop (default 50).
-- **max_position_pct**, **max_order_usd**, **min_order_usd**: the biggest position (75% of the
-  budget), the biggest order ($4,000) and the smallest order ($5).
-- The day limits trader-risk enforces: **max_daily_loss_usd** (150), **max_trades_per_day** (3),
+- **max_loss_per_trade_inr**: the most one trade may lose if the stop fills at the stop (default 50).
+- **max_position_pct**, **max_order_inr**, **min_order_inr**: the biggest position (75% of the
+  budget), the biggest order (₹4,000) and the smallest order (₹5).
+- The day limits trader-risk enforces: **max_daily_loss_inr** (150), **max_trades_per_day** (3),
   **min_reward_risk** (1.0), **require_stop** (true), **no_entries_before** / **no_entries_after**
-  ("09:45" / "15:30") and **flat_by** ("15:55"), all New York time.
+  ("09:45" / "15:15") and **flat_by** ("15:15"), all IST.
 - **blocked**: tickers they never want to trade.
 - Keep **paper** true until they have watched it work on a paper account.
 
@@ -74,9 +74,9 @@ the smallest of four limits:
 
 | limit | shares |
 | --- | --- |
-| max loss | `max_loss_per_trade_usd` / risk a share (entry minus stop) |
+| max loss | `max_loss_per_trade_inr` / risk a share (entry minus stop) |
 | position cap | budget x `max_position_pct` / entry |
-| max order | `max_order_usd` / entry |
+| max order | `max_order_inr` / entry |
 | cash | (budget minus the cash buffer) / entry, never more than the cash in `trader/portfolio.json` |
 
 The entry it sizes at: the limit price with `--limit`. For a market order, the
@@ -92,7 +92,7 @@ the reason to the user in one line.
 
 ## Step 3: show the user
 
-Show the four limits, which one decided the size, the shares, the dollars
+Show the four limits, which one decided the size, the shares, the rupees
 and the max loss at the stop. Say plainly that a stop is an order, not a
 promise: in a fast market it can fill below the stop. Then hand over to
 `/trader-risk`.
@@ -101,28 +101,28 @@ promise: in a fast market it can fill below the stop. Then hand over to
 
 TSLA on Monday 2026-10-19. Opening-range breakout: entry 364.18 at 10:15 AM,
 stop 358.32 (the opening-range midpoint), target 370.04 (1R). Risk 5.86 a
-share. The example config: $5,000 budget, 10% cash buffer, $50 max loss.
+share. The example config: ₹5,000 budget, 10% cash buffer, ₹50 max loss.
 
 | limit | the math | shares |
 | --- | --- | --- |
-| max loss | $50 / 5.86 | **8 (decides it)** |
-| position cap | 75% of $5,000 = $3,750 / 364.18 | 10 |
-| max order | $4,000 / 364.18 | 10 |
-| cash | $5,000 minus $500 = $4,500 / 364.18 | 12 |
+| max loss | ₹50 / 5.86 | **8 (decides it)** |
+| position cap | 75% of ₹5,000 = ₹3,750 / 364.18 | 10 |
+| max order | ₹4,000 / 364.18 | 10 |
+| cash | ₹5,000 minus ₹500 = ₹4,500 / 364.18 | 12 |
 
-8 shares = $2,913.44. Max loss at the stop: 8 x 5.86 = $46.88. It writes:
+8 shares = ₹2,913.44. Max loss at the stop: 8 x 5.86 = ₹46.88. It writes:
 
 ```json
 {"symbol": "TSLA", "side": "buy", "qty": "8", "type": "market", "time_in_force": "day",
  "order_class": "bracket", "take_profit_limit_price": "370.04", "stop_loss_stop_price": "358.32",
- "why": "opening-range breakout on TSLA: 8 shares, bound by your $50 max loss per trade (8 x 5.86 = $46.88 at the stop)",
+ "why": "opening-range breakout on TSLA: 8 shares, bound by your ₹50 max loss per trade (8 x 5.86 = ₹46.88 at the stop)",
  "plan": {"entry": 364.18, "stop": 358.32, "target": 370.04, "risk_per_share": 5.86, "max_loss": 46.88,
-          "setup": "orb", "entry_time": "10:15 AM", "flat_by": "15:55"}}
+          "setup": "orb", "entry_time": "10:15 AM", "flat_by": "15:15"}}
 ```
 
 `why` and `plan` are notes for trader-risk and trader-broker. They are never
 sent to Alpaca. With the stop at 300.00 instead, one share would risk 64.18,
-more than the $50 max loss: no order. At 10:52 the real quote was 366.48, so
+more than the ₹50 max loss: no order. At 10:52 the real quote was 366.48, so
 the same plan sizes to 6 shares at 8.16 a share, and reward:risk falls to
 0.44: refused, because the move it was waiting for has mostly happened.
 
@@ -132,9 +132,9 @@ the same plan sizes to 6 shares at 8.16 a share, and reward:risk falls to
 here) splits a budget across a list by weight: the cash buffer comes off the
 top, weights are renormalised to 100, any stock over `max_position_pct` is
 pinned at the cap and its excess shared out, slices under the minimum order
-are dropped, and amounts round to whole dollars so nothing is left idle by
+are dropped, and amounts round to whole rupees so nothing is left idle by
 accident. With `"max_position_pct": 25` and `"fractional": true`, the example
-file gives AAPL $1,250 (capped), AXP $1,119, GOOGL $823, KO $708, BAC $600.
+file gives AAPL ₹1,250 (capped), AXP ₹1,119, GOOGL ₹823, KO ₹708, BAC ₹600.
 With `"fractional": false` (the example config) it buys whole shares and
 needs prices (`--prices trader/prices.json`). These are plain buys with no stop: trader-risk blocks them while
 `require_stop` is true and counts each one against `max_trades_per_day`. Use

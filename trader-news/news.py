@@ -29,7 +29,7 @@ Sources, one request each per ticker:
     price against yesterday's close:
     https://query2.finance.yahoo.com/v8/finance/chart/<TICKER>?range=1d&interval=5m
 
-Times print in New York time (ET). State: trader/state/news.json remembers
+Times print in India time (IST). State: trader/state/news.json remembers
 what you have seen (30 days), so an item shows once. Offline: --offline DIR
 reads yahoo-<TICKER>.xml, chart-<TICKER>.json, sec-<FORM>-<CIK>.xml and
 company_tickers.json from DIR. The tests use it.
@@ -49,6 +49,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -94,26 +95,16 @@ class NewsError(Exception):
 
 # ---------------------------------------------------------------- time
 
-def _nth_sunday(year, month, n):
-    d = _dt.date(year, month, 1)
-    d += _dt.timedelta(days=(6 - d.weekday()) % 7)
-    return d + _dt.timedelta(weeks=n - 1)
+def ist_offset(utc):
+    """Hours from UTC for India: always +5.5 (IST, UTC+5:30, has no daylight saving)."""
+    return 5.5
 
 
-def eastern_offset(utc):
-    """Hours from UTC for New York: -4 in daylight time, -5 otherwise (US rule since 2007)."""
-    y = utc.year
-    start = _dt.datetime.combine(_nth_sunday(y, 3, 2), _dt.time(7, 0))   # 2:00 EST
-    end = _dt.datetime.combine(_nth_sunday(y, 11, 1), _dt.time(6, 0))    # 2:00 EDT
-    naive = utc.replace(tzinfo=None)
-    return -4 if start <= naive < end else -5
-
-
-def to_eastern(utc):
-    """Aware or naive UTC -> naive New York wall-clock time."""
+def to_ist(utc):
+    """Aware or naive UTC -> naive India wall-clock time."""
     if utc.tzinfo is not None:
         utc = utc.astimezone(_dt.timezone.utc)
-    return utc.replace(tzinfo=None) + _dt.timedelta(hours=eastern_offset(utc))
+    return utc.replace(tzinfo=None) + _dt.timedelta(hours=ist_offset(utc))
 
 
 # ---------------------------------------------------------------- inputs
@@ -191,8 +182,23 @@ class Fetcher(object):
             raise NewsError("could not reach %s: %s" % (url, exc.reason))
 
 
+def indian_commas(text):
+    """"1234567.89" or "1,234,567.89" -> "12,34,567.89" (Indian lakh and crore grouping)."""
+    s = str(text).replace(",", "")
+    sign = "-" if s.startswith("-") else ""
+    whole, dot, frac = s.lstrip("-").partition(".")
+    if len(whole) > 3:
+        head, groups = whole[:-3], [whole[-3:]]
+        while head:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        whole = ",".join(groups)
+    return sign + whole + dot + frac
+
+
 def yahoo_symbol(ticker):
-    return ticker.upper().replace(".", "-")
+    s = ticker.upper()
+    return (s if s.endswith(".NS") else s.replace(".", "-"))
 
 
 def cik_map(fetcher, state):
@@ -312,11 +318,11 @@ def collect_moves(fetcher, watch, errors=None):
         name = "chart-%s.json" % t
         try:
             try:
-                data = fetcher.get(CHART % ("query2", yahoo_symbol(t)), name)
+                data = fetcher.get(CHART % ("query2", urllib.parse.quote(yahoo_symbol(t), safe="")), name)
             except NewsError as exc:
                 if fetcher.offline or not re.search(r"HTTP (429|5\d\d)", str(exc)):
                     raise
-                data = fetcher.get(CHART % ("query1", yahoo_symbol(t)), name)
+                data = fetcher.get(CHART % ("query1", urllib.parse.quote(yahoo_symbol(t), safe="")), name)
             out.append(parse_chart(data, t))
         except NewsError as exc:
             if not (fetcher.offline and "no file" in str(exc)):
@@ -328,7 +334,7 @@ def mention_patterns(watch):
     pats = {}
     for t, name in watch.items():
         alts = [r"\(%s\)" % re.escape(t), r"\$%s\b" % re.escape(t),
-                r"\b(?:NYSE|NASDAQ|Nasdaq)\s*:\s*%s\b" % re.escape(t)]
+                r"\b(?:NSE|NASDAQ|Nasdaq)\s*:\s*%s\b" % re.escape(t)]
         if name and len(name) >= 4:
             alts.append(r"\b%s\b" % re.escape(name).replace(r"\ ", r"[\s-]"))
         pats[t] = re.compile("|".join(alts))
@@ -383,7 +389,7 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
     items = []
     for t in sorted(watch):
         try:
-            items += parse_rss(fetcher.get(YAHOO % yahoo_symbol(t), "yahoo-%s.xml" % t), t)
+            items += parse_rss(fetcher.get(YAHOO % urllib.parse.quote(yahoo_symbol(t), safe=""), "yahoo-%s.xml" % t), t)
         except NewsError as exc:
             errors.append("headlines for %s: %s" % (t, exc))
     if sec:
@@ -439,9 +445,9 @@ def render_moves(moves, move_pct=MOVE_PCT):
     out = []
     for m in moves:
         flag = "MOVING" if abs(m["pct"]) >= move_pct else ""
-        when = (" at %s ET" % to_eastern(m["time"]).strftime("%H:%M")) if m.get("time") else ""
+        when = (" at %s IST" % to_ist(m["time"]).strftime("%H:%M")) if m.get("time") else ""
         out.append("%-6s %s %+.2f%% vs yesterday's close %s%s  %s" % (
-            m["ticker"], "{:,.2f}".format(m["price"]), m["pct"], "{:,.2f}".format(m["prev_close"]),
+            m["ticker"], indian_commas("{:.2f}".format(m["price"])), m["pct"], indian_commas("{:.2f}".format(m["prev_close"])),
             when, flag))
     return out
 
@@ -453,7 +459,7 @@ def render(items, errors, now, moves=None, move_pct=MOVE_PCT):
     if not items:
         out.append("Nothing new.")
     for it in items:
-        when = to_eastern(it["time"]).strftime("%Y-%m-%d %H:%M ET") if it["time"] else "time unknown"
+        when = to_ist(it["time"]).strftime("%Y-%m-%d %H:%M IST") if it["time"] else "time unknown"
         mark = "!" if it.get("important") else " "
         who = ",".join(it["touches"]) or it["ticker"]
         out.append("%s %s  %-11s %-13s %s" % (mark, when, who, it["source"], it["title"]))
@@ -465,7 +471,7 @@ def render(items, errors, now, moves=None, move_pct=MOVE_PCT):
     for e in errors:
         out.append("note: %s" % e)
     out.append("Checked %s. Headlines are leads, not facts; open the story before acting. "
-               "Not financial advice." % to_eastern(now).strftime("%Y-%m-%d %H:%M ET"))
+               "Not financial advice." % to_ist(now).strftime("%Y-%m-%d %H:%M IST"))
     return "\n".join(out) + "\n"
 
 

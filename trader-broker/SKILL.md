@@ -43,7 +43,7 @@ python3 "${CLAUDE_SKILL_DIR}/ticket.py" log
 
 `ticket.py` never talks to a broker. It renders tickets, checks that a reply
 is a real yes for that order, builds the flatten ticket, and keeps the log in
-`trader/state/broker.json`. `--now "2026-10-19 10:15"` pins the clock (New York time).
+`trader/state/broker.json`. `--now "2026-10-19 10:15"` pins the clock (IST).
 
 ## What it reads and writes
 
@@ -159,7 +159,7 @@ that draft orders to Needs approval too.
   (`alerts.py add --from-plan`). The bracket's own orders do the stopping.
 - When the stop-loss or the take-profit fills, record it:
   `ticket.py fill --symbol TSLA --side sell --qty 8 --price 358.32`.
-- By `flat_by` (15:55 New York), anything still open gets closed:
+- By `flat_by` (15:15 IST), anything still open gets closed:
   1. Ask Alpaca how many shares are held: `get_open_position` (read only).
   2. `ticket.py flatten --symbol TSLA --qty 8` writes a market sell for those
      shares to `trader/orders.json`.
@@ -178,8 +178,8 @@ ORDER 1 of 1, PAPER account, Alpaca
   BUY 8 TSLA, market, good for today
   stop-loss 358.32
   take-profit 370.04
-  max loss about $46.88 if the stop fills at 358.32 (it can fill worse in a fast market)
-  why: opening-range breakout on TSLA: 8 shares, bound by your $50 max loss per trade (8 x 5.86 = $46.88 at the stop)
+  max loss about ₹46.88 if the stop fills at 358.32 (it can fill worse in a fast market)
+  why: opening-range breakout on TSLA: 8 shares, bound by your ₹50 max loss per trade (8 x 5.86 = ₹46.88 at the stop)
   READY: trader-risk PASS, waiting for your yes
   Claude will call place_stock_order with exactly:
     {"symbol": "TSLA", "side": "buy", "qty": "8", "type": "market", "time_in_force": "day",

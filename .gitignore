@@ -1,0 +1,5 @@
+# personal settings and state, not shared
+trader/config.json
+trader/state/
+trader/*.json
+__pycache__/

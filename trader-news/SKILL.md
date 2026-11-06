@@ -5,7 +5,7 @@ description: >-
   moves it: Yahoo Finance headlines per ticker, each company's 8-K filings on
   SEC EDGAR (earnings, CEO changes, deals, restatements, bankruptcy) and how
   far each stock is from yesterday's close. Shows only what is new since the
-  last check, newest first, in New York time, tags each item (earnings,
+  last check, newest first, in IST, tags each item (earnings,
   analyst, deal, halt, regulatory, macro...) and never repeats one. Use when
   the user says "any news on TSLA", "why is this moving", "what's the news on
   my watchlist", "morning briefing", "pre-market news", "monitor the news",
@@ -78,7 +78,7 @@ morning before the open.
 
 ## Example: the reel
 
-Monday 2026-10-19, TSLA broke its opening range at 10:15 AM ET. The check at
+Monday 2026-10-19, TSLA broke its opening range at 10:15 AM IST. The check at
 10:15 (Yahoo Finance's TSLA feed, 16 headlines since 8:00) leads with the
 morning's real stories: "Meta and Musk earnings and September pending home
 sales: What to Watch" (8:00, earnings), "Tesla-SpaceX Merger Mania Strikes
@@ -86,7 +86,7 @@ Wall Street Ahead of Earnings" (8:04, earnings, deal), "Tech Stock Rebound
 Nudges US Equity Futures Mostly Higher Pre-Bell" (8:02, macro). The brief:
 "Tesla reports this week, so the stock can gap overnight; today's trade is
 in and out before the close. No new 8-K." At 10:52 the price line reads
-`TSLA 366.48 +3.31% vs yesterday's close 354.72 at 10:52 ET  MOVING`. When a
+`TSLA 366.48 +3.31% vs yesterday's close 354.72 at 10:52 IST  MOVING`. When a
 ticker has no news, say so rather than padding the brief.
 
 ## What it never does
