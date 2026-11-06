@@ -72,7 +72,7 @@ DEFAULTS = {
     "min_reward_risk": 1.0,
     "require_stop": True,
     "no_entries_before": "09:45",
-    "no_entries_after": "15:30",
+    "no_entries_after": "15:15",
     "flat_by": "15:15",
     "fractional": False,
     "broker": "alpaca",

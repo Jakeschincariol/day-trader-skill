@@ -31,7 +31,7 @@ python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA                  # 15-minute o
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --write          # also save trader/entry.json
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --setup level --level 371.20
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --interval 1m --min-volume-x 1.5
-python3 "${CLAUDE_SKILL_DIR}/entry.py" watch TSLA --until 15:30    # one line per closed bar, stops on the trigger
+python3 "${CLAUDE_SKILL_DIR}/entry.py" watch TSLA --until 15:15    # one line per closed bar, stops on the trigger
 python3 "${CLAUDE_SKILL_DIR}/entry.py" watchlist                   # every hit in trader/watchlist.json
 ```
 
@@ -46,7 +46,7 @@ day bar by bar without waiting.
 | file | what |
 | --- | --- |
 | `trader/watchlist.json` | the scanner's hits (`hits[].symbol`), for `watchlist` |
-| `trader/config.json` | `no_entries_before` (09:45) and `no_entries_after` (15:30), IST. Optional |
+| `trader/config.json` | `no_entries_before` (09:45) and `no_entries_after` (15:15), IST. Optional |
 | Yahoo chart API | today's bars, `range=1d&interval=5m` (or `1m`): free, unofficial, can lag |
 | `trader/entry.json` | with `check --write`, or when `watch` triggers: symbol, setup, status, time, bar, price, level, opening range |
 
@@ -67,7 +67,7 @@ day bar by bar without waiting.
 - **Volume, if you want it.** `--min-volume-x 1.5` also needs the trigger
   bar's volume at 1.5 times the range bars' average. The 9:15 bar holds the
   opening auction, so 1.0 is already strict.
-- **Time limits.** No entries before 9:45 or after 15:30 (config). The NSE
+- **Time limits.** No entries before 9:45 or after 15:15 (config). The NSE
   has no early closes, so the cutoff never moves.
 - **What it says.** Waiting (and how far the last close is from the level),
   triggered, expired, or no data. Before 9:15: not open yet. Before 9:15: the
@@ -79,7 +79,7 @@ day bar by bar without waiting.
    `/trader-scanner`. Check `/trader-news` for it first.
 2. Run `entry.py check SYMBOL`. Tell the user the status in one line:
    waiting and how far, triggered at what time and price, or expired.
-3. To wait for it, Claude can run `entry.py watch SYMBOL --until 15:30` in
+3. To wait for it, Claude can run `entry.py watch SYMBOL --until 15:15` in
    the background, or `entry.py check SYMBOL --write` on a `/loop` every 5
    minutes. `watch` wakes just after each bar closes, prints one line per
    bar, and exits 0 on the trigger (it writes `trader/entry.json`) or 1 when
