@@ -671,11 +671,19 @@ input.tgt { width: 70px; padding: 6px 8px; border-radius: 8px; border: 1px solid
 .quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-muted); }
 .chip-btn.sm { padding: 4px 10px; font-size: 12.5px; }
 
-/* medium screens: the page tabs move to their own row instead of squeezing the search box */
+/* medium screens: logo and search on the first row; page tabs, Long-term/Swing and the alert bell together on the second */
 @media (min-width: 761px) and (max-width: 1640px) {
   .top { flex-wrap: wrap; row-gap: 6px; }
-  .top .tabs { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .top .search { margin-left: auto; }
+  .top .brand { order: 1; }
+  .top .search { order: 2; margin-left: auto; }
+  .top::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .top .tabs { order: 4; flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .top .tabs::-webkit-scrollbar { display: none; }
+  .top .mode-seg { order: 5; flex: 0 0 auto; }
+  .top .bell { order: 6; margin-left: 0; flex: 0 0 auto; }
+}
+@media (min-width: 761px) and (max-width: 1240px) {
+  .top .tabs a { padding-left: 8px; padding-right: 8px; font-size: 13.5px; gap: 5px; }
 }
 
 
