@@ -387,7 +387,32 @@ def next_earnings(symbol, wait=True):
     background and shows up on the next refresh (keeps big lists fast)."""
     sym = symbol.upper()
     if not re.match(r"^[A-Z]{1,5}(-[A-Z])?$", sym):
-        return None
+        if not FMP["key"]:
+            return None
+        def fmp_load_e():
+            try:
+                return fmp_next_earnings(sym)
+            except Exception:
+                return None
+        if not wait:
+            with _cache_lock:
+                hit = _cache.get(("earnings", sym))
+            if not hit:
+                if sym not in _earn_pending:
+                    _earn_pending.add(sym)
+
+                    def bgf():
+                        try:
+                            cached(("earnings", sym), 12 * 3600, fmp_load_e)
+                        finally:
+                            _earn_pending.discard(sym)
+                    EARN_POOL.submit(bgf)
+                return None
+        e = cached(("earnings", sym), 12 * 3600, fmp_load_e)
+        if not e:
+            return None
+        days = int((e["ts"] - calendar.timegm(time.gmtime()[:3] + (0, 0, 0, 0, 0, 0))) // 86400)
+        return {"date": e["date"], "days": days} if days >= 0 else None
     if not wait:
         with _cache_lock:
             hit = _cache.get(("earnings", sym))
@@ -1831,11 +1856,7 @@ def lt_profile(symbol):
             return (c[-1] / c[i]) ** (1 / yrs) - 1 if yrs > 0.5 else None
         hist = {"cagr1": cagr(1), "cagr3": cagr(3), "cagr5": cagr(5), "cagr10": cagr(10), "maxdd3": dd3, "fromATH": dd_now}
 
-        fa = None
-        try:
-            fa = fundamentals(sym)
-        except Exception:
-            fa = None
+        fa = company_figures(sym)
         has_fa = bool(fa and fa.get("available"))
         groups, why = {}, []
 
@@ -1957,7 +1978,10 @@ def lt_profile(symbol):
             "range52": r(100 * (price - lo52) / (hi52 - lo52), 0) if hi52 > lo52 else None,
             "history": {k: (r(100 * v, 1) if v is not None else None) for k, v in hist.items()},
             "fundamentals": has_fa, "benchmark": bname,
-            "sector": (fa or {}).get("sector") if has_fa else None,
+            "sector": ((fa or {}).get("sector") if has_fa else None) or (fdb_info(sym) or {}).get("sector"),
+            "industry": (fdb_info(sym) or {}).get("industry") or (fa or {}).get("industry"),
+            "country": (fdb_info(sym) or {}).get("country") or (fa or {}).get("country"),
+            "figuresFrom": (fa or {}).get("source", "Nasdaq.com") if has_fa else None,
         }
     return cached(("lt", sym), 3 * 3600, load)
 
@@ -3300,11 +3324,371 @@ def challenger(symbols):
         near.sort(key=lambda c: (-sum(c["beats"].values()), -c["rank"]))
         return {"winner": win[0] if win else None, "others": win[1:3], "closest": None if win else (near[0] if near else None),
                 "searched": len(rows)}
-    same = search(_peers(syms), 45)
-    other = search(_outside_ai(), 80)
+    if FDB["rows"]:
+        same_pool = list(dict.fromkeys(fdb_peers(syms, 30) + _peers(syms)))
+        semis = {FDB["rows"][s][2] for s in syms if s in FDB["rows"]} | {"Semiconductors & Chip Equipment"}
+        ai_syms = {x for t, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) if t in AI_RADAR_THEMES for x in lst}
+        out_pool = [x for x in dict.fromkeys(fdb_mega_outside(semis, 70) + _outside_ai()) if x not in ai_syms]
+    else:
+        same_pool, out_pool = _peers(syms), _outside_ai()
+    same = search(same_pool, 45)
+    other = search(out_pool, 90)
     return {"picks": picks, "bar": bar, "sameGroup": same, "outsideAI": other,
             "note": "Beats all = higher long-term score, better 5-year return per unit of downside risk, and a worst fall no more than "
-                    "5 points deeper than your mildest pick. Searches the stocks and ETFs this dashboard tracks, not the whole market."}
+                    "5 points deeper than your mildest pick. " + ("Searches large and mega companies worldwide in the same industry (FinanceDatabase) plus the stocks this dashboard tracks."
+                    if FDB["rows"] else "Searches the stocks and ETFs this dashboard tracks, not the whole market.")}
+
+
+# ---------------------------------------------------------------- Financial Modeling Prep (optional key): company figures outside the US
+
+FMP_FILE = os.path.join(HERE, ".fmp.json")          # the key, git-ignored, never sent to the browser
+FMP_CACHE_FILE = os.path.join(HERE, ".fmp-cache.json")  # answers kept 7 days: the free plan allows about 250 calls a day
+FMP = {"key": None, "calls": 0, "day": None, "lastError": None}
+_fmp_lock = threading.Lock()
+_fmp_cache = {}
+
+
+def fmp_load():
+    if os.environ.get("FMP_API_KEY"):
+        FMP["key"] = os.environ["FMP_API_KEY"].strip()
+    elif os.path.exists(FMP_FILE):
+        try:
+            with open(FMP_FILE) as f:
+                FMP["key"] = json.load(f).get("key")
+        except (OSError, ValueError):
+            pass
+    if os.path.exists(FMP_CACHE_FILE):
+        try:
+            with open(FMP_CACHE_FILE) as f:
+                _fmp_cache.update(json.load(f))
+        except (OSError, ValueError):
+            pass
+
+
+def fmp_save_key(key):
+    FMP["key"] = key or None
+    if key:
+        fd = os.open(FMP_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"key": key}, f)
+    elif os.path.exists(FMP_FILE):
+        os.remove(FMP_FILE)
+
+
+def _fmp_persist():
+    try:
+        tmp = FMP_CACHE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(_fmp_cache, f)
+        os.replace(tmp, FMP_CACHE_FILE)
+    except OSError:
+        pass
+
+
+class FmpRefused(Exception):
+    """FMP answered but won't give this data (plan limit, unknown symbol, bad key)."""
+
+
+def fmp_get(endpoint, symbol=None, ttl=7 * 86400, **params):
+    """GET https://financialmodelingprep.com/stable/<endpoint>, cached on disk."""
+    if not FMP["key"]:
+        raise FmpRefused("no FMP key")
+    q = dict(params)
+    if symbol:
+        q["symbol"] = symbol
+    ck = endpoint + "?" + urllib.parse.urlencode(sorted(q.items()))
+    hit = _fmp_cache.get(ck)
+    if hit and time.time() - hit[0] < ttl:
+        if isinstance(hit[1], dict) and hit[1].get("__refused"):
+            raise FmpRefused(hit[1]["__refused"])
+        return hit[1]
+    q["apikey"] = FMP["key"]
+    url = "https://financialmodelingprep.com/stable/%s?%s" % (endpoint, urllib.parse.urlencode(q))
+    req = urllib.request.Request(url, headers={"User-Agent": "TraderDash/1.0"})
+    today = time.strftime("%Y-%m-%d")
+    with _fmp_lock:
+        if FMP["day"] != today:
+            FMP.update(day=today, calls=0)
+        FMP["calls"] += 1
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read() or b"null")
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read()).get("Error Message") or ""
+        except (ValueError, AttributeError):
+            msg = ""
+        why = {401: "FMP rejected the key", 402: "not included in your FMP plan", 403: "not included in your FMP plan",
+               429: "FMP daily limit reached"}.get(e.code, "FMP error %s" % e.code)
+        FMP["lastError"] = (why + (": " + msg[:120] if msg else "")).strip()
+        if e.code in (402, 403):  # remember plan refusals for a day, so we don't spend calls on them
+            _fmp_cache[ck] = (time.time() - ttl + 86400, {"__refused": why})
+        raise FmpRefused(why)
+    if isinstance(data, dict) and data.get("Error Message"):
+        FMP["lastError"] = data["Error Message"][:160]
+        raise FmpRefused(data["Error Message"][:160])
+    _fmp_cache[ck] = (time.time(), data)
+    _fmp_persist()
+    return data
+
+
+def _num(d, *names):
+    """First present numeric field among several spellings (FMP renamed fields between API versions)."""
+    for n in names:
+        v = (d or {}).get(n)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                continue
+    return None
+
+
+def _first(x):
+    return x[0] if isinstance(x, list) and x else (x if isinstance(x, dict) else {})
+
+
+def fmp_figures(symbol):
+    """Company figures from FMP in the same shape the long-term score reads from Nasdaq.com."""
+    sym = symbol.upper()
+    prof = _first(fmp_get("profile", sym))
+    if not prof:
+        raise FmpRefused("FMP has no profile for %s" % sym)
+    if prof.get("isEtf") or prof.get("isFund"):
+        return {"symbol": sym, "available": False, "why": "fund"}
+    ratios = _first(fmp_get("ratios-ttm", sym))
+    try:
+        km = _first(fmp_get("key-metrics-ttm", sym))
+    except FmpRefused:
+        km = {}
+    try:
+        inc = fmp_get("income-statement", sym, limit=5, period="annual") or []
+    except FmpRefused:
+        inc = []
+    mcap = _num(prof, "marketCap", "mktCap") or _num(km, "marketCap", "marketCapTTM")
+    pct = lambda x: 100 * x if x is not None else None
+    fcf_y = _num(km, "freeCashFlowYieldTTM", "freeCashFlowYield")
+    ann = []
+    for row in sorted([x for x in inc if isinstance(x, dict)], key=lambda x: x.get("date") or ""):
+        ann.append({"revenue": _num(row, "revenue"), "netIncome": _num(row, "netIncome"), "year": (row.get("date") or "")[:4]})
+    rev_ttm = ann[-1]["revenue"] if ann else None
+    eps = _num(ratios, "netIncomePerShareTTM") or _num(km, "netIncomePerShareTTM")
+    pe = _num(ratios, "priceToEarningsRatioTTM", "priceEarningsRatioTTM", "peRatioTTM")
+    peg = _num(ratios, "priceToEarningsGrowthRatioTTM", "priceEarningsToGrowthRatioTTM", "pegRatioTTM")
+    dy = _num(ratios, "dividendYieldTTM", "dividendYielTTM")
+    de = _num(ratios, "debtToEquityRatioTTM", "debtEquityRatioTTM")
+    cash = _num(km, "cashAndCashEquivalentsTTM")
+    net_debt = _num(km, "netDebtTTM")
+    debt = (net_debt + cash) if net_debt is not None and cash is not None else None
+    roe = _num(km, "returnOnEquityTTM", "roeTTM") or _num(ratios, "returnOnEquityTTM")
+    om = _num(ratios, "operatingProfitMarginTTM")
+    out = {
+        "symbol": sym, "available": True, "source": "Financial Modeling Prep",
+        "sector": prof.get("sector"), "industry": prof.get("industry"), "country": prof.get("country"),
+        "valuation": {"peTTM": pe if pe and pe > 0 else None, "forwardPE": None, "peg": peg if peg and peg > 0 else None, "marketCap": mcap},
+        "highlights": {"roe": pct(roe), "operatingMargin": pct(om), "freeCashFlow": fcf_y * mcap if fcf_y is not None and mcap else None,
+                       "revenueTTM": rev_ttm, "debtEquity": pct(de), "totalCash": cash, "totalDebt": debt,
+                       "dividendYield": pct(dy), "dividend": _num(prof, "lastDividend", "lastDiv"), "epsTTM": eps},
+        "revVsEarnings": {"annual": ann}, "earnings": [], "analyst": {},
+    }
+    filled = sum(1 for v in list(out["valuation"].values()) + list(out["highlights"].values()) if v is not None)
+    if filled < 3 and not ann:
+        raise FmpRefused("FMP returned too few figures for %s" % sym)
+    return out
+
+
+def fmp_next_earnings(symbol):
+    rows = fmp_get("earnings", symbol.upper(), ttl=12 * 3600, limit=8) or []
+    today = time.strftime("%Y-%m-%d")
+    future = sorted(r_.get("date") for r_ in rows if isinstance(r_, dict) and (r_.get("date") or "") >= today)
+    if not future:
+        return None
+    ts = calendar.timegm(time.strptime(future[0][:10], "%Y-%m-%d"))
+    return {"date": future[0][:10], "ts": ts}
+
+
+def fmp_status():
+    return {"hasKey": bool(FMP["key"]), "fromEnv": bool(os.environ.get("FMP_API_KEY")), "callsToday": FMP["calls"] if FMP["day"] == time.strftime("%Y-%m-%d") else 0,
+            "cached": len(_fmp_cache), "lastError": FMP["lastError"]}
+
+
+def fmp_test():
+    """Try one US and three non-US stocks so the user sees what the key's plan covers."""
+    out = []
+    for sym in ("AAPL", "ASML.AS", "6857.T", "000660.KS"):
+        try:
+            f = fmp_figures(sym)
+            n = sum(1 for v in list(f["valuation"].values()) + list(f["highlights"].values()) if v is not None)
+            out.append({"symbol": sym, "ok": True, "text": "%d company figures, %d years of results" % (n, len(f["revVsEarnings"]["annual"]))})
+        except FmpRefused as e:
+            out.append({"symbol": sym, "ok": False, "text": str(e)})
+        except Exception as e:
+            out.append({"symbol": sym, "ok": False, "text": str(e)[:120]})
+    return {"results": out, "status": fmp_status()}
+
+
+def company_figures(sym):
+    """Nasdaq.com for US stocks (free, no key); Financial Modeling Prep for the rest when a key is set."""
+    fa = None
+    try:
+        fa = fundamentals(sym)
+    except Exception:
+        fa = None
+    if fa and fa.get("available"):
+        return fa
+    if FMP["key"]:
+        try:
+            return fmp_figures(sym)
+        except Exception:
+            pass
+    return fa
+
+
+# ---------------------------------------------------------------- FinanceDatabase (MIT, Jeroen Bouma): 120,000+ companies worldwide
+
+FDB_URL = "https://raw.githubusercontent.com/JerBouma/FinanceDatabase/main/compression/equities.bz2"
+FDB_FILE = os.path.join(HERE, ".fdb-equities.bz2")  # git-ignored, refreshed monthly
+FDB = {"rows": {}, "byIndustry": {}, "state": "not loaded", "at": 0, "error": None}
+_fdb_lock = threading.Lock()
+FDB_MAJOR = {"NMS", "NYQ", "NGM", "NCM", "ASE", "AMS", "GER", "PAR", "MIL", "MCE", "EBS", "LSE", "CPH", "STO", "HEL", "OSL", "BRU", "LIS", "VIE", "JPX", "KSC", "TAI", "HKG"}
+
+
+ASIA_SUFFIX = (".KS", ".KQ", ".T", ".TW", ".TWO", ".HK", ".SS", ".SZ")
+
+
+def fdb_main_listing(sym, name):
+    """Skip preferred shares, odd share classes and cross-listing codes (e.g. 0ACJ.L, 1AMZN.MI, BAC-PB)."""
+    if re.search(r"-P[A-Z]?$|\.(PR|WS)", sym) or re.search(r"preferred|depositary|\bnotes?\b|warrant", name or "", re.I):
+        return False
+    base, _, suf = sym.partition(".")
+    if suf and base[:1].isdigit() and ("." + suf) not in ASIA_SUFFIX:
+        return False
+    if not suf and len(base) == 5 and base[-1] in "MNPQ":  # e.g. GOOGM, MCHPP: not the ordinary share
+        return False
+    return True
+
+
+def _company_key(rec):
+    """Same company listed twice (Alphabet A and C, ASML in Amsterdam and New York): first two name words."""
+    words = re.findall(r"[a-z0-9]+", (rec[0] or "").lower())
+    return " ".join(w for w in words if w not in ("the", "inc", "corp", "corporation", "co", "plc", "ag", "sa", "nv", "se", "ltd", "class", "a", "b", "c", "holdings"))[:24]
+
+
+def fdb_parse(path):
+    import bz2
+    import csv
+    import io
+    rows, by_ind = {}, {}
+    with bz2.open(path, "rb") as raw:
+        rd = csv.reader(io.TextIOWrapper(raw, encoding="utf-8", errors="replace"))
+        head = next(rd)
+        ix = {k: i for i, k in enumerate(head)}
+        need = ("symbol", "name", "sector", "industry", "country", "market_cap", "exchange")
+        if any(k not in ix for k in need):
+            raise ValueError("unexpected FinanceDatabase columns")
+        get = lambda r, k: r[ix[k]] if ix.get(k) is not None and ix[k] < len(r) else ""
+        for r in rd:
+            sym = get(r, "symbol")
+            if not sym or get(r, "delisted").lower() == "true":
+                continue
+            rec = (get(r, "name"), get(r, "sector"), get(r, "industry"), get(r, "country"), get(r, "market_cap"), get(r, "exchange"), get(r, "isin"))
+            rows[sym] = rec
+            if rec[4] in ("Mega Cap", "Large Cap") and rec[5] in FDB_MAJOR and rec[2] and fdb_main_listing(sym, rec[0]):
+                by_ind.setdefault(rec[2], []).append(sym)
+    return rows, by_ind
+
+
+def fdb_refresh(force=False):
+    """Download (monthly) and load the FinanceDatabase equities file. Runs in the background at start-up."""
+    with _fdb_lock:
+        if FDB["state"] == "loading":
+            return
+        FDB["state"] = "loading"
+    try:
+        fresh = os.path.exists(FDB_FILE) and time.time() - os.path.getmtime(FDB_FILE) < 30 * 86400
+        if force or not fresh:
+            tmp = FDB_FILE + ".tmp"
+            req = urllib.request.Request(FDB_URL, headers={"User-Agent": "TraderDash/1.0"})
+            with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as f:
+                while True:
+                    chunk = resp.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            os.replace(tmp, FDB_FILE)
+        rows, by_ind = fdb_parse(FDB_FILE)
+        FDB.update(rows=rows, byIndustry=by_ind, state="ready", at=int(os.path.getmtime(FDB_FILE)), error=None)
+    except Exception as e:
+        FDB.update(state="ready" if FDB["rows"] else "failed", error=str(e)[:160])
+
+
+def fdb_info(sym):
+    rec = FDB["rows"].get(sym)
+    if not rec:
+        return None
+    return {"name": rec[0], "sector": rec[1] or None, "industry": rec[2] or None, "country": rec[3] or None, "size": rec[4] or None, "exchange": rec[5] or None}
+
+
+def fdb_peers(symbols, limit=40):
+    """Large and mega companies in the same industries as `symbols`, one listing per company (by ISIN)."""
+    inds = {FDB["rows"][s][2] for s in symbols if s in FDB["rows"] and FDB["rows"][s][2]}
+    rows = FDB["rows"]
+    out, seen = [], {rows[s][6] for s in symbols if s in rows} | {_company_key(rows[s]) for s in symbols if s in rows}
+    for ind in inds:
+        for s in sorted(FDB["byIndustry"].get(ind, []), key=lambda x: (0 if rows[x][4] == "Mega Cap" else 1, "." in x, x)):
+            isin, ck = rows[s][6], _company_key(rows[s])
+            if s in symbols or (isin and isin in seen) or ck in seen:
+                continue
+            seen.update({isin, ck})
+            out.append(s)
+    return out[:limit]
+
+
+def fdb_mega_outside(exclude_industries, limit=80):
+    """Mega companies across every sector except the given industries, spread evenly over sectors."""
+    by_sector, seen = {}, set()
+    for ind, syms in FDB["byIndustry"].items():
+        if ind in exclude_industries:
+            continue
+        for s in sorted(syms, key=lambda x: ("." in x, x)):
+            rec = FDB["rows"][s]
+            ck = _company_key(rec)
+            if rec[4] != "Mega Cap" or (rec[6] and rec[6] in seen) or ck in seen:
+                continue
+            seen.update({rec[6], ck})
+            by_sector.setdefault(rec[1], []).append(s)
+    for v in by_sector.values():
+        v.sort(key=lambda x: ("." in x, x))
+    out, k = [], 0
+    while len(out) < limit and any(len(v) > k for v in by_sector.values()):
+        for v in by_sector.values():
+            if len(v) > k and len(out) < limit:
+                out.append(v[k])
+        k += 1
+    return out
+
+
+def fdb_status():
+    return {"state": FDB["state"], "companies": len(FDB["rows"]), "updated": FDB["at"], "error": FDB["error"]}
+
+
+# ---------------------------------------------------------------- Tailscale: reach the dashboard away from home
+
+def tailscale_ip():
+    """This computer's Tailscale address (100.64.0.0/10) when Tailscale is running, else None. No traffic is sent."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("100.100.100.100", 53))  # Tailscale's own resolver: only routed through the Tailscale interface
+        ip = s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+    parts = [int(x) for x in ip.split(".")] if ip.count(".") == 3 else []
+    return ip if parts and parts[0] == 100 and 64 <= parts[1] <= 127 else None
+
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".ico": "image/x-icon",
@@ -3446,14 +3830,15 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "t212")
         if path == "/api/phone":
             # the computer itself, also when opened through its own network address
-            own = self._is_local() or self.client_address[0] in (lan_ip(), "127.0.0.1", "::1")
+            own = self._is_local() or self.client_address[0] in (lan_ip(), tailscale_ip(), "127.0.0.1", "::1")
             if not own:
                 return self.send_json({"error": "Open this from the computer running the dashboard", "onPhone": True}, 403)
             tok = getattr(self.server, "phone_token", None)
             port = self.server.server_address[1]
-            ip = lan_ip()
+            ip, ts = lan_ip(), tailscale_ip()
             return self.send_json({"enabled": bool(tok), "ip": ip, "port": port,
-                                   "url": "http://%s:%d/?key=%s" % (ip, port, tok) if tok and ip else None})
+                                   "url": "http://%s:%d/?key=%s" % (ip, port, tok) if tok and ip else None,
+                                   "tailscaleIp": ts, "awayUrl": "http://%s:%d/?key=%s" % (ts, port, tok) if tok and ts else None})
         if path == "/api/universe":
             return self.send_json(UNIVERSE)
         if path == "/api/compare":
@@ -3490,8 +3875,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/themes":
             return self.send_json({sym: th for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst})
         if path == "/api/ltthemes":
-            return self.send_json({"themes": {sym: th for th, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst},
-                                   "groups": AI_BUILDOUT})
+            th = {sym: t for t, lst in list(RADAR_THEMES.items()) + list(LT_EXTRA_THEMES.items()) for sym in lst}
+            for sym in syms(q.get("symbols")):
+                inf = fdb_info(sym)
+                if sym not in th and inf and inf.get("industry") == "Semiconductors & Chip Equipment":
+                    th[sym] = "AI chips"  # any chip maker or chip-equipment company rides the same AI cycle
+            return self.send_json({"themes": th, "groups": AI_BUILDOUT})
+        if path == "/api/fmp/status":
+            return self.send_json(fmp_status())
+        if path == "/api/fmp/test":
+            return self.send_json(fmp_test())
+        if path == "/api/fdb/status":
+            return self.send_json(fdb_status())
         if path == "/api/lookthrough":
             return self.send_json(LOOKTHROUGH)
         if path == "/api/quotes":
@@ -3584,6 +3979,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(revolut_import(body))
             except Exception as e:
                 return self.send_json({"error": str(e)[:300]}, 400)
+        if path == "/api/fmp/key":
+            k = str(body.get("key") or "").strip()
+            if k and not re.match(r"^[A-Za-z0-9]{16,64}$", k):
+                return self.send_json({"error": "That doesn't look like an FMP API key (letters and digits only)."}, 400)
+            if os.environ.get("FMP_API_KEY"):
+                return self.send_json({"error": "The key is set by the FMP_API_KEY environment variable."}, 400)
+            fmp_save_key(k)
+            purge(lambda k_: k_[0] in ("lt", "entry", "earnings"))
+            return self.send_json(fmp_status())
         if path == "/api/revolut/clear":
             with _rev_lock:
                 if os.path.exists(REVOLUT_FILE):
@@ -3684,6 +4088,8 @@ def main(argv=None):
     p.add_argument("--host", default=None, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     load_creds()
+    fmp_load()
+    threading.Thread(target=fdb_refresh, daemon=True).start()
     phone = a.phone or (a.host not in (None, "127.0.0.1", "localhost", "::1"))
     host = a.host or ("0.0.0.0" if phone else "127.0.0.1")
     srv = ThreadingHTTPServer((host, a.port), Handler)
@@ -3696,6 +4102,10 @@ def main(argv=None):
         print("    http://%s:%d/?key=%s" % (ip or "<this-computer-ip>", a.port, srv.phone_token))
         print("Keep that link private: it unlocks your dashboard.")
     print("Trading 212: %s" % ("linked (%s)" % T212["env"] if T212["key"] else "not linked, connect it from the Portfolio page"))
+    print("Financial Modeling Prep: %s" % ("key set" if FMP["key"] else "no key (optional: add it on the Portfolio page for non-US company figures)"))
+    ts = tailscale_ip() if phone else None
+    if ts:
+        print("Tailscale found: away from home, open http://%s:%d/?key=%s" % (ts, a.port, srv.phone_token))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

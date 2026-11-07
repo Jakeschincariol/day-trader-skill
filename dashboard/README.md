@@ -47,6 +47,12 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Data connections (Portfolio page)
+
+- **Financial Modeling Prep** (optional key): company figures (return on equity, margins, debt, free cash flow, P/E, yearly results) and results dates for **non-US** stocks such as SK hynix, Advantest and ASM International, so they get a full long-term score instead of "price only", plus earnings warnings. Get a free key at financialmodelingprep.com, paste it under **Data connections** and press **Test the key** to see what your plan covers (non-US data may need a paid plan). About 4 calls per stock; answers are saved for 7 days in `dashboard/.fmp-cache.json`; the key stays in `dashboard/.fmp.json` (or the `FMP_API_KEY` environment variable). US stocks keep using Nasdaq.com (free, no key).
+- **FinanceDatabase** (free, MIT licence, by Jeroen Bouma): about 95,000 active companies worldwide with sector, industry, country and size, downloaded automatically (18 MB, refreshed monthly, `dashboard/.fdb-equities.bz2`). Used for: sector and country of every holding (Diversification shows **Countries**), spotting chip companies anywhere as part of the AI build-out theme, and a much wider **Challenger** search (large and mega companies in the same industry worldwide, and mega companies in every other sector).
+- **Tailscale** (free app): install it on the PC and on the iPhone with the same account, start with `start-phone.bat`, and **Use on iPhone** shows a second QR code that works away from home (4G, any Wi-Fi); only your own devices can reach it.
+
 ## Compare: Challenger
 
 At the end of Compare, the **Challenger** looks for one stock or ETF that beats **every** stock you compared: a higher long-term score, a better 5-year return per unit of downside risk, and a worst fall no more than 5 points deeper than your mildest pick. It shows two: one from the **same group** (theme or sector of your picks) and one from **outside the AI theme** (to spread risk). If nothing beats them all it says so and names the closest. **Swap** replaces your weakest pick with the challenger. It searches the stocks and ETFs the dashboard tracks; the first search takes 1-3 minutes.

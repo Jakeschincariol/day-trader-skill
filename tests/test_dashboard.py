@@ -568,6 +568,196 @@ class RadarSectors(unittest.TestCase):
         self.assertTrue(set(srv.AI_RADAR_THEMES) <= set(srv.RADAR_THEMES))
 
 
+class FinancialModelingPrep(unittest.TestCase):
+    ANSWERS = {
+        "profile": [{"symbol": "ASML.AS", "companyName": "ASML", "marketCap": 300e9, "sector": "Technology", "industry": "Semiconductors",
+                     "country": "NL", "lastDividend": 6.4, "isEtf": False}],
+        "ratios-ttm": [{"priceToEarningsRatioTTM": 35.0, "priceToEarningsGrowthRatioTTM": 1.4, "operatingProfitMarginTTM": 0.31,
+                        "debtToEquityRatioTTM": 0.25, "dividendYieldTTM": 0.009, "netIncomePerShareTTM": 20.0}],
+        "key-metrics-ttm": [{"returnOnEquityTTM": 0.45, "freeCashFlowYieldTTM": 0.03, "cashAndCashEquivalentsTTM": 7e9, "netDebtTTM": -2e9}],
+        "income-statement": [{"date": "2025-12-31", "revenue": 32e9, "netIncome": 9e9}, {"date": "2024-12-31", "revenue": 28e9, "netIncome": 7.5e9},
+                             {"date": "2023-12-31", "revenue": 27e9, "netIncome": 7.8e9}],
+    }
+
+    def setUp(self):
+        self.old = (srv.fmp_get, dict(srv.FMP))
+
+    def tearDown(self):
+        srv.fmp_get = self.old[0]
+        srv.FMP.clear()
+        srv.FMP.update(self.old[1])
+
+    def fake(self, answers):
+        def get(endpoint, symbol=None, ttl=0, **params):
+            if endpoint not in answers:
+                raise srv.FmpRefused("not included in your FMP plan")
+            return answers[endpoint]
+        srv.fmp_get = get
+
+    def test_figures_in_the_score_shape(self):
+        self.fake(self.ANSWERS)
+        f = srv.fmp_figures("asml.as")
+        self.assertTrue(f["available"])
+        self.assertAlmostEqual(f["highlights"]["roe"], 45.0)
+        self.assertAlmostEqual(f["highlights"]["operatingMargin"], 31.0)
+        self.assertAlmostEqual(f["highlights"]["debtEquity"], 25.0)
+        self.assertAlmostEqual(f["highlights"]["freeCashFlow"], 9e9)
+        self.assertAlmostEqual(f["highlights"]["totalDebt"], 5e9)
+        self.assertEqual(f["valuation"]["peTTM"], 35.0)
+        self.assertEqual([x["year"] for x in f["revVsEarnings"]["annual"]], ["2023", "2024", "2025"])  # oldest first, like Nasdaq
+        self.assertEqual(f["source"], "Financial Modeling Prep")
+
+    def test_older_field_names_still_work(self):
+        a = dict(self.ANSWERS)
+        a["ratios-ttm"] = [{"priceEarningsRatioTTM": 20.0, "operatingProfitMarginTTM": "0.2"}]
+        self.fake(a)
+        f = srv.fmp_figures("X")
+        self.assertEqual(f["valuation"]["peTTM"], 20.0)
+        self.assertAlmostEqual(f["highlights"]["operatingMargin"], 20.0)
+
+    def test_plan_refusals_are_survivable(self):
+        a = {k: v for k, v in self.ANSWERS.items() if k in ("profile", "ratios-ttm")}  # metrics and statements refused
+        self.fake(a)
+        f = srv.fmp_figures("X")
+        self.assertEqual(f["revVsEarnings"]["annual"], [])
+        self.fake({})
+        with self.assertRaises(srv.FmpRefused):
+            srv.fmp_figures("X")
+
+    def test_company_figures_prefers_nasdaq_then_fmp(self):
+        self.fake(self.ANSWERS)
+        srv.FMP["key"] = "k" * 20
+        old = srv.fundamentals
+        srv.fundamentals = lambda s: {"available": False}
+        try:
+            self.assertEqual(srv.company_figures("ASML.AS")["source"], "Financial Modeling Prep")
+            srv.fundamentals = lambda s: {"available": True, "source": "nasdaq"}
+            self.assertEqual(srv.company_figures("AAPL")["source"], "nasdaq")
+            srv.FMP["key"] = None
+            srv.fundamentals = lambda s: {"available": False}
+            self.assertFalse(srv.company_figures("ASML.AS")["available"])
+        finally:
+            srv.fundamentals = old
+
+    def test_non_us_results_dates(self):
+        srv.FMP["key"] = "k" * 20
+        future = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 10 * 86400))
+        self.fake({"earnings": [{"date": "2020-01-01"}, {"date": future}]})
+        srv.purge(lambda k: k[0] == "earnings" and k[1] == "6857.T")
+        try:
+            e = srv.next_earnings("6857.T", wait=True)
+        finally:
+            srv.purge(lambda k: k[0] == "earnings" and k[1] == "6857.T")
+        self.assertEqual(e["date"], future)
+        self.assertIn(e["days"], (9, 10))
+
+    def test_key_route_validates_and_never_echoes(self):
+        d = tempfile.mkdtemp()
+        old_file = srv.FMP_FILE
+        srv.FMP_FILE = os.path.join(d, ".fmp.json")
+        httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+            c.request("POST", "/api/fmp/key", body=json.dumps({"key": "bad key!"}), headers={"Content-Type": "application/json"})
+            r = c.getresponse(); r.read()
+            self.assertEqual(r.status, 400)
+            c.request("POST", "/api/fmp/key", body=json.dumps({"key": "abcDEF1234567890xyz"}), headers={"Content-Type": "application/json"})
+            r = c.getresponse(); body = r.read()
+            self.assertEqual(r.status, 200)
+            self.assertNotIn(b"abcDEF", body)
+            self.assertTrue(json.loads(body)["hasKey"])
+            self.assertEqual(oct(os.stat(srv.FMP_FILE).st_mode & 0o777), "0o600")
+        finally:
+            httpd.shutdown(); httpd.server_close()
+            srv.FMP_FILE = old_file
+
+    def test_files_are_git_ignored(self):
+        with open(os.path.join(ROOT, ".gitignore")) as fh:
+            g = fh.read()
+        for f in ("dashboard/.fmp.json", "dashboard/.fmp-cache.json", "dashboard/.fdb-equities.bz2"):
+            self.assertIn(f, g)
+
+
+class FinanceDatabase(unittest.TestCase):
+    def make(self, rows):
+        import bz2
+        import csv
+        import io
+        head = ["symbol", "name", "summary", "currency", "sector", "industry_group", "industry", "exchange", "mic", "market", "country",
+                "state", "city", "zipcode", "website", "market_cap", "isin", "cusip", "figi", "composite_figi", "shareclass_figi", "delisted"]
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(head)
+        for r in rows:
+            w.writerow([r.get(k, "") for k in head])
+        path = os.path.join(tempfile.mkdtemp(), "eq.bz2")
+        with bz2.open(path, "wt", encoding="utf-8") as f:
+            f.write(buf.getvalue())
+        return path
+
+    def test_parse_filters_and_dedupes(self):
+        semi = {"sector": "Information Technology", "industry": "Semiconductors & Chip Equipment", "market_cap": "Mega Cap"}
+        rows = [dict(semi, symbol="KLAC", name="KLA Corporation", exchange="NMS", country="United States", isin="US1"),
+                dict(semi, symbol="ASML", name="ASML Holding N.V.", exchange="NMS", country="Netherlands", isin="NL1"),
+                dict(semi, symbol="ASML.AS", name="ASML Holding N.V.", exchange="AMS", country="Netherlands", isin="NL1"),
+                dict(semi, symbol="0ABC.L", name="Foreign Line", exchange="LSE", isin="XX9"),
+                dict(semi, symbol="MCHPP", name="Microchip Depositary Shares", exchange="NMS", isin="US7"),
+                dict(semi, symbol="OLD", name="Gone Inc", exchange="NMS", isin="US8", delisted="True"),
+                dict(semi, symbol="000660.KS", name="SK hynix Inc.", exchange="KSC", country="South Korea", isin="KR1"),
+                {"symbol": "PG", "name": "Procter & Gamble", "sector": "Consumer Staples", "industry": "Household Products",
+                 "market_cap": "Mega Cap", "exchange": "NYQ", "country": "United States", "isin": "US2"}]
+        rws, by_ind = srv.fdb_parse(self.make(rows))
+        self.assertNotIn("OLD", rws)
+        self.assertEqual(rws["000660.KS"][3], "South Korea")
+        old = dict(srv.FDB)
+        srv.FDB.update(rows=rws, byIndustry=by_ind)
+        try:
+            peers = srv.fdb_peers(["KLAC"])
+            self.assertIn("ASML", peers)
+            self.assertNotIn("ASML.AS", peers)  # same company once
+            self.assertNotIn("0ABC.L", peers)
+            self.assertNotIn("MCHPP", peers)
+            self.assertIn("000660.KS", peers)
+            self.assertEqual(srv.fdb_mega_outside({"Semiconductors & Chip Equipment"}), ["PG"])
+            self.assertEqual(srv.fdb_info("ASML")["country"], "Netherlands")
+        finally:
+            srv.FDB.clear(); srv.FDB.update(old)
+
+    def test_main_listing_rules(self):
+        ok = srv.fdb_main_listing
+        self.assertTrue(ok("6857.T", "Advantest"))
+        self.assertTrue(ok("BRK-B", "Berkshire"))
+        self.assertFalse(ok("BAC-PB", "Bank of America"))
+        self.assertFalse(ok("1AMZN.MI", "Amazon"))
+        self.assertFalse(ok("XYZ", "XYZ 5% Preferred"))
+
+
+class Tailscale(unittest.TestCase):
+    def test_address_is_tailscale_range_or_none(self):
+        ip = srv.tailscale_ip()
+        if ip is not None:
+            a, b = (int(x) for x in ip.split(".")[:2])
+            self.assertEqual(a, 100)
+            self.assertTrue(64 <= b <= 127)
+
+    def test_phone_info_includes_the_away_link(self):
+        old = srv.tailscale_ip
+        srv.tailscale_ip = lambda: "100.101.102.103"
+        httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        httpd.phone_token = "TOKEN123"
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+            c.request("GET", "/api/phone", headers={"Host": "127.0.0.1:%d" % httpd.server_address[1]})
+            d = json.loads(c.getresponse().read())
+        finally:
+            httpd.shutdown(); httpd.server_close()
+            srv.tailscale_ip = old
+        self.assertEqual(d["tailscaleIp"], "100.101.102.103")
+        self.assertEqual(d["awayUrl"], "http://100.101.102.103:%d/?key=TOKEN123" % httpd.server_address[1])
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 

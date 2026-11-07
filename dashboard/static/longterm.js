@@ -91,7 +91,8 @@
       <div style="margin-top:10px">${["Quality", "Growth", "Valuation", "Balance sheet", "Dividend", "Trend"].map(bar).join("")}</div>
       <details style="margin-top:8px"><summary>What the score is made of</summary>
         <ul class="reasons" style="margin-top:8px">${p.why.map((w) => `<li class="${w.ok ? "" : "no"}"><span><b>${td.esc(w.group)}</b> · ${td.esc(w.text)} <span class="muted">(${w.score}/100)</span></span></li>`).join("")}</ul>
-        ${p.fundamentals ? "" : `<p class="muted" style="font-size:12px">No company fundamentals for this listing (ETF or non-US): scored on its track record only.</p>`}</details>
+        ${p.fundamentals ? `<p class="muted" style="font-size:12px">Company figures from ${td.esc(p.figuresFrom || "Nasdaq.com")}${p.industry ? " · " + td.esc(p.industry) : ""}${p.country ? " · " + td.esc(p.country) : ""}.</p>`
+          : `<p class="muted" style="font-size:12px">No company figures for this listing (ETF, or non-US without a Financial Modeling Prep key): scored on its track record only. Add a free key on the Portfolio page → Data connections.</p>`}</details>
       <div class="kv" style="margin-top:12px">
         <div>Return a year, 3y<b class="num ${td.cls(h.cagr3)}">${td.pct(h.cagr3, 1)}</b></div><div>5y<b class="num ${td.cls(h.cagr5)}">${td.pct(h.cagr5, 1)}</b></div>
         <div>10y<b class="num ${td.cls(h.cagr10)}">${td.pct(h.cagr10, 1)}</b></div><div>Worst fall (3y)<b class="num down">${td.pct(h.maxdd3, 1)}</b></div></div>
@@ -233,11 +234,14 @@
   const verdictCls = (v) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Hold: "e-none", Trim: "e-wait", "Theme full": "e-wait", "Review thesis": "e-avoid" }[v] || "e-none");
 
   async function lookthrough() { return cache.__lt || (cache.__lt = await T().api("/api/lookthrough")); }
-  async function themes() { return cache.__th || (cache.__th = await T().api("/api/ltthemes").catch(() => ({ themes: {}, groups: {} }))); }
+  async function themes(symbols) {
+    const key = "__th" + (symbols || []).slice().sort().join(",");
+    return cache[key] || (cache[key] = await T().api("/api/ltthemes?symbols=" + encodeURIComponent((symbols || []).join(","))).catch(() => ({ themes: {}, groups: {} })));
+  }
   const THEME_CAP = 40; // % of the portfolio in one theme that moves together
   /** Share of the portfolio per theme and per umbrella group (AI build-out). */
   async function themeShares(positions, total) {
-    const th = await themes();
+    const th = await themes([...new Set(positions.map((p) => p.symbol))]);
     const val = (p) => p.valueAcct || p.mv || 0;
     const byTheme = {}, byGroup = {};
     positions.forEach((p) => {
@@ -289,6 +293,10 @@
     if (topTheme) row("Biggest theme", `${td.esc(topTheme[0])} · ${topTheme[1].toFixed(0)}%`, topTheme[1] <= 25, topTheme[1] > 25 ? "over 25% in one theme" : "");
     const ccys = {};
     positions.forEach((p) => { const c = (p.q && p.q.currency) || p.currency || "?"; ccys[c === "GBp" ? "GBP" : c] = (ccys[c === "GBp" ? "GBP" : c] || 0) + val(p); });
+    const ctry = {};
+    positions.forEach((p) => { const c = fundIndex(p.symbol) ? "Index funds" : (lt[p.symbol] && lt[p.symbol].country) || null; if (c) ctry[c] = (ctry[c] || 0) + val(p); });
+    const topC = Object.entries(ctry).filter(([k]) => k !== "Index funds").sort((a, b) => b[1] - a[1]);
+    if (topC.length) row("Countries (single stocks)", topC.slice(0, 3).map(([c, v]) => `${td.esc(c)} ${(100 * v / total).toFixed(0)}%`).join(" · "), 100 * topC[0][1] / total <= 70, "where the companies are based (FinanceDatabase)");
     row("Currencies", Object.entries(ccys).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${c} ${(100 * v / total).toFixed(0)}%`).join(" · "), true, "");
     if (acct.free != null) { const cp = 100 * acct.free / total; row("Cash", cp.toFixed(0) + "%", cp <= 10, cp > 10 ? "cash drag: idle money doesn't compound" : ""); }
     el.innerHTML = `<ul class="risk-list">${rows.join("")}</ul>
@@ -367,5 +375,42 @@
     } catch (e) { el.innerHTML = `<p class="muted">Dividends unavailable: ${td.esc(e.message)}</p>`; }
   }
 
-  window.LT = { zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
+
+  // ------------------------------------------------------------ data connections: FMP key, FinanceDatabase, Tailscale
+  async function connectionsCard(el) {
+    const td = T();
+    const [f, d] = await Promise.all([td.api("/api/fmp/status").catch(() => ({})), td.api("/api/fdb/status").catch(() => ({}))]);
+    if (!el.isConnected) return;
+    const fdbTxt = d.state === "ready" ? `<b class="up">connected</b> · ${Number(d.companies || 0).toLocaleString()} companies worldwide${d.updated ? ` · updated ${new Date(d.updated * 1000).toLocaleDateString()}` : ""}`
+      : d.state === "loading" ? "downloading (18 MB, once a month)…" : d.state === "failed" ? `<span class="down">not available</span> (${td.esc(d.error || "")})` : "starting…";
+    el.innerHTML = `<ul class="risk-list conn-list">
+        <li><span><b>Financial Modeling Prep</b><small>company figures and results dates for non-US stocks (SK hynix, Advantest, ASM International…)</small></span>
+          <b class="num">${f.hasKey ? '<span class="up">key set</span>' : "no key"}</b>${f.hasKey ? `<small>${f.callsToday || 0} calls today · ${f.cached || 0} answers saved${f.lastError ? ` · last issue: ${td.esc(f.lastError)}` : ""}</small>` : ""}</li>
+        <li><span><b>FinanceDatabase</b><small>sector, industry and country for any stock; wider Challenger search</small></span><b class="num">${fdbTxt}</b></li>
+        <li><span><b>Tailscale</b><small>use the dashboard on the iPhone away from home</small></span><b class="num"><a href="#" id="connPhone">set up →</a></b></li></ul>
+      ${f.fromEnv ? `<p class="muted" style="font-size:12.5px">The FMP key is set by the FMP_API_KEY environment variable.</p>` : `
+      <form class="form-row" id="fmpForm" style="align-items:end;margin-top:8px">
+        <label class="field" style="flex:1;min-width:220px">Financial Modeling Prep API key<input name="key" type="password" autocomplete="off" spellcheck="false" placeholder="${f.hasKey ? "•••••• saved (leave empty and Save to remove)" : "paste your key"}"></label>
+        <button class="btn primary" type="submit">Save</button>${f.hasKey ? `<button class="btn" type="button" id="fmpTest">Test the key</button>` : ""}</form>
+      <p class="muted" style="font-size:12.5px;margin:6px 0 0">Get a free key at <b>financialmodelingprep.com</b> → Sign up → Dashboard → API key. The free plan allows about 250 calls a day; the dashboard saves answers for 7 days so that's enough. Non-US companies may need a paid plan: <b>Test the key</b> shows what yours covers. The key stays on this computer (dashboard/.fmp.json).</p>`}
+      <div id="fmpOut"></div>`;
+    $("#connPhone", el).addEventListener("click", (e) => { e.preventDefault(); if (window.Trade) window.Trade.openPhone(); });
+    const form = $("#fmpForm", el);
+    if (form) form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try { await td.post("/api/fmp/key", { key: form.key.value.trim() }); td.toast(form.key.value.trim() ? "FMP key saved" : "FMP key removed"); delete cache.__lt; connectionsCard(el); }
+      catch (err) { $("#fmpOut", el).innerHTML = `<p class="error">${td.esc(err.message)}</p>`; }
+    });
+    const test = $("#fmpTest", el);
+    if (test) test.addEventListener("click", async () => {
+      $("#fmpOut", el).innerHTML = `<p class="muted">Testing with Apple, ASML (Amsterdam), Advantest and SK hynix…</p>`;
+      try {
+        const r = await td.api("/api/fmp/test");
+        $("#fmpOut", el).innerHTML = `<ul class="risk-list">${r.results.map((x) => `<li class="${x.ok ? "" : "no"}"><span>${td.esc(x.symbol)}</span><b class="num">${x.ok ? "✓" : "✕"}</b><small>${td.esc(x.text)}</small></li>`).join("")}</ul>
+          ${r.results.some((x) => !x.ok && x.symbol !== "AAPL") ? `<p class="muted" style="font-size:12.5px">Stocks marked ✕ keep using their price history only.</p>` : ""}`;
+      } catch (err) { $("#fmpOut", el).innerHTML = `<p class="error">${td.esc(err.message)}</p>`; }
+    });
+  }
+
+  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
 })();

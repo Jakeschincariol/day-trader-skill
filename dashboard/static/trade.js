@@ -373,6 +373,11 @@
       const q = window.qrcode(0, "M"); q.addData(info.url); q.make();
       qr = q.createSvgTag({ cellSize: 6, margin: 3, scalable: true });
     }
+    let awayQr = "";
+    if (info.awayUrl && window.qrcode) {
+      const q2 = window.qrcode(0, "M"); q2.addData(info.awayUrl); q2.make();
+      awayQr = q2.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
+    }
     d.innerHTML = `<div class="sheet-body">
       <div class="card-head"><h2 id="sheetTitle"><i data-lucide="smartphone"></i>Use on iPhone</h2><button class="rf" data-close aria-label="Close"><i data-lucide="x"></i></button></div>
       ${info.enabled ? `
@@ -384,7 +389,13 @@
           <li>Keep this computer on with the dashboard running while you use it.</li>
         </ol></div>
         <p class="muted" style="font-size:12px">Link: <code style="word-break:break-all">${td.esc(info.url)}</code><br>It contains a secret key: don't share it. To log every phone out, restart with <code>--phone --new-key</code>.</p>
-        <p class="muted" style="font-size:12px">Away from home? Install the free <b>Tailscale</b> app on this computer and on the iPhone, sign in to both with the same account, then use this computer's Tailscale address instead of ${td.esc(info.ip || "")}.</p>`
+        ${info.awayUrl ? `<h3 class="h3" style="margin-top:14px">Away from home (Tailscale)</h3>
+          <div class="phone-grid"><div class="qr">${awayQr}</div><ol class="steps" style="font-size:14px;gap:8px">
+            <li>Tailscale is running on this computer (${td.esc(info.tailscaleIp)}).</li>
+            <li>On the iPhone, install <b>Tailscale</b> from the App Store and sign in with the <b>same account</b>.</li>
+            <li>Scan this code: it works on 4G and any Wi-Fi, and only your own devices can reach it.</li>
+            <li>Add it to the Home Screen too (Share → Add to Home Screen), e.g. as "TraderDash away".</li></ol></div>`
+        : `<p class="muted" style="font-size:12.5px"><b>Away from home?</b> Install the free <b>Tailscale</b> app (tailscale.com) on this computer and on the iPhone, sign in to both with the same account, then open this window again: a second QR code appears that works on 4G and any Wi-Fi.</p>`}`
       : `<p>Phone mode is off. Stop the dashboard (Ctrl+C in its window) and start it again with phone mode:</p>
         <ul class="steps" style="font-size:14px"><li><b>Windows:</b> double-click <code>dashboard\\start-phone.bat</code>, or run <code>python dashboard/server.py --phone</code></li>
         <li><b>Mac:</b> double-click <code>dashboard/start-phone.command</code>, or run <code>python3 dashboard/server.py --phone</code></li></ul>
@@ -394,6 +405,6 @@
   }
   document.addEventListener("click", (e) => { if (e.target.closest("#phoneBtn")) openPhone(); });
 
-  window.Trade = { openTicket, sizeLine, openAlerts, addAlert, badge, check, regime, backtest, risk, riskPanel, journal, t212Ticker, account };
+  window.Trade = { openPhone, openTicket, sizeLine, openAlerts, addAlert, badge, check, regime, backtest, risk, riskPanel, journal, t212Ticker, account };
   document.addEventListener("DOMContentLoaded", () => { badge(); check(); });
 })();

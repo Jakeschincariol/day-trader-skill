@@ -5,3 +5,8 @@ dashboard/.access.json
 dashboard/.logo-cache/
 dashboard/.symbols-cache.json
 dashboard/.symbols-cache.json.tmp
+dashboard/.fmp.json
+dashboard/.fmp-cache.json
+dashboard/.fmp-cache.json.tmp
+dashboard/.fdb-equities.bz2
+dashboard/.fdb-equities.bz2.tmp

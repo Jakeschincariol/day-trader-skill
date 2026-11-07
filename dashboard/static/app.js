@@ -790,6 +790,7 @@
             <label class="field">Avg price<input name="avgPrice" type="number" step="any" min="0" required value="${esc(params.get("price") || "")}"></label>
             <label class="field">Buy date<input name="date" type="date" required value="${new Date().toISOString().slice(0, 10)}"></label>
             <button class="btn primary" type="submit">Add</button></div></form></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="plug"></i>Data connections</h2></div><div id="connBox">${skeleton(3)}</div></div>
         <details class="card fold" ${lt ? "" : "open"}><summary class="card-head"><h2>${lt ? "Settings (swing trading and account)" : "Risk settings"}</h2></summary><form class="form" id="sform"><div class="form-row">
           <label class="field">Risk per trade %<input name="riskPct" type="number" step="0.1" min="0.1" max="10" value="${settings().riskPct}"></label>
           <label class="field">Max position %<input name="maxPosPct" type="number" step="1" min="1" max="100" value="${settings().maxPosPct || 25}"></label>
@@ -814,6 +815,7 @@
       store.set("settings", Object.assign(settings(), { riskPct: +fd.get("riskPct"), account: +fd.get("account"), maxPosPct: +fd.get("maxPosPct"), maxHeatPct: +fd.get("maxHeatPct"), ccy: fd.get("ccy") })); toast("Saved");
     });
 
+    if (window.LT && $("#connBox")) window.LT.connectionsCard($("#connBox"));
     const t212 = await getT212(true).catch(() => null);
     if (!$("#link")) return;
     renderLink(t212);
