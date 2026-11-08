@@ -3690,6 +3690,65 @@ def tailscale_ip():
     return ip if parts and parts[0] == 100 and 64 <= parts[1] <= 127 else None
 
 
+
+# ---------------------------------------------------------------- export to a spreadsheet (.xlsx, written with the standard library)
+
+def _xlsx_col(i):
+    s = ""
+    i += 1
+    while i:
+        i, rem = divmod(i - 1, 26)
+        s = chr(65 + rem) + s
+    return s
+
+
+def xlsx_bytes(sheets):
+    """sheets: [{"name", "columns": [...], "rows": [[...]]}] -> an .xlsx file. Numbers stay numbers; text is inline."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    def cell(ref, v):
+        if isinstance(v, bool) or v is None or v == "":
+            return "" if v in (None, "") else '<c r="%s" t="inlineStr"><is><t>%s</t></is></c>' % (ref, "TRUE" if v else "FALSE")
+        if isinstance(v, (int, float)) and math.isfinite(v):
+            return '<c r="%s"><v>%s</v></c>' % (ref, repr(float(v)) if isinstance(v, float) else v)
+        return '<c r="%s" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>' % (ref, escape(str(v))[:32000])
+    names, used = [], set()
+    for sh in sheets:
+        n = re.sub(r"[\[\]:*?/\\]", " ", str(sh.get("name") or "Sheet"))[:31] or "Sheet"
+        while n in used:
+            n = n[:28] + str(len(used))
+        used.add(n)
+        names.append(n)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                   '<Default Extension="xml" ContentType="application/xml"/>'
+                   '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                   + "".join('<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' % (i + 1) for i in range(len(sheets)))
+                   + "</Types>")
+        z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+        z.writestr("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                   '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+                   + "".join('<sheet name="%s" sheetId="%d" r:id="rId%d"/>' % (escape(n, {'"': "&quot;"}), i + 1, i + 1) for i, n in enumerate(names))
+                   + "</sheets></workbook>")
+        z.writestr("xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   + "".join('<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>' % (i + 1, i + 1) for i in range(len(sheets)))
+                   + "</Relationships>")
+        for i, sh in enumerate(sheets):
+            rows = [list(sh.get("columns") or [])] + [list(r_) for r_ in (sh.get("rows") or [])][:100000]
+            body = "".join('<row r="%d">%s</row>' % (k + 1, "".join(cell("%s%d" % (_xlsx_col(j), k + 1), v) for j, v in enumerate(row)))
+                           for k, row in enumerate(rows))
+            z.writestr("xl/worksheets/sheet%d.xml" % (i + 1), '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>%s</sheetData></worksheet>' % body)
+    return buf.getvalue()
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".ico": "image/x-icon",
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
@@ -3966,7 +4025,7 @@ class Handler(BaseHTTPRequestHandler):
         if "application/json" not in (self.headers.get("Content-Type") or ""):
             return self.send_json({"error": "JSON only"}, 415)
         path = urllib.parse.urlparse(self.path).path
-        limit = 12 * 1024 * 1024 if path == "/api/revolut/import" else 10000
+        limit = 12 * 1024 * 1024 if path in ("/api/revolut/import", "/api/export/xlsx") else 10000
         n = int(self.headers.get("Content-Length") or 0)
         if n > limit:
             return self.send_json({"error": "file too large"}, 413)
@@ -3979,6 +4038,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(revolut_import(body))
             except Exception as e:
                 return self.send_json({"error": str(e)[:300]}, 400)
+        if path == "/api/export/xlsx":
+            sheets = body.get("sheets")
+            if not isinstance(sheets, list) or not sheets or len(sheets) > 12:
+                return self.send_json({"error": "nothing to export"}, 400)
+            data = xlsx_bytes(sheets)
+            name = re.sub(r"[^A-Za-z0-9_.-]", "", str(body.get("filename") or "TraderDash.xlsx"))[:60] or "TraderDash.xlsx"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % name)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return self.wfile.write(data)
         if path == "/api/fmp/key":
             k = str(body.get("key") or "").strip()
             if k and not re.match(r"^[A-Za-z0-9]{16,64}$", k):

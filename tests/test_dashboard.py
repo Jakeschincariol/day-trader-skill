@@ -758,6 +758,24 @@ class Tailscale(unittest.TestCase):
         self.assertEqual(d["awayUrl"], "http://100.101.102.103:%d/?key=TOKEN123" % httpd.server_address[1])
 
 
+class SpreadsheetExport(unittest.TestCase):
+    def test_xlsx_round_trip(self):
+        b = srv.xlsx_bytes([{"name": "Holdings", "columns": ["Symbol", "Value"], "rows": [["ASML", 1234.5], ["A<&>", None]]},
+                            {"name": "Monthly/1", "columns": ["Month"], "rows": [["2026-01-01"]]}])
+        rows = srv._xlsx_rows(b)
+        self.assertEqual(rows[0], ["Symbol", "Value"])
+        self.assertEqual(rows[1], ["ASML", "1234.5"])
+        self.assertEqual(rows[2], ["A<&>"])
+        import zipfile, io
+        names = zipfile.ZipFile(io.BytesIO(b)).namelist()
+        self.assertIn("xl/worksheets/sheet2.xml", names)
+        wb = zipfile.ZipFile(io.BytesIO(b)).read("xl/workbook.xml").decode()
+        self.assertIn('name="Monthly 1"', wb)  # characters Excel forbids in sheet names are replaced
+
+    def test_column_letters(self):
+        self.assertEqual([srv._xlsx_col(i) for i in (0, 25, 26, 51, 701, 702)], ["A", "Z", "AA", "AZ", "ZZ", "AAA"])
+
+
 class Projection(unittest.TestCase):
     """The 10-year plan simulator (runs in the browser; checked here with node)."""
 

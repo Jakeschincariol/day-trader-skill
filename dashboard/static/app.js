@@ -760,7 +760,7 @@
     view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only), Revolut statement and manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only), Revolut statement and any holdings you add by hand, with a live rating and exit check on every position."}</p>
       <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>Positions</h2>${rf("pos")}</div><div id="ptbl">${skeleton(8)}</div></div>
+        <div class="card"><div class="card-head"><h2>Positions</h2><span style="display:flex;gap:8px;align-items:center"><button class="btn sm" type="button" id="xlsxBtn" title="Holdings, monthly value, dividends: for Excel, Google Sheets or Mizantiq"><i data-lucide="file-spreadsheet"></i> Export</button>${rf("pos")}</span></div><div id="ptbl">${skeleton(8)}</div></div>
         <div class="grid" style="align-content:start">
           <div class="card" id="link">${skeleton(4)}</div>
           <div class="card" id="revBox">${skeleton(3)}</div>
@@ -868,6 +868,7 @@
         p.weight = totAcct ? 100 * (p.valueAcct || p.mv || 0) / totAcct : 0;
         const tg = targets[p.symbol] != null ? 100 * targets[p.symbol] / tsum : null;
         const grp = ts.groupOf(p.symbol);
+        p.theme = ts.themeOf(p.symbol) || "";
         const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol), grp ? { name: grp, pct: ts.byGroup[grp] } : null);
         p.verdict = vd.v; p.verdictWhy = vd.why;
         p.alert = vd.v === "Trim" || vd.v === "Review thesis" ? vd.v : "OK";
@@ -910,6 +911,8 @@
       $("#alloc").innerHTML = `<p class="empty">Nothing to chart yet.</p>`;
       return;
     }
+    state.exportPositions = positions;
+    if ($("#xlsxBtn")) $("#xlsxBtn").onclick = (e) => exportSpreadsheet(e.currentTarget);
     sortableTable($("#ptbl"), positions, [
       { key: "symbol", label: "Holding", val: (p) => p.symbol, html: (p) => symCell(p) + `<span class="nm">${esc(p.source)}</span>` },
       { key: "qty", label: "Shares", r: true, val: (p) => p.qty, html: (p) => shares(p.qty) },
@@ -960,6 +963,7 @@
     try { h = await post("/api/portfolio/history", { manual: manual(), base: settings().ccy || "USD" }); }
     catch (e) { $("#pret").innerHTML = `<p class="error">${esc(e.message)}</p>`; $("#vchart").innerHTML = ""; return; }
     if (!$("#pret")) return;
+    state.exportHistory = h;
     const ccy = h.base;
     const m = (v) => money(v, ccy);
     const label = { "1D": "Today", "1W": "1 week", "1M": "1 month", "3M": "3 months", YTD: "This year", "1Y": "1 year", "5Y": "5 years", Max: "All time" };
@@ -1027,6 +1031,53 @@
   }
 
 
+
+
+  // ------------------------------------------------------------ export to a spreadsheet (for Excel, Google Sheets, Mizantiq)
+  async function exportSpreadsheet(btn) {
+    const ccy = (state.t212 && state.t212.currency) || (state.revolut && state.revolut.currency) || settings().ccy || "EUR";
+    const pos = state.exportPositions || [];
+    if (!pos.length) { toast("Open the Portfolio page and wait for your positions to load first"); return; }
+    btn.disabled = true; const label = btn.innerHTML; btn.innerHTML = "Preparing…";
+    try {
+      const lt = (s) => (window.LT && window.LT.cache[s]) || {};
+      const round = (x, d) => (x == null || !isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d);
+      const total = pos.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0);
+      const holdings = pos.map((p) => {
+        const v = p.valueAcct || p.mv || 0, gain = p.ppl != null ? p.ppl : null;
+        const L = lt(p.symbol);
+        return [p.symbol, p.name || L.name || "", p.source || "", round(p.qty, 6), round(p.avgPrice, 4), round(p.price, 4), p.currency || (p.q && p.q.currency) || "",
+          round(v, 2), gain != null ? round(v - gain, 2) : null, round(gain, 2), round(p.plPct, 2), round(total ? 100 * v / total : null, 2),
+          L.sector || "", L.industry || "", L.country || "", p.theme || "", L.score ?? null, L.zone ? (window.LT.zoneLabel(L.zone)) : "", p.verdict ? window.LT.zoneLabel(p.verdict) : ""];
+      });
+      const sheets = [{ name: "Holdings", columns: ["Symbol", "Name", "Account", "Shares", "Avg price", "Price", "Price currency", `Value (${ccy})`, `Invested (${ccy})`,
+        `Gain (${ccy})`, "Gain %", "Weight %", "Sector", "Industry", "Country", "Theme", "Long-term score", "Buy zone", "Action"], rows: holdings }];
+      const h = state.exportHistory;
+      if (h && h.dates && h.dates.length) {
+        const months = {};
+        h.dates.forEach((d, i) => { months[d.slice(0, 7)] = i; }); // last trading day of each month
+        const rows = Object.entries(months).filter(([, i]) => (h.value[i] || 0) > 0 || (h.invested[i] || 0) > 0).map(([m, i]) => [m + "-01", round(h.value[i], 2), round(h.invested[i], 2), round(h.value[i] - h.invested[i], 2),
+          h.invested[i] ? round(100 * (h.value[i] / h.invested[i] - 1), 2) : null, h.bench && h.bench[i] != null ? round(h.bench[i], 2) : null]);
+        sheets.push({ name: "Monthly", columns: ["Month", `Value (${ccy})`, `Money in (${ccy})`, `Gain (${ccy})`, "Gain %", `Same money in VWRL (${ccy})`], rows });
+      }
+      try {
+        const d = await api("/api/t212/dividends");
+        if (d && d.months && d.months.length) {
+          sheets.push({ name: "Dividends by month", columns: ["Month", `Dividends (${ccy})`], rows: d.months.map((m) => [m.month + "-01", round(m.amount, 2)]) });
+          sheets.push({ name: "Dividends by stock", columns: ["Symbol", `Dividends (${ccy})`], rows: d.bySymbol.map((x) => [x.symbol, round(x.amount, 2)]) });
+        }
+      } catch (e) { /* no Trading 212 link: no dividends sheet */ }
+      const res = await fetch("/api/export/xlsx", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheets, filename: "TraderDash-" + new Date().toISOString().slice(0, 10) + ".xlsx" }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Export failed");
+      const blob = await res.blob();
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "TraderDash-" + new Date().toISOString().slice(0, 10) + ".xlsx" });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast(`Spreadsheet saved: ${sheets.map((s) => s.name).join(", ")}`);
+    } catch (e) { toast(e.message); }
+    btn.disabled = false; btn.innerHTML = label;
+  }
 
   // ------------------------------------------------------------ compare 2-3 stocks
   pages.compare = async function (arg, params) {

@@ -47,6 +47,10 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Export to a spreadsheet
+
+**Portfolio → Positions → Export** downloads `TraderDash-<date>.xlsx` with sheets **Holdings** (shares, value and invested in your currency, gain, weight, sector, industry, country, theme, long-term score, buy zone, action), **Monthly** (value vs money put in each month, and the same money in VWRL) and, with Trading 212 linked, **Dividends by month** and **Dividends by stock**. It opens in Excel, Google Sheets or Numbers, and can be uploaded to a dashboard tool such as Mizantiq for a shareable review.
+
 ## Data connections (Portfolio page)
 
 - **Financial Modeling Prep** (optional key): company figures (return on equity, margins, debt, free cash flow, P/E, yearly results) and results dates for **non-US** stocks such as SK hynix, Advantest and ASM International, so they get a full long-term score instead of "price only", plus earnings warnings. Get a free key at financialmodelingprep.com, paste it under **Data connections** and press **Test the key** to see what your plan covers (non-US data may need a paid plan). About 4 calls per stock; answers are saved for 7 days in `dashboard/.fmp-cache.json`; the key stays in `dashboard/.fmp.json` (or the `FMP_API_KEY` environment variable). US stocks keep using Nasdaq.com (free, no key).
