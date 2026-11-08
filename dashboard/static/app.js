@@ -791,7 +791,7 @@
         <div class="card-head" style="margin-bottom:4px"><span class="sym" style="font-size:17px">${esc(w.symbol)}</span><span class="badge b-strongbuy">+${w.peak12}% peak</span></div>
         <div class="muted" style="font-size:12px">Launch signal ${new Date(w.date + "T12:00:00Z").toLocaleDateString(undefined, { month: "short", year: "numeric" })} at ${fmt(w.price, 2)}</div>
         ${TChart.legendPath(w.path)}
-        <div style="display:flex;justify-content:space-between;font-size:12px"><span class="sec">12 months later <b class="${cls(w.gain12)}">${w.gain12 >= 0 ? "+" : ""}${w.gain12}%</b></span><span class="sec">Today <b class="up">+${w.sinceLaunch}%</b></span></div></a>`).join("");
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:12px"><span class="sec">12 months later <b class="${cls(w.gain12)}">${w.gain12 >= 0 ? "+" : ""}${w.gain12}%</b></span><span class="sec">Today <b class="up">+${w.sinceLaunch}%</b></span></div></a>`).join("");
       const blue = (v) => `rgba(57,135,229,${(0.12 + 0.75 * Math.max(0, v - 20) / 70).toFixed(2)})`;
       $("#heat").innerHTML = data.themes.map((t) => `<button class="heat-tile" data-theme="${esc(t.theme)}" style="background:${blue(t.avg)}"><span>${esc(t.theme)}</span><b>${t.avg}</b><small>avg of ${t.n} · best ${t.top}</small></button>`).join("");
       $$("#heat .heat-tile").forEach((b) => b.addEventListener("click", () => { f.theme = f.theme === b.dataset.theme ? "" : b.dataset.theme; cards(); }));
