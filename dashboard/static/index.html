@@ -6,24 +6,36 @@
 <meta name="theme-color" content="#0d0d0d">
 <title>Trader Dashboard</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TraderDash">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<a class="skip" href="#view">Skip to content</a>
 <header class="top">
   <a class="brand" href="#/">
     <img src="/icon.svg" alt="" width="26" height="26">
     <span>Trader<b>Dash</b></span>
   </a>
   <nav class="tabs" id="tabs">
-    <a href="#/" data-tab="home">Dashboard</a>
-    <a href="#/markets" data-tab="markets">Markets</a>
-    <a href="#/signals" data-tab="signals">Strong Buys</a>
-    <a href="#/radar" data-tab="radar" class="tab-ai">✦ AI Radar</a>
-    <a href="#/portfolio" data-tab="portfolio">Portfolio</a>
-    <a href="#/news" data-tab="news">News</a>
+    <a href="#/" data-tab="home"><i data-lucide="layout-dashboard"></i>Dashboard</a>
+    <a href="#/markets" data-tab="markets"><i data-lucide="candlestick-chart"></i>Markets</a>
+    <a href="#/map" data-tab="map" class="hide-m"><i data-lucide="layout-grid"></i>Market Map</a>
+    <a href="#/signals" data-tab="signals"><i data-lucide="flame"></i>Strong Buys</a>
+    <a href="#/radar" data-tab="radar" class="tab-ai"><i data-lucide="radar"></i>Radar</a>
+    <a href="#/compare" data-tab="compare" class="hide-m"><i data-lucide="git-compare-arrows"></i>Compare</a>
+    <a href="#/portfolio" data-tab="portfolio"><i data-lucide="wallet"></i>Portfolio</a>
+    <a href="#/news" data-tab="news" class="hide-m"><i data-lucide="newspaper"></i>News</a>
+    <button type="button" class="tab-more" id="tabMore" aria-expanded="false" aria-label="More pages"><i data-lucide="ellipsis"></i>More</button>
   </nav>
+  <div class="seg mode-seg" id="modeSeg" role="group" aria-label="Investing style"><button data-m="lt" type="button">Long-term</button><button data-m="swing" type="button">Swing</button></div>
+  <button class="bell" id="bell" type="button" aria-label="Price alerts"><i data-lucide="bell"></i><span id="bellCount" class="bell-count" hidden></span></button>
   <form class="search" id="search" autocomplete="off" role="search">
+    <i data-lucide="search" class="search-ico"></i>
     <input id="searchInput" type="search" placeholder="Search any stock or ETF…" aria-label="Search stocks and ETFs">
     <ul id="searchResults" class="dropdown" hidden></ul>
   </form>
@@ -34,11 +46,25 @@
 <main id="view" tabindex="-1"></main>
 
 <footer class="foot">
-  <p>Market data: Yahoo Finance (unofficial, can be delayed). Ratings and entry levels are computed from price, trend, momentum and volume rules shown on each stock page. They are not financial advice. This site reads your Trading 212 account and never places orders.</p>
+  <p><button type="button" class="btn sm" id="phoneBtn"><i data-lucide="smartphone"></i> Use on iPhone</button></p>
+  <p>Logos: <a href="https://financialmodelingprep.com" rel="noopener">Financial Modeling Prep</a> and <a href="https://parqet.com" rel="noopener">Parqet</a>; logos are trademarks of their owners.</p>
+  <p>Market data: Yahoo Finance (unofficial, can be delayed). Ratings and entry levels are computed from price, trend, momentum and volume rules shown on each stock page. They are not financial advice. This site reads your Trading 212 account or Revolut statement and never places orders.</p>
 </footer>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="srStatus" class="sr-only" role="status" aria-live="polite"></div>
+<script src="/vendor/lucide.min.js"></script>
+<script src="/vendor/countup.js"></script>
+<script src="/vendor/qrcode.js"></script>
+<script src="/vendor/lightweight-charts.js"></script>
+<script src="/vendor/echarts.min.js"></script>
 <script src="/chart.js"></script>
+<script src="/pro-charts.js"></script>
+<script src="/trade.js"></script>
+<script src="/longterm.js"></script>
+<script src="/compare.js"></script>
+<script src="/projection.js"></script>
+<script src="/insights.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

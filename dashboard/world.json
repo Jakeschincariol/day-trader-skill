@@ -1,0 +1,898 @@
+{
+ "note": "Major non-US stocks and UCITS ETFs (checked against Yahoo Finance). Any other ticker on any exchange can be opened with the search box.",
+ "regions": {
+  "United Kingdom": [
+   {
+    "s": "SHEL.L",
+    "n": "Shell",
+    "t": "Stock"
+   },
+   {
+    "s": "AZN.L",
+    "n": "AstraZeneca",
+    "t": "Stock"
+   },
+   {
+    "s": "HSBA.L",
+    "n": "HSBC",
+    "t": "Stock"
+   },
+   {
+    "s": "ULVR.L",
+    "n": "Unilever",
+    "t": "Stock"
+   },
+   {
+    "s": "BP.L",
+    "n": "BP",
+    "t": "Stock"
+   },
+   {
+    "s": "RIO.L",
+    "n": "Rio Tinto",
+    "t": "Stock"
+   },
+   {
+    "s": "GSK.L",
+    "n": "GSK",
+    "t": "Stock"
+   },
+   {
+    "s": "DGE.L",
+    "n": "Diageo",
+    "t": "Stock"
+   },
+   {
+    "s": "BATS.L",
+    "n": "British American Tobacco",
+    "t": "Stock"
+   },
+   {
+    "s": "REL.L",
+    "n": "RELX",
+    "t": "Stock"
+   },
+   {
+    "s": "LSEG.L",
+    "n": "London Stock Exchange Group",
+    "t": "Stock"
+   },
+   {
+    "s": "BARC.L",
+    "n": "Barclays",
+    "t": "Stock"
+   },
+   {
+    "s": "LLOY.L",
+    "n": "Lloyds Banking Group",
+    "t": "Stock"
+   },
+   {
+    "s": "VOD.L",
+    "n": "Vodafone",
+    "t": "Stock"
+   },
+   {
+    "s": "NG.L",
+    "n": "National Grid",
+    "t": "Stock"
+   },
+   {
+    "s": "RR.L",
+    "n": "Rolls-Royce",
+    "t": "Stock"
+   },
+   {
+    "s": "BA.L",
+    "n": "BAE Systems",
+    "t": "Stock"
+   },
+   {
+    "s": "TSCO.L",
+    "n": "Tesco",
+    "t": "Stock"
+   },
+   {
+    "s": "GLEN.L",
+    "n": "Glencore",
+    "t": "Stock"
+   },
+   {
+    "s": "AAL.L",
+    "n": "Anglo American",
+    "t": "Stock"
+   },
+   {
+    "s": "PRU.L",
+    "n": "Prudential",
+    "t": "Stock"
+   },
+   {
+    "s": "NWG.L",
+    "n": "NatWest",
+    "t": "Stock"
+   },
+   {
+    "s": "IMB.L",
+    "n": "Imperial Brands",
+    "t": "Stock"
+   },
+   {
+    "s": "CPG.L",
+    "n": "Compass Group",
+    "t": "Stock"
+   },
+   {
+    "s": "EXPN.L",
+    "n": "Experian",
+    "t": "Stock"
+   },
+   {
+    "s": "LGEN.L",
+    "n": "Legal & General",
+    "t": "Stock"
+   },
+   {
+    "s": "AV.L",
+    "n": "Aviva",
+    "t": "Stock"
+   },
+   {
+    "s": "BT-A.L",
+    "n": "BT Group",
+    "t": "Stock"
+   },
+   {
+    "s": "SSE.L",
+    "n": "SSE",
+    "t": "Stock"
+   },
+   {
+    "s": "III.L",
+    "n": "3i Group",
+    "t": "Stock"
+   }
+  ],
+  "Europe": [
+   {
+    "s": "ASML.AS",
+    "n": "ASML",
+    "t": "Stock"
+   },
+   {
+    "s": "SAP.DE",
+    "n": "SAP",
+    "t": "Stock"
+   },
+   {
+    "s": "MC.PA",
+    "n": "LVMH",
+    "t": "Stock"
+   },
+   {
+    "s": "SIE.DE",
+    "n": "Siemens",
+    "t": "Stock"
+   },
+   {
+    "s": "TTE.PA",
+    "n": "TotalEnergies",
+    "t": "Stock"
+   },
+   {
+    "s": "ALV.DE",
+    "n": "Allianz",
+    "t": "Stock"
+   },
+   {
+    "s": "OR.PA",
+    "n": "L'Oreal",
+    "t": "Stock"
+   },
+   {
+    "s": "SAN.PA",
+    "n": "Sanofi",
+    "t": "Stock"
+   },
+   {
+    "s": "AIR.PA",
+    "n": "Airbus",
+    "t": "Stock"
+   },
+   {
+    "s": "SU.PA",
+    "n": "Schneider Electric",
+    "t": "Stock"
+   },
+   {
+    "s": "IBE.MC",
+    "n": "Iberdrola",
+    "t": "Stock"
+   },
+   {
+    "s": "ITX.MC",
+    "n": "Inditex",
+    "t": "Stock"
+   },
+   {
+    "s": "DTE.DE",
+    "n": "Deutsche Telekom",
+    "t": "Stock"
+   },
+   {
+    "s": "BNP.PA",
+    "n": "BNP Paribas",
+    "t": "Stock"
+   },
+   {
+    "s": "ENEL.MI",
+    "n": "Enel",
+    "t": "Stock"
+   },
+   {
+    "s": "ISP.MI",
+    "n": "Intesa Sanpaolo",
+    "t": "Stock"
+   },
+   {
+    "s": "UCG.MI",
+    "n": "UniCredit",
+    "t": "Stock"
+   },
+   {
+    "s": "RMS.PA",
+    "n": "Hermes",
+    "t": "Stock"
+   },
+   {
+    "s": "EL.PA",
+    "n": "EssilorLuxottica",
+    "t": "Stock"
+   },
+   {
+    "s": "MBG.DE",
+    "n": "Mercedes-Benz",
+    "t": "Stock"
+   },
+   {
+    "s": "BMW.DE",
+    "n": "BMW",
+    "t": "Stock"
+   },
+   {
+    "s": "BAS.DE",
+    "n": "BASF",
+    "t": "Stock"
+   },
+   {
+    "s": "ADS.DE",
+    "n": "Adidas",
+    "t": "Stock"
+   },
+   {
+    "s": "INGA.AS",
+    "n": "ING",
+    "t": "Stock"
+   },
+   {
+    "s": "ADYEN.AS",
+    "n": "Adyen",
+    "t": "Stock"
+   },
+   {
+    "s": "BBVA.MC",
+    "n": "BBVA",
+    "t": "Stock"
+   },
+   {
+    "s": "SAN.MC",
+    "n": "Banco Santander",
+    "t": "Stock"
+   },
+   {
+    "s": "SAF.PA",
+    "n": "Safran",
+    "t": "Stock"
+   },
+   {
+    "s": "CS.PA",
+    "n": "AXA",
+    "t": "Stock"
+   },
+   {
+    "s": "DG.PA",
+    "n": "Vinci",
+    "t": "Stock"
+   },
+   {
+    "s": "AI.PA",
+    "n": "Air Liquide",
+    "t": "Stock"
+   },
+   {
+    "s": "MUV2.DE",
+    "n": "Munich Re",
+    "t": "Stock"
+   },
+   {
+    "s": "DB1.DE",
+    "n": "Deutsche Boerse",
+    "t": "Stock"
+   },
+   {
+    "s": "IFX.DE",
+    "n": "Infineon",
+    "t": "Stock"
+   },
+   {
+    "s": "RACE.MI",
+    "n": "Ferrari",
+    "t": "Stock"
+   },
+   {
+    "s": "KER.PA",
+    "n": "Kering",
+    "t": "Stock"
+   },
+   {
+    "s": "RHM.DE",
+    "n": "Rheinmetall",
+    "t": "Stock"
+   },
+   {
+    "s": "VOW3.DE",
+    "n": "Volkswagen",
+    "t": "Stock"
+   },
+   {
+    "s": "PRX.AS",
+    "n": "Prosus",
+    "t": "Stock"
+   },
+   {
+    "s": "HEIA.AS",
+    "n": "Heineken",
+    "t": "Stock"
+   },
+   {
+    "s": "PHIA.AS",
+    "n": "Philips",
+    "t": "Stock"
+   },
+   {
+    "s": "ABI.BR",
+    "n": "AB InBev",
+    "t": "Stock"
+   },
+   {
+    "s": "NOKIA.HE",
+    "n": "Nokia",
+    "t": "Stock"
+   },
+   {
+    "s": "STLAM.MI",
+    "n": "Stellantis",
+    "t": "Stock"
+   },
+   {
+    "s": "DSY.PA",
+    "n": "Dassault Systemes",
+    "t": "Stock"
+   },
+   {
+    "s": "ENI.MI",
+    "n": "Eni",
+    "t": "Stock"
+   },
+   {
+    "s": "DBK.DE",
+    "n": "Deutsche Bank",
+    "t": "Stock"
+   },
+   {
+    "s": "SHL.DE",
+    "n": "Siemens Healthineers",
+    "t": "Stock"
+   },
+   {
+    "s": "ENR.DE",
+    "n": "Siemens Energy",
+    "t": "Stock"
+   },
+   {
+    "s": "BAYN.DE",
+    "n": "Bayer",
+    "t": "Stock"
+   }
+  ],
+  "Switzerland": [
+   {
+    "s": "NESN.SW",
+    "n": "Nestle",
+    "t": "Stock"
+   },
+   {
+    "s": "NOVN.SW",
+    "n": "Novartis",
+    "t": "Stock"
+   },
+   {
+    "s": "UBSG.SW",
+    "n": "UBS",
+    "t": "Stock"
+   },
+   {
+    "s": "ZURN.SW",
+    "n": "Zurich Insurance",
+    "t": "Stock"
+   },
+   {
+    "s": "ABBN.SW",
+    "n": "ABB",
+    "t": "Stock"
+   },
+   {
+    "s": "CFR.SW",
+    "n": "Richemont",
+    "t": "Stock"
+   },
+   {
+    "s": "LONN.SW",
+    "n": "Lonza",
+    "t": "Stock"
+   },
+   {
+    "s": "SIKA.SW",
+    "n": "Sika",
+    "t": "Stock"
+   },
+   {
+    "s": "GIVN.SW",
+    "n": "Givaudan",
+    "t": "Stock"
+   }
+  ],
+  "Nordics": [
+   {
+    "s": "NOVO-B.CO",
+    "n": "Novo Nordisk",
+    "t": "Stock"
+   },
+   {
+    "s": "DSV.CO",
+    "n": "DSV",
+    "t": "Stock"
+   },
+   {
+    "s": "MAERSK-B.CO",
+    "n": "Maersk",
+    "t": "Stock"
+   },
+   {
+    "s": "ERIC-B.ST",
+    "n": "Ericsson",
+    "t": "Stock"
+   },
+   {
+    "s": "VOLV-B.ST",
+    "n": "Volvo",
+    "t": "Stock"
+   },
+   {
+    "s": "ATCO-A.ST",
+    "n": "Atlas Copco",
+    "t": "Stock"
+   },
+   {
+    "s": "INVE-B.ST",
+    "n": "Investor AB",
+    "t": "Stock"
+   },
+   {
+    "s": "SPOT",
+    "n": "Spotify",
+    "t": "Stock"
+   },
+   {
+    "s": "EQNR.OL",
+    "n": "Equinor",
+    "t": "Stock"
+   },
+   {
+    "s": "DNB.OL",
+    "n": "DNB Bank",
+    "t": "Stock"
+   }
+  ],
+  "Japan": [
+   {
+    "s": "7203.T",
+    "n": "Toyota",
+    "t": "Stock"
+   },
+   {
+    "s": "6758.T",
+    "n": "Sony",
+    "t": "Stock"
+   },
+   {
+    "s": "9984.T",
+    "n": "SoftBank Group",
+    "t": "Stock"
+   },
+   {
+    "s": "6861.T",
+    "n": "Keyence",
+    "t": "Stock"
+   },
+   {
+    "s": "8306.T",
+    "n": "Mitsubishi UFJ",
+    "t": "Stock"
+   },
+   {
+    "s": "9432.T",
+    "n": "NTT",
+    "t": "Stock"
+   },
+   {
+    "s": "7974.T",
+    "n": "Nintendo",
+    "t": "Stock"
+   },
+   {
+    "s": "6501.T",
+    "n": "Hitachi",
+    "t": "Stock"
+   },
+   {
+    "s": "8035.T",
+    "n": "Tokyo Electron",
+    "t": "Stock"
+   },
+   {
+    "s": "6098.T",
+    "n": "Recruit",
+    "t": "Stock"
+   },
+   {
+    "s": "4063.T",
+    "n": "Shin-Etsu Chemical",
+    "t": "Stock"
+   },
+   {
+    "s": "9983.T",
+    "n": "Fast Retailing",
+    "t": "Stock"
+   }
+  ],
+  "China & Hong Kong": [
+   {
+    "s": "0700.HK",
+    "n": "Tencent",
+    "t": "Stock"
+   },
+   {
+    "s": "9988.HK",
+    "n": "Alibaba",
+    "t": "Stock"
+   },
+   {
+    "s": "3690.HK",
+    "n": "Meituan",
+    "t": "Stock"
+   },
+   {
+    "s": "1299.HK",
+    "n": "AIA Group",
+    "t": "Stock"
+   },
+   {
+    "s": "0005.HK",
+    "n": "HSBC Holdings (HK)",
+    "t": "Stock"
+   },
+   {
+    "s": "1810.HK",
+    "n": "Xiaomi",
+    "t": "Stock"
+   },
+   {
+    "s": "0941.HK",
+    "n": "China Mobile",
+    "t": "Stock"
+   },
+   {
+    "s": "1211.HK",
+    "n": "BYD",
+    "t": "Stock"
+   },
+   {
+    "s": "2318.HK",
+    "n": "Ping An",
+    "t": "Stock"
+   },
+   {
+    "s": "0388.HK",
+    "n": "Hong Kong Exchanges",
+    "t": "Stock"
+   }
+  ],
+  "Asia-Pacific": [
+   {
+    "s": "005930.KS",
+    "n": "Samsung Electronics",
+    "t": "Stock"
+   },
+   {
+    "s": "000660.KS",
+    "n": "SK Hynix",
+    "t": "Stock"
+   },
+   {
+    "s": "2330.TW",
+    "n": "TSMC (Taiwan)",
+    "t": "Stock"
+   },
+   {
+    "s": "RELIANCE.NS",
+    "n": "Reliance Industries",
+    "t": "Stock"
+   },
+   {
+    "s": "TCS.NS",
+    "n": "Tata Consultancy",
+    "t": "Stock"
+   },
+   {
+    "s": "INFY.NS",
+    "n": "Infosys",
+    "t": "Stock"
+   },
+   {
+    "s": "HDFCBANK.NS",
+    "n": "HDFC Bank",
+    "t": "Stock"
+   },
+   {
+    "s": "BHP.AX",
+    "n": "BHP",
+    "t": "Stock"
+   },
+   {
+    "s": "CBA.AX",
+    "n": "Commonwealth Bank",
+    "t": "Stock"
+   },
+   {
+    "s": "CSL.AX",
+    "n": "CSL",
+    "t": "Stock"
+   },
+   {
+    "s": "D05.SI",
+    "n": "DBS Group",
+    "t": "Stock"
+   }
+  ],
+  "Canada": [
+   {
+    "s": "SHOP.TO",
+    "n": "Shopify",
+    "t": "Stock"
+   },
+   {
+    "s": "RY.TO",
+    "n": "Royal Bank of Canada",
+    "t": "Stock"
+   },
+   {
+    "s": "TD.TO",
+    "n": "TD Bank",
+    "t": "Stock"
+   },
+   {
+    "s": "ENB.TO",
+    "n": "Enbridge",
+    "t": "Stock"
+   },
+   {
+    "s": "CNQ.TO",
+    "n": "Canadian Natural",
+    "t": "Stock"
+   },
+   {
+    "s": "CP.TO",
+    "n": "CPKC",
+    "t": "Stock"
+   },
+   {
+    "s": "BN.TO",
+    "n": "Brookfield",
+    "t": "Stock"
+   },
+   {
+    "s": "CSU.TO",
+    "n": "Constellation Software",
+    "t": "Stock"
+   }
+  ],
+  "UCITS ETFs": [
+   {
+    "s": "VUSA.L",
+    "n": "Vanguard S&P 500 (Dist)",
+    "t": "ETF"
+   },
+   {
+    "s": "VUAG.L",
+    "n": "Vanguard S&P 500 (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "CSPX.L",
+    "n": "iShares Core S&P 500 (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "VUAA.L",
+    "n": "Vanguard S&P 500 USD (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "SWDA.L",
+    "n": "iShares Core MSCI World (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "IWDA.AS",
+    "n": "iShares Core MSCI World (Acc, EUR)",
+    "t": "ETF"
+   },
+   {
+    "s": "EUNL.DE",
+    "n": "iShares Core MSCI World (Xetra)",
+    "t": "ETF"
+   },
+   {
+    "s": "VWRL.L",
+    "n": "Vanguard FTSE All-World (Dist)",
+    "t": "ETF"
+   },
+   {
+    "s": "VWRP.L",
+    "n": "Vanguard FTSE All-World (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "VWCE.DE",
+    "n": "Vanguard FTSE All-World (Acc, EUR)",
+    "t": "ETF"
+   },
+   {
+    "s": "SSAC.L",
+    "n": "iShares MSCI ACWI (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "EQQQ.L",
+    "n": "Invesco Nasdaq-100 (Dist)",
+    "t": "ETF"
+   },
+   {
+    "s": "CNDX.L",
+    "n": "iShares Nasdaq 100 (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "SXR8.DE",
+    "n": "iShares Core S&P 500 (Xetra)",
+    "t": "ETF"
+   },
+   {
+    "s": "ISF.L",
+    "n": "iShares Core FTSE 100",
+    "t": "ETF"
+   },
+   {
+    "s": "VUKE.L",
+    "n": "Vanguard FTSE 100",
+    "t": "ETF"
+   },
+   {
+    "s": "VMID.L",
+    "n": "Vanguard FTSE 250",
+    "t": "ETF"
+   },
+   {
+    "s": "VFEM.L",
+    "n": "Vanguard FTSE Emerging Markets",
+    "t": "ETF"
+   },
+   {
+    "s": "EIMI.L",
+    "n": "iShares Core MSCI EM IMI (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "IS3N.DE",
+    "n": "iShares Core MSCI EM IMI (Xetra)",
+    "t": "ETF"
+   },
+   {
+    "s": "VEUR.L",
+    "n": "Vanguard FTSE Developed Europe",
+    "t": "ETF"
+   },
+   {
+    "s": "MEUD.PA",
+    "n": "Amundi Stoxx Europe 600",
+    "t": "ETF"
+   },
+   {
+    "s": "VHYL.L",
+    "n": "Vanguard FTSE All-World High Dividend",
+    "t": "ETF"
+   },
+   {
+    "s": "SGLN.L",
+    "n": "iShares Physical Gold",
+    "t": "ETF"
+   },
+   {
+    "s": "IGLN.L",
+    "n": "iShares Physical Gold (USD)",
+    "t": "ETF"
+   },
+   {
+    "s": "INRG.L",
+    "n": "iShares Global Clean Energy",
+    "t": "ETF"
+   },
+   {
+    "s": "IITU.L",
+    "n": "iShares S&P 500 Info Tech",
+    "t": "ETF"
+   },
+   {
+    "s": "RBOT.L",
+    "n": "iShares Automation & Robotics",
+    "t": "ETF"
+   },
+   {
+    "s": "SMGB.L",
+    "n": "VanEck Semiconductor UCITS",
+    "t": "ETF"
+   },
+   {
+    "s": "VAGP.L",
+    "n": "Vanguard Global Aggregate Bond (Acc)",
+    "t": "ETF"
+   },
+   {
+    "s": "IGLT.L",
+    "n": "iShares Core UK Gilts",
+    "t": "ETF"
+   },
+   {
+    "s": "XDWD.DE",
+    "n": "Xtrackers MSCI World",
+    "t": "ETF"
+   },
+   {
+    "s": "XDWT.DE",
+    "n": "Xtrackers MSCI World Info Tech",
+    "t": "ETF"
+   },
+   {
+    "s": "EXSA.DE",
+    "n": "iShares STOXX Europe 600",
+    "t": "ETF"
+   },
+   {
+    "s": "CSNDX.SW",
+    "n": "iShares Nasdaq 100 (CHF)",
+    "t": "ETF"
+   }
+  ]
+ }
+}
