@@ -68,6 +68,7 @@ button, input, select { font: inherit; color: inherit; }
 .tabs a.active { background: var(--surface-3); color: var(--text-primary); }
 .search { position: relative; margin-left: auto; width: min(320px, 40vw); }
 .search input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); }
+::placeholder { color: var(--text-muted); opacity: 1; }
 .dropdown { position: absolute; top: 42px; left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5); max-height: 60vh; overflow: auto; }
 .dropdown li a { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text-primary); }
