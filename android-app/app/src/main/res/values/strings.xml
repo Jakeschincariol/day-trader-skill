@@ -1,0 +1,40 @@
+<resources>
+    <string name="app_name">Рыночные сигналы</string>
+    <string name="title">Рыночные сигналы</string>
+    <string name="subtitle">Технический анализ дневных котировок</string>
+    <string name="ticker_hint">Тикер, например AAPL</string>
+    <string name="analyze">Анализировать</string>
+    <string name="loading">Загружаем котировки…</string>
+    <string name="disclaimer">Информационный анализ, не инвестиционная рекомендация. Данные могут задерживаться или быть неполными. Решения и сделки остаются за вами.</string>
+    <string name="signal_title">Техническая картина</string>
+    <string name="price_label">Последняя цена</string>
+    <string name="change_label">Изменение за день</string>
+    <string name="sma20_label">SMA 20</string>
+    <string name="sma50_label">SMA 50</string>
+    <string name="rsi_label">RSI 14</string>
+    <string name="factor_title">Факторы анализа</string>
+    <string name="factor_price_above">Цена выше SMA 20: краткосрочный тренд положительный.</string>
+    <string name="factor_price_below">Цена ниже SMA 20: краткосрочный тренд ослаблен.</string>
+    <string name="factor_price_equal">Цена около SMA 20: краткосрочное направление не выражено.</string>
+    <string name="factor_sma_bullish">SMA 20 выше SMA 50: среднесрочный импульс положительный.</string>
+    <string name="factor_sma_bearish">SMA 20 ниже SMA 50: среднесрочный импульс ослаблен.</string>
+    <string name="factor_rsi_high">RSI выше 70: возможна перекупленность; сигнал требует осторожности.</string>
+    <string name="factor_rsi_low">RSI ниже 30: возможна перепроданность; это не подтверждает разворот.</string>
+    <string name="factor_rsi_positive">RSI в положительной зоне без экстремума.</string>
+    <string name="factor_rsi_neutral">RSI не подтверждает явное направление.</string>
+    <string name="factor_daily_up">Последняя дневная свеча закрылась выше предыдущей.</string>
+    <string name="factor_daily_down">Последняя дневная свеча закрылась ниже предыдущей.</string>
+    <string name="factor_daily_flat">Последняя дневная свеча почти не изменилась.</string>
+    <string name="trend_positive">Положительная картина</string>
+    <string name="trend_mixed">Смешанная картина</string>
+    <string name="trend_negative">Ослабленная картина</string>
+    <string name="source">Источник: Yahoo Finance Chart API · дневные данные</string>
+    <string name="error_invalid_ticker">Введите корректный тикер (1–15 латинских букв, цифр или . ^ = -).</string>
+    <string name="error_network">Не удалось загрузить котировки. Проверьте подключение и повторите попытку.</string>
+    <string name="error_data">Для анализа недостаточно корректных дневных данных.</string>
+    <string name="error_http">Источник данных вернул ошибку (%1$d). Попробуйте позже.</string>
+    <string name="format_price">$%1$.2f</string>
+    <string name="format_percent">%1$+.2f%%</string>
+    <string name="format_indicator">$%1$.2f</string>
+    <string name="format_rsi">%1$.1f</string>
+</resources>
