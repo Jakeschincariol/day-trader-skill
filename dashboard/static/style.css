@@ -823,3 +823,33 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
   .today-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; }
   .today-row .vd { grid-column: 1 / -1; }
 }
+
+/* ---------- portfolio + stock pages in the new style */
+.page-title { margin-bottom: 14px; }
+.page-title .sub { margin-bottom: 0; }
+.section-title { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin: 28px 0 10px; font-weight: 600; }
+.kpi-strip { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); padding: 0; overflow: hidden; }
+.kpi { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-left: 1px solid var(--border); min-width: 0; }
+.kpi:first-child { border-left: 0; }
+.kpi b { font-family: var(--mono); font-size: 20px; font-weight: 600; }
+.kpi b.warn { color: var(--warning); }
+.kpi > span:last-child { font-size: 13px; color: var(--text-secondary); }
+.kpi-main .big { font-family: var(--mono); font-size: clamp(28px, 3.4vw, 40px); font-weight: 600; letter-spacing: -.02em; }
+.kpi-main .gain { font-family: var(--mono); font-size: 14px; }
+.kpi-main .gain.up { color: var(--good-text); } .kpi-main .gain.down { color: var(--bad-text); }
+.stock-hero { margin-bottom: 16px; }
+.stock-hero .quote-head { margin-bottom: 0; }
+.stock-hero .entry-strip { margin: 14px 0 0; }
+.own-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-secondary); }
+.own-line svg { width: 16px; height: 16px; color: var(--accent); }
+.own-line b { color: var(--text-primary); }
+@media (max-width: 1000px) {
+  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpi-main { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }
+  .kpi-main + .kpi { border-left: 0; }
+}
+@media (max-width: 760px) {
+  .kpi { padding: 14px; }
+  .kpi b { font-size: 17px; }
+}
+@media (max-width: 760px) { .page-title .sub { display: none; } .kpi-strip .hero-k { font-size: 11px; letter-spacing: .04em; } }

@@ -346,7 +346,7 @@
       <div class="hero-chart" id="heroChart"><div class="skeleton" style="height:100%"></div></div>
       <div class="hero-legend"><span><i></i>Value</span><span><i class="dash"></i>Money you put in</span></div>`;
     // positions with a value in the account currency, for themes and the entry list
-    const pos = brokerPositions().map((p) => Object.assign({}, p, { mv: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
+    const pos = brokerPositions().map((p) => Object.assign({}, p, { acct: !!(p.valueAcct || p.value), mv: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
       .concat(manual().map((m) => Object.assign({ mv: m.qty * m.avgPrice }, m)));
     const total = pos.reduce((a, p) => a + (p.mv || 0), 0);
     homeToday(pos, pf.ccy, my);
@@ -392,7 +392,7 @@
     const el = $("#today");
     if (!el) return;
     const by = {};
-    pos.forEach((p) => { if (!by[p.symbol]) by[p.symbol] = { symbol: p.symbol, name: p.name || "", mv: 0 }; by[p.symbol].mv += p.mv || 0; });
+    pos.forEach((p) => { if (!by[p.symbol]) by[p.symbol] = { symbol: p.symbol, name: p.name || "", mv: 0, acct: p.acct }; by[p.symbol].mv += p.mv || 0; });
     const list = Object.values(by).sort((a, b) => b.mv - a.mv).slice(0, 6);
     if (!list.length) { el.innerHTML = `<p class="empty">No holdings yet.</p>`; return; }
     const quotes = await api("/api/spark?symbols=" + encodeURIComponent(list.map((x) => x.symbol).join(","))).catch(() => []);
@@ -401,7 +401,7 @@
       const v = e && e.verdict, c = q[x.symbol] || {};
       return `<a class="today-row" href="#/stock/${encodeURIComponent(x.symbol)}">
         <span class="nm"><b>${esc(x.symbol)}</b><span>${esc(x.name || c.name || "")}</span></span>
-        <span class="val">${noCents(money(x.mv, ccy))}<span class="${cls(c.changePct)}">${c.changePct == null ? "" : pct(c.changePct) + " today"}</span></span>
+        <span class="val">${noCents(x.acct ? money(x.mv, ccy) : (/^GB[pX]$/.test(c.currency || "") ? money(x.mv / 100, "GBP") : money(x.mv, c.currency || ccy)))}<span class="${cls(c.changePct)}">${c.changePct == null ? "" : pct(c.changePct) + " today"}</span></span>
         <span class="vd">${v ? `<b class="${esc(v.tone)}">${esc(v.title)}</b><span class="why">${esc(v.text)}</span>` : e === null ? `<span class="why">Entry check unavailable</span>` : `<span class="why">Checking…</span>`}</span></a>`;
     };
     el.innerHTML = list.map((x) => row(x)).join("");
@@ -599,8 +599,11 @@
     const t212 = state.t212 && !state.t212.error ? state.t212 : null;
     const held = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
     const p = a.plan;
+    const ownVal = held ? (held.valueAcct || held.value || (held.qty || 0) * (a.price || 0)) : 0;
+    const ownCcy = held && (held.valueAcct || held.value) ? ((state.t212 && state.t212.currency) || (state.revolut && state.revolut.currency) || a.currency) : a.currency;
+    const ownPl = held && held.avgPrice ? 100 * (a.price / held.avgPrice - 1) : null;
     view.innerHTML = `
-      <div class="quote-head">
+      <div class="card hero-card stock-hero"><div class="quote-head">
         <div><h1>${logo(a.symbol, 36)} ${esc(a.symbol)} <button class="star ${watchlist().includes(a.symbol) ? "on" : ""}" id="wstar" aria-label="Toggle watchlist">★</button></h1>
           <div class="sec">${esc(a.name)} · ${esc(a.exchange || "")} · ${esc(a.type || "")} · ${esc(a.currency || "")}</div></div>
         <div><div class="px num">${priceStr(a.price, a.currency)}</div><div class="num ${cls(a.change)}">${a.change >= 0 ? "+" : ""}${fmt(a.change, dp(a.price))} (${pct(a.changePct)}) today</div></div>
@@ -609,7 +612,8 @@
           <button class="btn sm" id="alertBtn" type="button"><i data-lucide="bell-plus"></i> Alert</button>
           <button class="btn sm" id="cmpBtn" type="button"><i data-lucide="git-compare-arrows"></i> Compare</button> ${rf("quote")}</div>
       </div>
-      ${isLT() ? `<a class="entry-strip" id="entryStrip" href="#ltEntryCard" hidden></a>` : ""}
+      ${held ? `<div class="own-line"><i data-lucide="wallet"></i><span>You own <b class="num">${fmt(held.qty, held.qty < 10 ? 4 : 2).replace(/\.?0+$/, "")}</b> shares</span><span>worth <b class="num">${money(ownVal, ownCcy)}</b></span>${held.avgPrice ? `<span>bought at <b class="num">${priceStr(held.avgPrice, a.currency)}</b> on average</span><span class="num ${cls(ownPl)}">${pct(ownPl, 1)} since</span>` : ""}</div>` : ""}
+      ${isLT() ? `<a class="entry-strip" id="entryStrip" href="#ltEntryCard" hidden></a>` : ""}</div>
       <div class="grid ${isLT() ? "" : "g2"}">
         <div class="card chart-card">
           <div class="card-head" style="flex-wrap:wrap"><h2 id="chartTitle">Price chart (daily)</h2>
@@ -888,18 +892,17 @@
   pages.portfolio = async function (arg, params) {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
     const lt = isLT();
-    view.innerHTML = `<h1>My Portfolio</h1><p class="sub">${lt ? "Your Trading 212 account (read-only), Revolut statement and manual holdings: what to accumulate, hold or trim, your monthly plan, diversification and dividends." : "Your Trading 212 account (read-only), Revolut statement and any holdings you add by hand, with a live rating and exit check on every position."}</p>
-      <div class="grid g4" id="pstats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
+    view.innerHTML = `<div class="page-title"><h1>Portfolio</h1><p class="sub">${lt ? "What to keep buying, hold or trim, your monthly plan, diversification and dividends." : "A live rating and exit check on every position."} Trading 212 is read only: this site never places orders.</p></div>
+      <div class="card hero-card kpi-strip" id="pstats">${skeleton(3)}</div>
+      <div class="card" style="margin-top:16px"><div class="card-head"><h2><i data-lucide="briefcase"></i>Positions</h2><span style="display:flex;gap:8px;align-items:center"><button class="btn sm" type="button" id="xlsxBtn" title="Holdings, monthly value, dividends: for Excel, Google Sheets or Mizantiq"><i data-lucide="file-spreadsheet"></i> Export</button>${rf("pos")}</span></div><div id="ptbl">${skeleton(8)}</div></div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>Positions</h2><span style="display:flex;gap:8px;align-items:center"><button class="btn sm" type="button" id="xlsxBtn" title="Holdings, monthly value, dividends: for Excel, Google Sheets or Mizantiq"><i data-lucide="file-spreadsheet"></i> Export</button>${rf("pos")}</span></div><div id="ptbl">${skeleton(8)}</div></div>
-        <div class="grid" style="align-content:start">
-          <div class="card" id="link">${skeleton(4)}</div>
-          <div class="card" id="revBox">${skeleton(3)}</div>
-          <div class="card"><div class="card-head"><h2>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
-          <div class="card"><div class="card-head"><h2>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
-        </div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="${lt ? "shapes" : "shield"}"></i>${lt ? "Diversification" : "Risk check"}</h2>${rf("pos")}</div><div id="riskBox">${skeleton(4)}</div></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="pie-chart"></i>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
       </div>
-      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
+      ${lt ? `<div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="coins"></i>Dividends</h2>${rf("divs")}</div><div id="divBox"><p class="muted">Link Trading 212 to see the dividends you receive.</p></div></div></div>` : ""}
+      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="line-chart"></i>Performance</h2>${rf("hist")}</div><p class="muted" id="phNote" style="font-size:12px;margin:-6px 0 10px"></p>
         <div id="pret" class="ret-grid ret7">${skeleton(2)}</div>
         <div class="card-head" style="margin-top:16px;flex-wrap:wrap"><h2 style="margin:0">Money invested vs value</h2>
           <div class="seg" id="vrng"><button data-r="1M">1M</button><button data-r="6M">6M</button><button data-r="1Y">1Y</button><button data-r="5Y">5Y</button><button data-r="Max" class="on">Max</button></div></div>
@@ -907,14 +910,16 @@
         <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio value</span><span style="color:var(--text-muted)"><i class="dash"></i>Money invested (cost of shares held)</span><span style="color:var(--series-2)"><i class="dash"></i>Same money in a world index fund (VWRL)</span><span><i style="background:rgba(12,163,12,.4);height:10px"></i>Gain</span><span><i style="background:rgba(208,59,59,.4);height:10px"></i>Loss</span></div>
         <div id="phWarn" class="muted" style="font-size:12px;margin-top:6px"></div>
       </div>
-      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="grid-3x3"></i>How your holdings move together</h2>${rf("corr")}</div><div id="corrBox">${skeleton(5)}</div></div>
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="telescope"></i>10-year plan</h2><span class="muted" style="font-size:12.5px">what monthly investing could grow to</span></div><div id="projBox">${skeleton(5)}</div></div>
-      ${lt ? `<div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
-        <div class="card"><div class="card-head"><h2><i data-lucide="coins"></i>Dividends</h2>${rf("divs")}</div><div id="divBox"><p class="muted">Link Trading 212 to see the dividends you receive.</p></div></div></div>` : ""}
+      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="grid-3x3"></i>How your holdings move together</h2>${rf("corr")}</div><div id="corrBox">${skeleton(5)}</div></div>
       <div class="card" style="margin-top:16px${lt ? ";display:none" : ""}" id="journalCard"><div class="card-head"><h2>Trade journal</h2>${rf("journal")}</div><div id="journal"><p class="muted">Link Trading 212 to see your closed trades, win rate and average win and loss.</p></div></div>
+      <h2 class="section-title">Accounts and settings</h2>
+      <div class="grid g2">
+        <div class="card" id="link">${skeleton(4)}</div>
+        <div class="card" id="revBox">${skeleton(3)}</div>
+      </div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><h2>Add a holding manually</h2><p class="muted" style="margin-top:-6px">For shares held outside Trading 212, or to plan before you link. Stored only in this browser.</p>
+        <div class="card"><h2><i data-lucide="plus"></i>Add a holding manually</h2><p class="muted" style="margin-top:-6px">For shares held outside Trading 212, or to plan before you link. Stored only in this browser.</p>
           <form class="form" id="mform"><div class="form-row">
             <label class="field">Symbol<input name="symbol" required placeholder="AAPL" value="${esc(params.get("add") || "")}"></label>
             <label class="field">Shares<input name="qty" type="number" step="any" min="0" required></label>
@@ -1017,11 +1022,14 @@
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
     if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
+    const costBasis = total - ppl;
     $("#pstats").innerHTML = `
-      <div class="card stat"><div class="label"><i data-lucide="wallet"></i>Total value</div><div class="value num" data-count="${total}" data-fmt="money:${ccy}">${money(total, ccy)}</div><div class="delta sec">${[t ? "Trading 212 " + esc(t.env) : "", rv ? rv.broker || "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="trending-up"></i>Gain so far (not sold)</div><div class="value num ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}</div><div class="delta num ${cls(ppl)}">${invested && !t && !rv ? pct(100 * ppl / invested) : ""}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="banknote"></i>Free cash</div><div class="value num">${t ? money(t.cash.free, ccy) : "–"}</div><div class="delta sec">${t && t.cash.result != null ? "Realised P/L " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</div></div>
-      <div class="card stat"><div class="label"><i data-lucide="bell-ring"></i>${lt ? "To trim or review" : "Positions needing attention"}</div><div class="value num ${alerts ? "warn" : ""}">${alerts}</div><div class="delta sec">of ${positions.length} positions</div></div>`;
+      <div class="kpi kpi-main"><span class="hero-k">Total value · ${[t ? "Trading 212 " + esc(t.env) : "", rv ? esc(rv.broker || "Revolut") : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ") || "manual holdings"}</span>
+        <span class="big" data-count="${total}" data-fmt="money:${esc(ccy)}">${money(total, ccy)}</span>
+        <span class="gain ${cls(ppl)}">${ppl >= 0 ? "+" : ""}${money(ppl, ccy)}${costBasis > 0 ? ` (${pct(100 * ppl / costBasis, 1)})` : ""} gain so far, not sold</span></div>
+      <div class="kpi"><span class="hero-k">Free cash</span><b>${t ? money(t.cash.free, ccy) : "–"}</b><span>${t && t.cash.result != null ? "Realised gain " + money(t.cash.result, ccy) : "link Trading 212 to see cash"}</span></div>
+      <div class="kpi"><span class="hero-k">${lt ? "To trim or review" : "Need attention"}</span><b class="${alerts ? "warn" : ""}">${alerts}</b><span>of ${positions.length} positions</span></div>
+      <div class="kpi"><span class="hero-k">Positions</span><b>${new Set(positions.map((x) => x.symbol)).size}</b><span>${invested && !t && !rv ? "cost " + money(invested, ccy) : "different stocks and funds"}</span></div>`;
     if (window.Insights && $("#corrBox")) {
       const bySym = {};
       positions.forEach((p) => { bySym[p.symbol] = (bySym[p.symbol] || 0) + (p.valueAcct || p.mv || 0); });
