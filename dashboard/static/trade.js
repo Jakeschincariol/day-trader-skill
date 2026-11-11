@@ -403,7 +403,7 @@
     </div>`;
     if (!d.open) d.showModal();
   }
-  document.addEventListener("click", (e) => { if (e.target.closest("#phoneBtn")) openPhone(); });
+  document.addEventListener("click", (e) => { if (e.target.closest("#phoneBtn, .js-phone")) openPhone(); });
 
   window.Trade = { openPhone, openTicket, sizeLine, openAlerts, addAlert, badge, check, regime, backtest, risk, riskPanel, journal, t212Ticker, account };
   document.addEventListener("DOMContentLoaded", () => { badge(); check(); });

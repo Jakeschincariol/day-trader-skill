@@ -259,21 +259,26 @@
 
   pages.home = async function () {
     const lt = isLT();
-    view.innerHTML = `<h1>Market Dashboard</h1><p class="sub">${lt ? "Your long-term overview: quality businesses on sale, your watchlist, portfolio and the market mood." : "Live overview of the market, today's best setups, your watchlist and portfolio."}</p>
+    view.innerHTML = `<h1 class="sr-only">Home</h1>
+      <div class="home-hero">
+        <div class="card hero-card" id="heroValue">${skeleton(5)}</div>
+        <div class="card hero-card plan-card" id="heroPlan">${skeleton(4)}</div>
+      </div>
       <div id="moodBanner" style="margin-bottom:16px"></div>
-      <div class="card brief-card" style="margin-bottom:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="sunrise"></i>Your briefing</h2><span style="display:flex;gap:10px;align-items:center">${rf("brief")}<a href="#/news?tab=cal">Calendar →</a></span></div><div id="brief">${skeleton(4)}</div></div>
-      <div class="grid g4" id="stats">${[1, 2, 3, 4].map(() => `<div class="card stat">${skeleton(2)}</div>`).join("")}</div>
+      <div class="grid g2">
+        <div class="card"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="list-checks"></i>Your stocks today</h2><span style="display:flex;gap:10px;align-items:center"><span class="muted hide-sm" style="font-size:12.5px">entry check for each holding</span><a href="#/portfolio">Portfolio →</a></span></div><div id="today">${skeleton(5)}</div></div>
+        <div class="card brief-card"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="sunrise"></i>Your briefing</h2><span style="display:flex;gap:10px;align-items:center">${rf("brief")}<a href="#/news?tab=cal">Calendar →</a></span></div><div id="brief">${skeleton(4)}</div></div>
+      </div>
+      <div class="card" id="saleCard" style="margin-top:16px"${lt ? " hidden" : ""}><div class="card-head"><h2>${lt ? "Quality on sale" : "Top Strong Buys"}</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>${lt ? "Quality on sale" : "Top Strong Buys"}</h2><span style="display:flex;gap:10px;align-items:center">${rf("market")}<a href="#/signals">See all →</a></span></div><div id="top">${skeleton(8)}</div></div>
+        <div class="card"><div class="card-head"><h2>Your watchlist</h2><span style="display:flex;gap:10px;align-items:center">${rf("wl")}<a href="#/markets">Add more →</a></span></div><div id="wl">${skeleton(5)}</div></div>
         <div class="card"><div class="card-head"><h2>${lt ? "Top quality (score 75+)" : "In the buy zone now"}</h2>${rf("market")}</div><div id="zone">${skeleton(6)}</div></div>
       </div>
       <div class="grid g2" style="margin-top:16px">
-        <div class="card"><div class="card-head"><h2>Your watchlist</h2><span style="display:flex;gap:10px;align-items:center">${rf("wl")}<a href="#/markets">Add more →</a></span></div><div id="wl">${skeleton(5)}</div></div>
-        <div class="card"><div class="card-head"><h2><i data-lucide="trending-up"></i>Trending tickers</h2>${rf("trend")}</div><div id="trend">${skeleton(5)}</div></div>
-      </div>
-      <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Latest news</h2><span style="display:flex;gap:10px;align-items:center">${rf("hnews")}<a href="#/news">All news →</a></span></div><div id="hn" class="news-list news-compact">${skeleton(6)}</div></div>
+        <div class="card"><div class="card-head"><h2><i data-lucide="trending-up"></i>Trending tickers</h2>${rf("trend")}</div><div id="trend">${skeleton(5)}</div></div>
       </div>`;
+    homeHero();
 
     RF.hnews = () => api("/api/news?symbols=" + encodeURIComponent(watchlist().slice(0, 8).join(","))).then((news) => {
       $("#hn") && ($("#hn").innerHTML = newsHtml(news.slice(0, 7), true));
@@ -299,29 +304,136 @@
     const live = setInterval(() => { if (document.hidden) return; homeWatch(); RF.trend(); if (isLT()) homeSale(); }, 60000);
     const prev = current; current = () => { prev && prev(); clearInterval(live); };
   };
+  // ---- home, top: portfolio value over time, this month's plan, and an entry check for each holding
+  const noCents = (txt) => txt.replace(/[.,]\d\d(?=\D*$)/, "");
+  function heroPath(vals, w, h, lo, hi) {
+    const n = vals.length;
+    return vals.map((v, i) => `${i ? "L" : "M"}${(n > 1 ? (i / (n - 1)) * w : 0).toFixed(1)} ${(h - 4 - ((v - lo) / (hi - lo || 1)) * (h - 8)).toFixed(1)}`).join(" ");
+  }
+  function heroChart(el, h, range) {
+    const days = { "6M": 183, "1Y": 365, All: 1e9 }[range] || 365;
+    const cut = Date.now() - days * 864e5;
+    let i0 = h.dates.findIndex((d) => new Date(d).getTime() >= cut);
+    if (i0 < 0) i0 = 0;
+    const val = h.value.slice(i0), inv = h.invested.slice(i0);
+    if (val.length < 2) { el.innerHTML = `<p class="muted" style="font-size:13px">Not enough history yet for a chart.</p>`; return; }
+    const all = val.concat(inv).filter((x) => x != null), lo = Math.min(...all), hi = Math.max(...all);
+    const W = 800, H = 150, line = heroPath(val, W, H, lo, hi);
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Portfolio value against money put in">
+      <defs><linearGradient id="heroFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3987e5" stop-opacity=".32"/><stop offset="1" stop-color="#3987e5" stop-opacity="0"/></linearGradient></defs>
+      <path d="${line} L${W} ${H} L0 ${H} Z" fill="url(#heroFill)"/>
+      <path d="${heroPath(inv, W, H, lo, hi)}" fill="none" stroke="#9a9891" stroke-width="1.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+      <path d="${line}" fill="none" stroke="#3987e5" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+  async function homeHero() {
+    const my = routeId;
+    const t212 = await getT212().catch(() => null);
+    if (my !== routeId || !$("#heroValue")) return;
+    const pf = portfolioSummary(t212, []);
+    const boxV = $("#heroValue"), boxP = $("#heroPlan");
+    if (!pf) {
+      boxV.innerHTML = `<div class="hero-k">My portfolio</div><p style="margin:12px 0 4px;font-size:16px">Link your broker to see your money here.</p><p class="muted" style="margin:0 0 14px">Trading 212 is read only: this site never places orders. Revolut users can import a statement.</p><a class="btn primary" href="#/portfolio">Link Trading 212 or Revolut</a>`;
+      boxP.innerHTML = `<div class="hero-k">This month's plan</div><p class="plan-hint">Set how much you invest each month on the Portfolio page, in the 10-year plan.</p>`;
+      $("#today").innerHTML = `<p class="empty">Your holdings will show here, each with a simple "buy now or wait" check.</p>`;
+      return;
+    }
+    const src = [t212 && !t212.error ? "Trading 212" : "", state.revolut && state.revolut.linked ? state.revolut.broker || "Revolut" : "", manual().length ? "manual" : ""].filter(Boolean).join(" + ");
+    const cost = pf.value - pf.ppl;
+    boxV.innerHTML = `<div class="hero-head"><span class="hero-k">My portfolio · ${esc(src)}</span>
+        <div class="seg" id="heroRange" role="group" aria-label="Chart period"><button type="button" data-r="6M">6M</button><button type="button" data-r="1Y">1Y</button><button type="button" data-r="All">All</button></div></div>
+      <div class="hero-val"><span class="big" data-count="${pf.value}" data-fmt="money:${esc(pf.ccy)}">${money(pf.value, pf.ccy)}</span>
+        <span class="gain ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)}${cost > 0 ? ` (${pct(100 * pf.ppl / cost, 1)})` : ""} gain so far</span></div>
+      <div class="hero-chart" id="heroChart"><div class="skeleton" style="height:100%"></div></div>
+      <div class="hero-legend"><span><i></i>Value</span><span><i class="dash"></i>Money you put in</span></div>`;
+    // positions with a value in the account currency, for themes and the entry list
+    const pos = brokerPositions().map((p) => Object.assign({}, p, { mv: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
+      .concat(manual().map((m) => Object.assign({ mv: m.qty * m.avgPrice }, m)));
+    const total = pos.reduce((a, p) => a + (p.mv || 0), 0);
+    homeToday(pos, pf.ccy, my);
+    // monthly plan + theme warning
+    const monthly = +settings().monthly || 0;
+    let theme = null;
+    if (window.LT && pos.length) {
+      try {
+        const ts = await window.LT.themeShares(pos, total);
+        const top = Object.entries(ts.byGroup).concat(Object.entries(ts.byTheme)).sort((a, b) => b[1] - a[1])[0];
+        if (top) theme = { name: top[0], pct: top[1] };
+      } catch (e) { theme = null; }
+    }
+    let h = null;
+    try { h = await post("/api/portfolio/history", { manual: manual(), base: settings().ccy || pf.ccy || "USD" }); } catch (e) { h = null; }
+    if (my !== routeId || !$("#heroPlan")) return;
+    // money put in this calendar month = change in "invested" since the last day of the previous month
+    let thisMonth = null;
+    if (h && h.dates && h.dates.length) {
+      const m0 = new Date(); m0.setDate(1); m0.setHours(0, 0, 0, 0);
+      let k = h.dates.length - 1;
+      while (k >= 0 && new Date(h.dates[k]).getTime() >= m0.getTime()) k--;
+      thisMonth = Math.max(0, h.invested[h.invested.length - 1] - (k >= 0 ? h.invested[k] : 0));
+    }
+    const pc = h && h.base ? h.base : pf.ccy;
+    const left = monthly ? Math.max(0, monthly - (thisMonth || 0)) : 0;
+    const share = monthly ? Math.min(100, 100 * (thisMonth || 0) / monthly) : 0;
+    const cap = window.LT ? window.LT.THEME_CAP : 40;
+    boxP.innerHTML = `<div class="hero-k">This month's plan</div>
+      ${monthly ? `<div class="plan-fig"><b>${thisMonth == null ? "–" : noCents(money(thisMonth, pc))}</b><span class="sec">of ${noCents(money(monthly, pc))} invested</span></div>
+        <div class="plan-bar" role="progressbar" aria-label="Share of this month's plan invested" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(share)}"><span class="${share >= 100 ? "done" : ""}" style="width:${share.toFixed(0)}%"></span></div>
+        <p class="plan-hint">${thisMonth == null ? "Buys this month could not be read." : left > 0 ? `${noCents(money(left, pc))} left to invest this month.` : "Done for this month. Nothing else to do."}</p>`
+        : `<p class="plan-hint">Set your monthly amount in the <a href="#/portfolio">10-year plan</a> to track it here.</p>`}
+      ${theme && theme.pct > cap ? `<div class="plan-warn"><b>${esc(theme.name)}: ${theme.pct.toFixed(0)}% of your money</b>Above your ${cap}% limit for one theme. Put new money into something else first, for example a world fund.</div>`
+        : theme ? `<div class="plan-ok">Biggest theme: ${esc(theme.name)} at ${theme.pct.toFixed(0)}%, under your ${cap}% limit.</div>` : ""}`;
+    if (!h || !h.dates || !h.dates.length) { $("#heroChart").innerHTML = `<p class="muted" style="font-size:13px">No history yet.</p>`; return; }
+    let range = store.get("heroRange", "1Y");
+    const paint = () => { $$("#heroRange button").forEach((b) => b.classList.toggle("on", b.dataset.r === range)); heroChart($("#heroChart"), h, range); };
+    $("#heroRange").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; range = b.dataset.r; store.set("heroRange", range); paint(); });
+    paint();
+  }
+  async function homeToday(pos, ccy, my) {
+    const el = $("#today");
+    if (!el) return;
+    const by = {};
+    pos.forEach((p) => { if (!by[p.symbol]) by[p.symbol] = { symbol: p.symbol, name: p.name || "", mv: 0 }; by[p.symbol].mv += p.mv || 0; });
+    const list = Object.values(by).sort((a, b) => b.mv - a.mv).slice(0, 6);
+    if (!list.length) { el.innerHTML = `<p class="empty">No holdings yet.</p>`; return; }
+    const quotes = await api("/api/spark?symbols=" + encodeURIComponent(list.map((x) => x.symbol).join(","))).catch(() => []);
+    const q = Object.fromEntries(quotes.map((r) => [r.symbol, r]));
+    const row = (x, e) => {
+      const v = e && e.verdict, c = q[x.symbol] || {};
+      return `<a class="today-row" href="#/stock/${encodeURIComponent(x.symbol)}">
+        <span class="nm"><b>${esc(x.symbol)}</b><span>${esc(x.name || c.name || "")}</span></span>
+        <span class="val">${noCents(money(x.mv, ccy))}<span class="${cls(c.changePct)}">${c.changePct == null ? "" : pct(c.changePct) + " today"}</span></span>
+        <span class="vd">${v ? `<b class="${esc(v.tone)}">${esc(v.title)}</b><span class="why">${esc(v.text)}</span>` : e === null ? `<span class="why">Entry check unavailable</span>` : `<span class="why">Checking…</span>`}</span></a>`;
+    };
+    el.innerHTML = list.map((x) => row(x)).join("");
+    const res = await Promise.all(list.map((x) => (window.LT ? window.LT.entry(x.symbol).catch(() => null) : null)));
+    if (my !== routeId || !$("#today")) return;
+    el.innerHTML = list.map((x, i) => row(x, res[i])).join("");
+  }
+
   async function homeMarket() {
     const [rows, t212] = await Promise.all([getScreener(), getT212().catch(() => null)]);
-    if (!$("#stats")) return;
+    if (!$("#top")) return;
     const stocks = rows.filter((r) => r.group === "stocks");
     const strong = stocks.filter((r) => r.rating === "Strong Buy").sort((a, b) => b.score - a.score);
     const zone = rows.filter((r) => (r.entryStatus || "").startsWith("Buy")).sort((a, b) => b.score - a.score);
     const spy = rows.find((r) => r.symbol === "SPY") || {};
     const breadth = Math.round(100 * stocks.filter((r) => r.sma50 && r.price > r.sma50).length / (stocks.length || 1));
     const pf = portfolioSummary(t212, rows);
-    $("#stats").innerHTML = `
+    if ($("#stats")) $("#stats").innerHTML = `
       <div class="card stat"><div class="label"><i data-lucide="wallet"></i>My portfolio</div>${pf ? `<div class="value num" data-count="${pf.value}" data-fmt="money:${pf.ccy}">${money(pf.value, pf.ccy)}</div><div class="delta num ${cls(pf.ppl)}">${pf.ppl >= 0 ? "+" : ""}${money(pf.ppl, pf.ccy)} open P/L</div>` : `<div class="value" style="font-size:16px;margin-top:8px"><a href="#/portfolio">Link Trading 212 or Revolut →</a></div>`}</div>
       <div class="card stat"><div class="label"><i data-lucide="activity"></i>S&P 500 (SPY)</div><div class="value num" data-count="${spy.price}" data-fmt="num:2">${fmt(spy.price, 2)}</div><div class="delta">${(isLT() ? "" : ratingBadge(spy.rating))} <span class="${cls(spy.changePct)} num">${pct(spy.changePct)}</span></div></div>
       <div class="card stat"><div class="label"><i data-lucide="bar-chart-3"></i>Market breadth</div><div class="value num">${breadth}%</div><div class="delta sec">of tracked stocks above their 50-day average</div></div>
       <div class="card stat"><div class="label"><i data-lucide="flame"></i>Strong Buy signals</div><div class="value num" data-count="${strong.length}" data-fmt="int">${strong.length}</div><div class="delta sec">${zone.length} in a buy zone right now</div></div>`;
     if (isLT() && window.LT) {
-      $("#stats").children[3].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
+      if ($("#stats")) $("#stats").children[3].innerHTML = `<div class="label"><i data-lucide="gem"></i>Quality on sale</div><div class="value num" id="qCount">…</div><div class="delta sec">strong businesses below their usual price</div>`;
       $("#top").innerHTML = `<p class="muted" style="font-size:13px">Scoring stocks for quality and value (the first time takes about a minute)…</p>`;
       const u = await getUniverse();
       const prof = await window.LT.profiles([...new Set(Object.values(u.stocks).flat())]).catch(() => []);
       if (!$("#top")) return;
       const sale = prof.filter((p) => p.zone === "Accumulate+").sort((a, b) => b.score - a.score);
       const core = prof.filter((p) => p.score >= 75).sort((a, b) => b.score - a.score);
-      $("#qCount").textContent = sale.length;
+      if ($("#qCount")) $("#qCount").textContent = sale.length;
+      if ($("#saleCard")) $("#saleCard").hidden = !sale.length;
       saleSyms = sale.slice(0, 8).map((p) => p.symbol);
       if (sale.length) await homeSale();
       else $("#top").innerHTML = `<p class="empty">No quality names on sale right now: keep your monthly plan.</p>`;

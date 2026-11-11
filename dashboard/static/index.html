@@ -21,25 +21,31 @@
     <img src="/icon.svg" alt="" width="26" height="26">
     <span>Trader<b>Dash</b></span>
   </a>
-  <nav class="tabs" id="tabs">
-    <a href="#/" data-tab="home"><i data-lucide="layout-dashboard"></i>Dashboard</a>
+  <nav class="tabs" id="tabs" aria-label="Pages">
+    <span class="nav-group">My money</span>
+    <a href="#/" data-tab="home"><i data-lucide="house"></i>Home</a>
+    <a href="#/portfolio" data-tab="portfolio"><i data-lucide="wallet"></i>Portfolio</a>
+    <span class="nav-group">Find stocks</span>
     <a href="#/markets" data-tab="markets"><i data-lucide="candlestick-chart"></i>Markets</a>
     <a href="#/map" data-tab="map" class="hide-m"><i data-lucide="layout-grid"></i>Market Map</a>
     <a href="#/signals" data-tab="signals"><i data-lucide="flame"></i>Strong Buys</a>
-    <a href="#/runners" data-tab="runners"><i data-lucide="rocket"></i>Runners</a>
     <a href="#/radar" data-tab="radar" class="tab-ai"><i data-lucide="radar"></i>Radar</a>
+    <a href="#/runners" data-tab="runners"><i data-lucide="rocket"></i>Runners</a>
     <a href="#/compare" data-tab="compare" class="hide-m"><i data-lucide="git-compare-arrows"></i>Compare</a>
-    <a href="#/portfolio" data-tab="portfolio"><i data-lucide="wallet"></i>Portfolio</a>
+    <span class="nav-group">Stay informed</span>
     <a href="#/news" data-tab="news" class="hide-m"><i data-lucide="newspaper"></i>News</a>
     <button type="button" class="tab-more" id="tabMore" aria-expanded="false" aria-label="More pages"><i data-lucide="ellipsis"></i>More</button>
   </nav>
-  <div class="seg mode-seg" id="modeSeg" role="group" aria-label="Investing style"><button data-m="lt" type="button">Long-term</button><button data-m="swing" type="button">Swing</button></div>
-  <button class="bell" id="bell" type="button" aria-label="Price alerts"><i data-lucide="bell"></i><span id="bellCount" class="bell-count" hidden></span></button>
-  <form class="search" id="search" autocomplete="off" role="search">
-    <i data-lucide="search" class="search-ico"></i>
-    <input id="searchInput" type="search" placeholder="Search any stock or ETF…" aria-label="Search stocks and ETFs">
-    <ul id="searchResults" class="dropdown" hidden></ul>
-  </form>
+  <button type="button" class="btn sm side-phone js-phone"><i data-lucide="smartphone"></i> Use on iPhone</button>
+  <div class="tools">
+    <form class="search" id="search" autocomplete="off" role="search">
+      <i data-lucide="search" class="search-ico"></i>
+      <input id="searchInput" type="search" placeholder="Search any stock or ETF…" aria-label="Search stocks and ETFs">
+      <ul id="searchResults" class="dropdown" hidden></ul>
+    </form>
+    <div class="seg mode-seg" id="modeSeg" role="group" aria-label="Investing style"><button data-m="lt" type="button">Long-term</button><button data-m="swing" type="button">Swing</button></div>
+    <button class="bell" id="bell" type="button" aria-label="Price alerts"><i data-lucide="bell"></i><span id="bellCount" class="bell-count" hidden></span></button>
+  </div>
 </header>
 
 <div class="ticker-strip" id="strip" aria-label="Market indices"></div>
