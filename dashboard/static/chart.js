@@ -352,7 +352,7 @@
       const cnt = Math.max(1, n - start - 1);
       const x = (i) => left + (i - start) / cnt * pw;
       let lo = Infinity, hi = -Infinity;
-      for (let i = start; i < n; i++) { lo = Math.min(lo, d.value[i], d.invested[i]); hi = Math.max(hi, d.value[i], d.invested[i]); }
+      for (let i = start; i < n; i++) { lo = Math.min(lo, d.value[i], d.invested[i]); hi = Math.max(hi, d.value[i], d.invested[i]); if (d.bench && d.bench[i] != null) { lo = Math.min(lo, d.bench[i]); hi = Math.max(hi, d.bench[i]); } }
       lo = Math.max(0, lo - (hi - lo) * 0.08); hi += (hi - lo) * 0.08 || 1;
       const y = (v) => top + (hi - v) / (hi - lo) * ph;
       const { ticks } = niceTicks(lo, hi, 5);
@@ -371,6 +371,12 @@
         ctx.stroke(); ctx.setLineDash([]);
       };
       line(d.invested, C.inv, [6, 4]);
+      if (d.bench) {
+        ctx.strokeStyle = css("--series-2"); ctx.lineWidth = 1.5; ctx.setLineDash([2, 3]); ctx.beginPath();
+        let on = false;
+        for (let i = start; i < n; i++) { const v = d.bench[i]; if (v == null) { on = false; continue; } on ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)); on = true; }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
       line(d.value, C.val);
       // x labels
       ctx.fillStyle = C.muted; ctx.textAlign = "center"; ctx.textBaseline = "top";
@@ -403,7 +409,8 @@
       tip.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${new Date(d.dates[i] + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</div>` +
         row("Value", money(d.value[i])) + row("Invested", money(d.invested[i])) +
         row("Unrealised", (gain >= 0 ? "+" : "") + money(gain) + (d.invested[i] ? ` (${gain >= 0 ? "+" : ""}${(100 * gain / d.invested[i]).toFixed(1)}%)` : ""), gain >= 0 ? "up" : "down") +
-        (d.realized ? row("Realised so far", money(d.realized[i])) : "");
+        (d.realized ? row("Realised so far", money(d.realized[i])) : "") +
+        (d.bench && d.bench[i] != null ? row("Same money in VWRL", money(d.bench[i])) : "");
       tip.hidden = false;
       const tw = tip.offsetWidth, th = tip.offsetHeight;
       let lx = px + 16; if (lx + tw > W) lx = px - tw - 16;
@@ -504,13 +511,13 @@
   /** Spider chart: the stock's pattern (blue) vs the legends' launch pattern (orange). Each axis is centred on the legends. */
   function spider(features, values, profile, size) {
     size = size || 260;
-    const c = size / 2, R = c - 46, n = features.length;
+    const c = size / 2, R = c - 58, n = features.length;
     const norm = (f, v) => Math.max(0.04, Math.min(1, 0.5 + (v - profile[f.key]) / (4 * f.scale)));
     const pt = (i, t) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [c + R * t * Math.cos(a), c + R * t * Math.sin(a)]; };
     const poly = (vals) => vals.map((t, i) => pt(i, t).map((z) => z.toFixed(1)).join(",")).join(" ");
     let g = [0.25, 0.5, 0.75, 1].map((t) => `<polygon points="${poly(features.map(() => t))}" fill="none" stroke="var(--grid)"/>`).join("");
     g += features.map((f, i) => { const [x, y] = pt(i, 1); const [lx, ly] = pt(i, 1.2);
-      return `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="var(--grid)"/><text x="${lx}" y="${ly}" font-size="9.5" text-anchor="middle" dominant-baseline="middle" fill="var(--text-muted)">${f.label.replace("Above 200-day avg", "vs 200-day").replace("50-day trend slope", "50d slope").replace("Near 52-week high", "Near high").replace("-month return", "m return")}</text>`; }).join("");
+      return `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="var(--grid)"/><text x="${lx}" y="${ly}" font-size="9.5" text-anchor="middle" dominant-baseline="middle" fill="var(--text-muted)">${f.label.replace("Rising volume", "Volume").replace("Above 200-day avg", "vs 200-day").replace("50-day trend slope", "50d slope").replace("Near 52-week high", "Near high").replace("-month return", "m return")}</text>`; }).join("");
     g += `<polygon points="${poly(features.map(() => 0.5))}" fill="rgba(217,89,38,.14)" stroke="var(--series-2)" stroke-width="2" stroke-dasharray="5 3"/>`;
     g += `<polygon points="${poly(features.map((f) => norm(f, values[f.key])))}" fill="rgba(57,135,229,.25)" stroke="var(--series-1)" stroke-width="2"/>`;
     g += features.map((f, i) => { const [x, y] = pt(i, norm(f, values[f.key])); return `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1.5"><title>${f.label}: ${(values[f.key] * 100).toFixed(1)}% (legends at launch: ${(profile[f.key] * 100).toFixed(1)}%)</title></circle>`; }).join("");
@@ -550,12 +557,11 @@
     const x = (k) => left + k / (n - 1) * pw, y = (v) => top + (ly(hi) - ly(v)) / (ly(hi) - ly(lo) || 1) * ph;
     let g = "";
     for (const m of [0.5, 1, 2, 3, 5, 10]) if (m >= lo && m <= hi) g += `<line x1="${left}" x2="${left + pw}" y1="${y(m)}" y2="${y(m)}" stroke="var(--grid)"/><text x="${left + pw + 6}" y="${y(m) + 4}" font-size="10.5" fill="var(--text-muted)">${fmt(price * m, price < 10 ? 2 : 0)} (${m >= 1 ? "+" : ""}${Math.round((m - 1) * 100)}%)</text>`;
-    const cols = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)", "var(--series-6)", "var(--series-7)", "var(--series-8)"];
+    const cols = [1, 2, 3, 4, 5, 6, 7, 8].map((k) => `var(--series-${k})`);
     winners.forEach((wi, j) => {
       const pts = wi.path.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
       const last = wi.path[wi.path.length - 1];
       g += `<polyline points="${pts}" fill="none" stroke="${cols[j % 8]}" stroke-width="1.5" opacity=".55"><title>${wi.symbol} after ${wi.date}: ${last >= 1 ? "+" : ""}${Math.round((last - 1) * 100)}% in 12 months</title></polyline>`;
-      g += `<text x="${x(wi.path.length - 1) - 2}" y="${y(last) - 4}" font-size="10" text-anchor="end" fill="${cols[j % 8]}">${wi.symbol}</text>`;
     });
     g += `<polyline points="${med.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--text-primary)" stroke-width="2.5" stroke-dasharray="6 4"><title>Median legend path: ${Math.round((med[n - 1] - 1) * 100)}%</title></polyline>`;
     g += `<circle cx="${x(0)}" cy="${y(1)}" r="4" fill="var(--text-primary)"/>`;
@@ -563,5 +569,25 @@
     return { svg: `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:760px" role="img" aria-label="Hypothetical paths if the stock repeated each legend's 12 months">${g}</svg>`, median: med[n - 1] };
   }
 
-  window.TChart = { radarScope, spider, ring, legendPath, analogPaths, PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
+  /** Intraday area sparkline like a quote board: red/green fill, dotted previous close. SVG string. */
+  function daySpark(values, prev, w, h, upHint) {
+    w = w || 120; h = h || 36;
+    const v = (values || []).filter((x) => x != null);
+    if (v.length < 2) return `<svg width="${w}" height="${h}" aria-hidden="true"></svg>`;
+    const lo = Math.min(...v, prev ?? Infinity), hi = Math.max(...v, prev ?? -Infinity);
+    const y = (x) => (h - 3 - (x - lo) / (hi - lo || 1) * (h - 6)).toFixed(1);
+    const x = (i) => (i / (v.length - 1) * w).toFixed(1);
+    const up = upHint != null ? upHint : v[v.length - 1] >= (prev ?? v[0]);
+    const col = up ? "#3fcf3f" : "#ff6b6b", fill = up ? "rgba(12,163,12,.28)" : "rgba(208,59,59,.30)";
+    const pts = v.map((c, i) => `${x(i)},${y(c)}`).join(" ");
+    const gid = "g" + Math.random().toString(36).slice(2, 8);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true" class="dayspark">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${fill}"/><stop offset="1" stop-color="rgba(0,0,0,0)"/></linearGradient></defs>
+      <polygon points="0,${h} ${pts} ${w},${h}" fill="url(#${gid})"/>
+      ${prev != null ? `<line x1="0" x2="${w}" y1="${y(prev)}" y2="${y(prev)}" stroke="rgba(240,239,236,.35)" stroke-dasharray="2 3"/>` : ""}
+      <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="2.6" fill="${col}"/></svg>`;
+  }
+
+  window.TChart = { daySpark, radarScope, spider, ring, legendPath, analogPaths, PriceChart, ValueChart, epsChart, revBars, sparkline, donut, fmt, fmtVol };
 })();
