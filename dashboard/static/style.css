@@ -744,3 +744,20 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
 .conn-list li { align-items: flex-start; }
 .conn-list li > span small { display: block; color: var(--text-muted); font-size: 12px; font-weight: 400; margin-top: 2px; }
 .conn-list li > b.num { font-size: 13px; font-weight: 600; max-width: 55%; text-align: right; }
+
+/* Day Runners */
+.rn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.rn-spark { margin-left: auto; line-height: 0; }
+.rn-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.rn-faded { opacity: .78; }
+.rn-size { font-size: 12.5px; margin: 10px 0 0; }
+.rn-news { font-size: 12.5px; margin: 10px 0 0; display: flex; gap: 6px; align-items: flex-start; }
+.rn-news svg.lucide { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 2px; color: var(--text-muted); }
+.rn-warn { font-size: 13.5px; line-height: 1.5; margin: 0 0 16px; border-left-color: var(--warning); }
+.rn-tools { flex-wrap: wrap; gap: 10px; align-items: center; }
+.rn-min { flex-direction: row; align-items: center; gap: 8px; }
+.rn-add { display: flex; gap: 6px; }
+.rn-add input { padding: 7px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); width: 190px; min-width: 0; }
+.rn-session { margin: 0 0 12px; font-size: 13px; }
+.rn-how li { margin-bottom: 6px; }
+@media (max-width: 760px) { .rn-add { flex: 1 1 100%; } .rn-add input { flex: 1; width: auto; } }

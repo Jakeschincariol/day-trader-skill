@@ -53,7 +53,7 @@
   // Refresh buttons: rf("key") renders "Updated hh:mm:ss  ↻"; RF[key] reloads that section with fresh data.
   let RF = {};
   const RF_NAMES = { market: "market signals", wl: "watchlist", hnews: "news", screener: "market table", signals: "signals", quote: "quote and plan", chart: "chart",
-    perf: "performance", fund: "fundamentals", brief: "briefing", corr: "correlation", entry: "entry check", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news" };
+    perf: "performance", fund: "fundamentals", brief: "briefing", corr: "correlation", entry: "entry check", snews: "news", pos: "positions", hist: "performance history", journal: "trade journal", map: "market map", radar: "AI radar", news: "news", runners: "day runners" };
   const rf = (key) => `<span class="rf-wrap"><span class="upd" data-upd="${key}"></span><button type="button" class="rf" data-rf="${key}" title="Refresh with the latest data" aria-label="Refresh ${RF_NAMES[key] || "this section"}"><i data-lucide="rotate-cw"></i></button></span>`;
   const stamp = (key) => $$(`[data-upd="${key}"]`).forEach((el) => (el.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })));
   async function runRefresh(key, btn) {
@@ -1033,6 +1033,11 @@
     if (!window.Compare) { view.innerHTML = `<p class="error">Compare module missing.</p>`; return; }
     const cleanup = await window.Compare.page(view, params);
     current = cleanup;
+  };
+
+  pages.runners = async function () {
+    if (!window.Runners) { view.innerHTML = `<p class="error">Runners module missing.</p>`; return; }
+    current = await window.Runners.page(view);
   };
 
   // ------------------------------------------------------------ market map (ECharts treemap)

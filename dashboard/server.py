@@ -11,6 +11,7 @@ Serves the web app in dashboard/static and a small JSON API:
   GET  /api/analysis?symbol=AAPL          bars, indicators, rating, entry plan
   GET  /api/screener?list=stocks|etfs|all every symbol in the list, rated
   GET  /api/search?q=apple                find any stock or ETF on Yahoo
+  GET  /api/runners?extra=STAK&min=10     small caps up 10%+ today, each with an entry, stop and targets
   GET  /api/news?symbols=AAPL,NVDA        headlines, newest first
   GET  /api/t212/status                   is Trading 212 linked?
   GET  /api/t212/portfolio                cash + positions from Trading 212
@@ -2224,6 +2225,189 @@ def trending(region="US", count=12):
     return spark(syms)
 
 
+# ---------------------------------------------------------------- day runners (momentum scanner)
+# Small caps up big today on heavy volume, each with a rule-based day-trade plan: entry, stop, two
+# targets. The levels come from today's 5-minute bars (high of day, pre-market high, VWAP, recent
+# lows). They are rules a momentum trader would follow, not a forecast.
+
+RUNNER_LISTS = ("small_cap_gainers", "day_gainers", "most_actives", "aggressive_small_caps")
+OTC = re.compile(r"OTC|PNK|Pink|Other OTC", re.I)
+
+
+def _screen(scr_id):
+    def load():
+        d = yahoo("/v1/finance/screener/predefined/saved?scrIds=%s&count=100" % scr_id)
+        return (((d.get("finance") or {}).get("result") or [{}])[0]).get("quotes") or []
+    try:
+        return cached(("screen", scr_id), 120, load)
+    except Exception:
+        return []
+
+
+def _session(state):
+    s = (state or "").upper()
+    return "pre" if s in ("PRE", "PREPRE") else "open" if s == "REGULAR" else "closed"
+
+
+def runner_quote(q):
+    """A Yahoo screener quote in one shape. Pre-market, price and change are the pre-market ones."""
+    state = q.get("marketState")
+    price, prev, chg = q.get("regularMarketPrice"), q.get("regularMarketPreviousClose"), q.get("regularMarketChangePercent")
+    if _session(state) == "pre" and q.get("preMarketPrice"):
+        price, prev, chg = q["preMarketPrice"], q.get("regularMarketPrice"), q.get("preMarketChangePercent")
+    vol, avg = q.get("regularMarketVolume") or 0, q.get("averageDailyVolume3Month") or q.get("averageDailyVolume10Day")
+    return {"symbol": q.get("symbol"), "name": q.get("longName") or q.get("shortName") or q.get("symbol"),
+            "price": price, "prev": prev, "changePct": chg, "volume": vol, "avgVolume": avg,
+            "relVol": r(vol / avg, 1) if avg else None, "shares": q.get("sharesOutstanding"), "marketCap": q.get("marketCap"),
+            "exchange": q.get("fullExchangeName") or q.get("exchange"), "type": q.get("quoteType"), "state": state}
+
+
+def runner_ok(x, min_pct=10):
+    """Worth a look: a listed stock (not OTC), $0.50 or more, up min_pct% or more, real volume."""
+    if x.get("type") not in (None, "EQUITY") or OTC.search(x.get("exchange") or ""):
+        return False
+    if not x.get("price") or x["price"] < 0.5 or (x.get("changePct") or 0) < min_pct:
+        return False
+    return _session(x.get("state")) == "pre" or (x.get("volume") or 0) >= 300000
+
+
+def runner_levels(rows, prev, gmtoffset, session):
+    """Plan from today's 5-minute bars [(t, o, h, l, c, v)] (pre-market included).
+
+    Setups, in the order a momentum trader checks them:
+      pre       pre-market: buy only above the pre-market high
+      breakout  above VWAP and within 3% of the high of day: buy the break of the high
+      pullback  above VWAP, 3-20% under the high: buy the first 5-minute candle to make a new high
+      below     under VWAP: no trade unless it gets back above VWAP
+      faded     25%+ under the high of day (or 15%+ and under VWAP): the move is over for today
+      next      market closed: tomorrow, buy only above today's high
+    Stop: the lowest low of the last 30 minutes (at least 1.5% below entry). Targets: 2R and 3R."""
+    if not rows:
+        return None
+    day = time.gmtime(rows[-1][0] + gmtoffset)[:3]
+    rows = [x for x in rows if time.gmtime(x[0] + gmtoffset)[:3] == day]
+    mins = lambda t: (lambda g: g.tm_hour * 60 + g.tm_min)(time.gmtime(t + gmtoffset))
+    pre = [x for x in rows if mins(x[0]) < 570]
+    reg = [x for x in rows if 570 <= mins(x[0]) < 960]
+    base = reg or pre or rows
+    last = rows[-1][4] if session != "closed" or not reg else reg[-1][4]
+    hod, lod = max(x[2] for x in base), min(x[3] for x in base)
+    pm_high = max((x[2] for x in pre), default=None)
+    vv = sum(x[5] for x in base)
+    vwap = sum((x[2] + x[3] + x[4]) / 3 * x[5] for x in base) / vv if vv else None
+    rngs = [x[2] - x[3] for x in base[-12:]]
+    atr5 = sum(rngs) / len(rngs) if rngs else 0
+    tick = 0.01 if last >= 1 else 0.0001
+    from_high = last / hod - 1 if hod else 0
+    under_vwap = vwap is not None and last < vwap
+
+    if session == "pre" and not reg:
+        setup, entry = "pre", (pm_high or hod) + tick
+    elif from_high <= -0.25 or (from_high <= -0.15 and under_vwap):
+        setup, entry = "faded", None
+    elif session == "closed":
+        setup, entry = "next", hod + tick
+    elif under_vwap:
+        setup, entry = "below", vwap + tick
+    elif from_high >= -0.03:
+        setup, entry = "breakout", hod + tick
+    else:
+        setup, entry = "pullback", base[-1][2] + tick  # break of the latest 5-minute candle
+
+    plan = None
+    if entry:
+        recent = [x[3] for x in base[-6:]]
+        stop = min(min(recent), entry * 0.985)
+        if session == "closed" and vwap and vwap < entry:
+            stop = min(stop, vwap)  # overnight: give it room down to today's VWAP
+        stop = min(stop, entry - max(atr5, tick))
+        risk = entry - stop
+        d = 4 if entry < 2 else 2
+        plan = {"entry": r(entry, d), "stop": r(stop, d), "t1": r(entry + 2 * risk, d), "t2": r(entry + 3 * risk, d),
+                "riskPct": r(100 * risk / entry, 1), "wide": risk / entry > 0.12}
+    d = 4 if last < 2 else 2
+    return {"setup": setup, "last": r(last, d), "hod": r(hod, d), "lod": r(lod, d), "pmHigh": r(pm_high, d),
+            "vwap": r(vwap, d), "fromHighPct": r(100 * from_high, 1), "gapPct": r(100 * (reg[0][1] / prev - 1), 1) if reg and prev else None,
+            "highPct": r(100 * (hod / prev - 1), 1) if prev else None, "plan": plan,
+            "spark": [r(x[4], 4) for x in base][-78:]}
+
+
+def runner_score(x):
+    """0-100: how much this looks like a stock that can keep running today (the classic momentum checklist)."""
+    s, why = 0, []
+    chg, rv, sh, px = x.get("changePct") or 0, x.get("relVol"), x.get("shares"), x.get("price") or 0
+    if chg >= 40: s += 25; why.append("up %d%% today" % chg)
+    elif chg >= 20: s += 18; why.append("up %d%% today" % chg)
+    elif chg >= 10: s += 10
+    if rv is not None:
+        if rv >= 10: s += 25; why.append("%.0f× normal volume" % rv)
+        elif rv >= 5: s += 18; why.append("%.0f× normal volume" % rv)
+        elif rv >= 2: s += 8
+    if sh:
+        if sh < 20e6: s += 20; why.append("few shares (%.1fM)" % (sh / 1e6))
+        elif sh < 50e6: s += 12
+        elif sh < 100e6: s += 5
+    if 1 <= px <= 20: s += 10
+    elif 0.5 <= px < 1 or 20 < px <= 50: s += 4
+    if x.get("news"): s += 10; why.append("fresh news")
+    lv = x.get("levels") or {}
+    if lv.get("setup") in ("breakout", "pullback", "pre", "next"): s += 10
+    elif lv.get("setup") in ("faded", "below"): s -= 15
+    return max(0, min(100, s)), why
+
+
+def _runner_detail(x):
+    try:
+        res = _chart(x["symbol"], "range=1d&interval=5m&includePrePost=true", 60)
+        meta = res.get("meta", {})
+        if x.get("price") is None:  # a ticker the user added: fill the quote from the chart
+            x.update({"name": meta.get("longName") or meta.get("shortName") or x["symbol"], "price": meta.get("regularMarketPrice"),
+                      "prev": meta.get("chartPreviousClose") or meta.get("previousClose"), "volume": meta.get("regularMarketVolume") or 0,
+                      "exchange": meta.get("fullExchangeName")})
+            if x["price"] and x["prev"]:
+                x["changePct"] = r(100 * (x["price"] / x["prev"] - 1))
+        x["levels"] = runner_levels(_rows(res), x.get("prev"), meta.get("gmtoffset") or 0, _session(x.get("state")))
+    except Exception as e:
+        x["levels"], x["error"] = None, str(e)[:120]
+    try:
+        cut = time.time() - 36 * 3600
+        news = [n for n in cached(("news", x["symbol"]), 300, lambda: _rss(x["symbol"])) if (n.get("providerPublishTime") or 0) > cut]
+        x["news"] = [{"title": n.get("title"), "link": n.get("link"), "time": n.get("providerPublishTime"),
+                      "publisher": (n.get("publisher") or "").replace("www.", "")} for n in news[:3]]
+    except Exception:
+        x["news"] = []
+    x["score"], x["why"] = runner_score(x)
+    return x
+
+
+def runners(extra=(), min_pct=10, limit=20):
+    """Today's runners, best first, plus any tickers the user added (always shown, marked mine)."""
+    def load():
+        seen, rows = set(), []
+        for quotes in POOL.map(_screen, RUNNER_LISTS):
+            for q in quotes:
+                x = runner_quote(q)
+                if x["symbol"] and x["symbol"] not in seen and runner_ok(x, min_pct):
+                    seen.add(x["symbol"])
+                    rows.append(x)
+        state = next((x["state"] for x in rows if x.get("state")), None)
+        if state is None:
+            state = next((q.get("marketState") for q in _screen(RUNNER_LISTS[0])), None)
+        rows.sort(key=lambda x: -(x["changePct"] or 0) * min(x.get("relVol") or 1, 20))
+        rows = rows[:limit]
+        for s in extra:
+            if s not in seen:
+                rows.append({"symbol": s, "price": None, "prev": None, "changePct": None, "relVol": None, "shares": None, "state": state})
+        mine = set(extra)
+        for x in rows:
+            x["mine"] = x["symbol"] in mine
+            x.setdefault("state", state)
+        out = list(POOL.map(_runner_detail, rows))
+        out.sort(key=lambda x: (not x["mine"], -x["score"]))
+        return {"session": _session(state), "marketState": state, "asOf": int(time.time()), "minPct": min_pct, "rows": out}
+    return cached(("runners", tuple(extra), min_pct), 60, load)
+
+
 DIR_FILE = os.path.join(HERE, ".symbols-cache.json")  # git-ignored, refreshed daily
 with open(os.path.join(HERE, "world.json")) as _f:
     WORLD = json.load(_f)
@@ -3824,6 +4008,8 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "regime" or (k[0] == "bars" and k[1] in ("SPY", "QQQ", "^VIX")))
             elif path == "/api/t212/journal":
                 _orders["at"] = 0
+            elif path == "/api/runners":
+                purge(lambda k: k[0] in ("screen", "runners", "news") or (k[0] == "chart" and "interval=5m" in k[2]))
             elif path == "/api/radar":
                 purge(lambda k: k[0] in ("radar", "bars") or (k[0] == "chart" and "range=2y&interval=1d" == k[2]))
             elif path == "/api/t212/portfolio":
@@ -3920,6 +4106,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(fundamentals(q.get("symbol", "SPY").upper()))
         if path == "/api/radar":
             return self.send_json(radar())
+        if path == "/api/runners":
+            pct = q.get("min", "10")
+            return self.send_json(runners(tuple(syms(q.get("extra")))[:15], int(pct) if pct.isdigit() and 5 <= int(pct) <= 100 else 10))
         if path == "/api/lt":
             if q.get("symbols"):
                 return self.send_json(lt_many(syms(q.get("symbols"))[:120]))
