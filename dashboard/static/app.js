@@ -528,6 +528,7 @@
             <ul class="reasons">${a.reasons.map((x) => `<li class="${x.ok ? "" : "no"}">${esc(x.text)}</li>`).join("")}</ul></div>
         </div>
       </div>
+      <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="line-chart"></i>If you invest every month in ${esc(a.symbol)}</h2><span class="muted" style="font-size:12.5px">set your own amount</span></div><div id="stockFc">${skeleton(5)}</div></div>
       <div class="card" id="hourlyCard" style="margin-top:16px" hidden></div>
       <div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2>Performance overview</h2>${rf("perf")}</div><p class="muted" style="font-size:12px;margin:-6px 0 10px">Price return vs the S&amp;P 500</p><div id="perf">${skeleton(3)}</div></div>
@@ -624,6 +625,24 @@
         if (window.lucide) window.lucide.createIcons();
       });
     }
+
+    // ---- monthly-investing forecast for this stock
+    (async () => {
+      const box = $("#stockFc");
+      if (!box || !window.Projection) return;
+      let hc = null;
+      try {
+        const lp = (window.LT && window.LT.cache[a.symbol]) || await api("/api/lt?symbol=" + encodeURIComponent(a.symbol));
+        const h = (lp && lp.history) || {};
+        hc = h.cagr10 ?? h.cagr5 ?? h.cagr3 ?? null;
+      } catch (e) { hc = null; }
+      if (!$("#stockFc")) return;
+      const own = brokerPositions().concat(manual()).filter((p) => p.symbol === a.symbol);
+      const heldVal = own.reduce((s, p) => s + (p.valueAcct || p.value || (p.qty || 0) * (p.avgPrice || 0)), 0);
+      const ccy = (state.t212 && state.t212.currency) || (state.revolut && state.revolut.currency) || settings().ccy || "EUR";
+      const stop = window.Projection.stockForecast(box, { symbol: a.symbol, closes: a.series && a.series.c, histCagr: hc, held: heldVal, ccy });
+      const prev = current; current = () => { prev && prev(); stop && stop(); };
+    })();
 
     // ---- performance overview
     RF.perf = () => api("/api/performance?symbol=" + encodeURIComponent(a.symbol)).then((pf) => {

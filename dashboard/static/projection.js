@@ -155,5 +155,116 @@
     }, true);
   }
 
-  window.Projection = { render, simulate, mixParams };
+
+  // ------------------------------------------------------------ one stock: what a monthly amount could grow to
+  let stockChart = null;
+  /** Expected yearly growth and swings for one stock from its own history, pulled halfway toward the market's ~7%. */
+  function stockAssumptions(closes, histCagr) {
+    const c = (closes || []).filter((x) => x > 0);
+    let vol = 30;
+    if (c.length > 60) {
+      const r = [];
+      for (let i = 1; i < c.length; i++) r.push(Math.log(c[i] / c[i - 1]));
+      const m = r.reduce((a, b) => a + b, 0) / r.length;
+      vol = 100 * Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(252);
+    }
+    vol = Math.max(10, Math.min(60, vol)); // above ~60% a year the past swings were extreme spikes, not a steady pattern
+    const own = histCagr == null ? 7 : Math.max(-10, Math.min(25, histCagr));
+    const growth = Math.round(10 * (0.5 * 7 + 0.5 * own)) / 10; // typical (middle) yearly growth
+    return { growth, vol: Math.round(vol), own: histCagr };
+  }
+
+  /** Monthly log-normal returns: a lump grows at exactly `growth` % a year in the middle case, whatever the swings. */
+  function simulateStock(o, paths) {
+    const rand = rng(777), months = o.years * 12;
+    const gm = Math.log(1 + o.growth / 100) / 12, sm = o.vol / 100 / Math.sqrt(12);
+    const byYear = Array.from({ length: o.years + 1 }, () => new Float64Array(paths));
+    const deposits = [o.start];
+    for (let y = 1; y <= o.years; y++) deposits.push(o.start + 12 * o.monthly * y);
+    let below = 0;
+    for (let p = 0; p < paths; p++) {
+      let v = o.start;
+      byYear[0][p] = v;
+      for (let i = 1; i <= months; i++) {
+        const z = Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
+        v = v * Math.exp(gm + sm * z) + o.monthly;
+        if (i % 12 === 0) byYear[i / 12][p] = v;
+      }
+      if (v < deposits[o.years]) below++;
+    }
+    const q = (arr, f) => arr[Math.min(arr.length - 1, Math.floor(f * arr.length))];
+    return { pct: byYear.map((arr) => { arr.sort(); return { p10: q(arr, 0.1), p25: q(arr, 0.25), p50: q(arr, 0.5), p75: q(arr, 0.75), p90: q(arr, 0.9) }; }), deposits, below: below / paths };
+  }
+
+  function stockForecast(el, info) {
+    const td = T(), ccy = info.ccy || "EUR";
+    const saved = td.store.get("stockFc", {});
+    const A = stockAssumptions(info.closes, info.histCagr);
+    const o = { start: Math.round(info.held || 0), monthly: saved.monthly ?? 200, years: saved.years || 10, growth: A.growth, vol: A.vol };
+    const m0 = (x) => td.money(x, ccy).replace(/[.,]\d\d(?=\D*$)/, "");
+    el.innerHTML = `
+      <div class="proj-ctl">
+        <label class="field">Every month (${td.esc(ccy)})<input id="sfMon" type="number" min="0" step="25" inputmode="decimal" value="${o.monthly}"></label>
+        <label class="field">Already in it (${td.esc(ccy)})<input id="sfStart" type="number" min="0" step="50" inputmode="decimal" value="${o.start}"></label>
+        <label class="field proj-range"><span>Years: <b id="sfYv">${o.years}</b></span><input id="sfYears" type="range" min="1" max="30" step="1" value="${o.years}"></label>
+        <label class="field">Growth a year % <span class="muted">(typical)</span><input id="sfGrowth" type="number" step="0.5" inputmode="decimal" value="${o.growth}"></label>
+      </div>
+      <div class="ret-grid proj-tiles" id="sfTiles"></div>
+      <div class="chart-box" id="sfChart" style="height:280px"></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Middle outcome</span><span><i style="background:rgba(57,135,229,.35);height:10px"></i>1 in 2</span><span><i style="background:rgba(57,135,229,.15);height:10px"></i>8 in 10</span><span style="color:var(--series-2)"><i class="dash"></i>Same money in a world fund</span><span style="color:var(--text-muted)"><i class="dash"></i>Money you put in</span></div>
+      <p class="muted" id="sfNote" style="font-size:12.5px;margin:8px 0 0"></p>`;
+    const draw = () => {
+      if (!$("#sfTiles", el)) return;
+      const base = { start: o.start, monthly: o.monthly, years: o.years };
+      const S = simulateStock(Object.assign({}, base, { growth: o.growth, vol: o.vol }), 3000);
+      const W = simulateStock(Object.assign({}, base, { growth: 6.5, vol: 15 }), 1500); // world fund: ~6.5% typical, 15% swings
+      const N = o.years, last = S.pct[N], put = S.deposits[N], wm = W.pct[N].p50;
+      $("#sfTiles", el).innerHTML = `
+        <div class="perf-tile"><div class="k">You put in</div><div class="v num">${m0(put)}</div></div>
+        <div class="perf-tile"><div class="k">Bad case (1 in 10)</div><div class="v num ${last.p10 < put ? "down" : ""}">${m0(last.p10)}</div></div>
+        <div class="perf-tile"><div class="k">Middle</div><div class="v num">${m0(last.p50)}</div><div class="b">world fund: ${m0(wm)}</div></div>
+        <div class="perf-tile"><div class="k">Great case (1 in 10)</div><div class="v num up">${m0(last.p90)}</div></div>
+        <div class="perf-tile"><div class="k">Chance to end below what you put in</div><div class="v num ${S.below > 0.2 ? "down" : ""}">${Math.round(100 * S.below)}%</div></div>`;
+      $("#sfNote", el).innerHTML = `Based on ${td.esc(info.symbol)}'s own record${A.own != null ? ` (${td.pct(A.own, 1)} a year in the past)` : ""}, pulled halfway toward the market's usual ~7%, so a hot past run isn't assumed to repeat: typical growth <b>${o.growth}%</b> a year, with swings of about <b>${o.vol}%</b> a year (the world fund: about 6.5% typical growth, 15% swings). Change the growth to test your own view. ` +
+        (o.vol >= 35 ? `<b>Big swings:</b> the middle case can look better than a world fund, but the bad case is far worse and the chance of ending below what you put in is ${Math.round(100 * S.below)}%. ` : "") +
+        `Scenarios from 3,000 simulated markets, in ${td.esc(ccy)}, ignoring currency moves, fees and taxes. Not a forecast or advice.`;
+      const EC = window.echarts, box = $("#sfChart", el);
+      if (!EC || !box) return;
+      if (stockChart && stockChart.getDom() !== box) { stockChart.dispose(); stockChart = null; }
+      if (!stockChart) { stockChart = EC.init(box); new ResizeObserver(() => stockChart && stockChart.resize()).observe(box); }
+      const yrs = S.pct.map((_, i) => (i === 0 ? "Now" : "Y" + i));
+      const P = (k) => S.pct.map((x) => Math.round(x[k]));
+      const diff = (hi, lo) => S.pct.map((x) => Math.round(x[hi] - x[lo]));
+      const axis = { axisLine: { lineStyle: { color: css("--axis") } }, splitLine: { lineStyle: { color: css("--grid") } }, axisLabel: { color: css("--text-muted") } };
+      const short = (v) => (v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : v);
+      stockChart.setOption({
+        backgroundColor: "transparent", animation: false, textStyle: { fontFamily: "Inter", color: css("--text-secondary") },
+        grid: { left: 52, right: 14, top: 14, bottom: 28 },
+        tooltip: { trigger: "axis", backgroundColor: "#2c2c2a", borderColor: "rgba(255,255,255,.1)", textStyle: { color: "#f0efec" },
+          formatter: (ps) => { const i = ps[0].dataIndex, x = S.pct[i]; return `<b>${yrs[i]}</b><br>Great case ${m0(x.p90)}<br>Middle <b>${m0(x.p50)}</b><br>Bad case ${m0(x.p10)}<br>World fund (middle) ${m0(W.pct[i].p50)}<br>Put in ${m0(S.deposits[i])}`; } },
+        xAxis: Object.assign({ type: "category", data: yrs, boundaryGap: false }, axis),
+        yAxis: Object.assign({ type: "value" }, axis, { axisLabel: { color: css("--text-muted"), formatter: short } }),
+        series: [
+          { type: "line", data: P("p10"), stack: "w", lineStyle: { opacity: 0 }, showSymbol: false, silent: true },
+          { type: "line", data: diff("p25", "p10"), stack: "w", lineStyle: { opacity: 0 }, showSymbol: false, areaStyle: { color: "rgba(57,135,229,.15)" }, silent: true },
+          { type: "line", data: diff("p75", "p25"), stack: "w", lineStyle: { opacity: 0 }, showSymbol: false, areaStyle: { color: "rgba(57,135,229,.35)" }, silent: true },
+          { type: "line", data: diff("p90", "p75"), stack: "w", lineStyle: { opacity: 0 }, showSymbol: false, areaStyle: { color: "rgba(57,135,229,.15)" }, silent: true },
+          { type: "line", data: P("p50"), showSymbol: false, lineStyle: { width: 2.5, color: css("--series-1") }, itemStyle: { color: css("--series-1") } },
+          { type: "line", data: W.pct.map((x) => Math.round(x.p50)), showSymbol: false, lineStyle: { width: 1.5, type: "dotted", color: css("--series-2") }, itemStyle: { color: css("--series-2") } },
+          { type: "line", data: S.deposits.map(Math.round), showSymbol: false, lineStyle: { width: 1.5, type: "dashed", color: "#9a9891" }, itemStyle: { color: "#9a9891" } },
+        ],
+      }, true);
+    };
+    let raf = 0;
+    const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); };
+    const save = () => td.store.set("stockFc", { monthly: o.monthly, years: o.years });
+    $("#sfMon", el).addEventListener("input", (e) => { o.monthly = Math.max(0, +e.target.value || 0); save(); redraw(); });
+    $("#sfStart", el).addEventListener("input", (e) => { o.start = Math.max(0, +e.target.value || 0); redraw(); });
+    $("#sfYears", el).addEventListener("input", (e) => { o.years = +e.target.value; $("#sfYv", el).textContent = o.years; save(); redraw(); });
+    $("#sfGrowth", el).addEventListener("input", (e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) { o.growth = Math.max(-20, Math.min(40, v)); redraw(); } });
+    draw();
+    return () => { if (stockChart) { stockChart.dispose(); stockChart = null; } };
+  }
+
+  window.Projection = { render, simulate, mixParams, stockForecast, stockAssumptions, simulateStock };
 })();

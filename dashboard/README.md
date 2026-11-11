@@ -47,6 +47,10 @@ ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
 minutes; results are cached for hours.
 
+## Forecast for each stock (stock page)
+
+Every stock page has **"If you invest every month in …"**: set the monthly amount, what you already hold in it, the number of years and, if you like, your own growth estimate. It simulates 3,000 possible futures and shows what you put in, the bad / middle / great case, the chance of ending below what you put in, and the same money in a world fund. The default growth is the stock's own past yearly return pulled halfway toward the market's ~7% (capped between -10% and 25% first), so a hot run isn't assumed to repeat; swings come from its last two years of prices (between 10% and 60% a year). In euros, ignoring currency moves, fees and taxes. Not a forecast or advice.
+
 ## Export to a spreadsheet
 
 **Portfolio → Positions → Export** downloads `TraderDash-<date>.xlsx` with sheets **Holdings** (shares, value and invested in your currency, gain, weight, sector, industry, country, theme, long-term score, buy zone, action), **Monthly** (value vs money put in each month, and the same money in VWRL) and, with Trading 212 linked, **Dividends by month** and **Dividends by stock**. It opens in Excel, Google Sheets or Numbers, and can be uploaded to a dashboard tool such as Mizantiq for a shareable review.

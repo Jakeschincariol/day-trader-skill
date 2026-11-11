@@ -787,6 +787,29 @@ class Projection(unittest.TestCase):
         code = "global.window={};require(%s);const P=window.Projection;console.log(JSON.stringify(%s))" % (json.dumps(js), expr)
         return json.loads(subprocess.check_output(["node", "-e", code], timeout=60))
 
+    def test_stock_assumptions_pull_toward_the_market(self):
+        hot = self.run_js("P.stockAssumptions(Array.from({length: 300}, (_, i) => 100 * Math.pow(1.002, i) * (1 + 0.02 * Math.sin(i))), 60)")
+        self.assertEqual(hot["growth"], 16.0)  # 60% capped at 25, then halfway to 7
+        self.assertTrue(10 <= hot["vol"] <= 60)
+        cold = self.run_js("P.stockAssumptions([], null)")
+        self.assertEqual(cold, {"growth": 7, "vol": 30, "own": None})
+        weak = self.run_js("P.stockAssumptions([], -30)")
+        self.assertEqual(weak["growth"], -1.5)  # -30 floored at -10, then halfway to 7
+
+    def test_stock_forecast_middle_grows_at_the_typical_rate(self):
+        for vol in (15, 45, 60):
+            r = self.run_js("P.simulateStock({start:10000,monthly:0,years:10,growth:8,vol:%d},3000)" % vol)
+            self.assertAlmostEqual(r["pct"][10]["p50"] / 10000, 1.08 ** 10, delta=0.12)
+        r = self.run_js("P.simulateStock({start:0,monthly:100,years:5,growth:0,vol:0},10)")
+        self.assertAlmostEqual(r["pct"][5]["p50"], 6000, places=6)
+        self.assertEqual(r["deposits"][5], 6000)
+
+    def test_middle_outcome_follows_typical_growth(self):
+        # arithmetic return = growth + vol^2/2, so the middle path compounds at about the typical growth
+        a = '{etfRet:7.5,etfVol:15,corr:0.75,infl:0,stkRet:10+40*40/200,stkVol:40}'
+        r = self.run_js("P.simulate({start:10000,monthly:0,years:10,etf:0,raise:0,a:%s},3000)" % a)
+        self.assertAlmostEqual(r["pct"][10]["p50"] / 10000, 1.10 ** 10, delta=0.35)
+
     def test_no_growth_no_swings_gives_back_the_deposits(self):
         a = '{etfRet:0,etfVol:0,stkRet:0,stkVol:0,corr:0.75,infl:0}'
         r = self.run_js("P.simulate({start:2500,monthly:1200,years:10,etf:50,raise:0,a:%s},200)" % a)
