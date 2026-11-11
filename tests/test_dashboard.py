@@ -1082,5 +1082,116 @@ class CompareRisk(unittest.TestCase):
         self.assertLess(pb["0.20"]["vol"], pb["0.80"]["vol"])
 
 
+class Runners(unittest.TestCase):
+    """Day Runners: who gets in, the setup labels, and the entry/stop/target math."""
+    GMT = -18000  # New York (EST)
+    OPEN = 1794321000  # 9:30 New York time
+
+    def bars(self, closes, start=None, vol=100000):
+        start = self.OPEN if start is None else start
+        out, prev = [], closes[0]
+        for i, c in enumerate(closes):
+            out.append((start + i * 300, prev, max(prev, c) * 1.01, min(prev, c) * 0.99, c, vol))
+            prev = c
+        return out
+
+    def test_breakout_near_high_of_day(self):
+        L = srv.runner_levels(self.bars([2, 2.4, 2.8, 3.0, 3.2, 3.3]), 2.0, self.GMT, "open")
+        self.assertEqual(L["setup"], "breakout")
+        p = L["plan"]
+        self.assertAlmostEqual(p["entry"], L["hod"] + 0.01, places=2)
+        self.assertLess(p["stop"], p["entry"] * 0.985 + 1e-9)
+        risk = p["entry"] - p["stop"]
+        self.assertAlmostEqual(p["t1"], p["entry"] + 2 * risk, places=1)
+        self.assertAlmostEqual(p["t2"], p["entry"] + 3 * risk, places=1)
+        self.assertAlmostEqual(L["highPct"], 100 * (L["hod"] / 2.0 - 1), delta=0.2)
+
+    def test_pullback_above_vwap(self):
+        L = srv.runner_levels(self.bars([2, 2.5, 3.0, 3.5, 4.0, 3.7, 3.6]), 2.0, self.GMT, "open")
+        self.assertEqual(L["setup"], "pullback")
+        self.assertGreater(L["last"], L["vwap"])
+        self.assertLess(L["plan"]["entry"], L["hod"])
+
+    def test_under_vwap_needs_a_reclaim(self):
+        L = srv.runner_levels(self.bars([4, 3.9, 3.8, 3.7, 3.65, 3.6] + [3.55] * 6), 3.0, self.GMT, "open")
+        self.assertEqual(L["setup"], "below")
+        self.assertAlmostEqual(L["plan"]["entry"], L["vwap"] + 0.01, places=2)
+
+    def test_faded_runner_has_no_entry(self):
+        # like STAK: ran from 4.09 to 7.00, now back near 4.90
+        L = srv.runner_levels(self.bars([4.2, 5.5, 6.9, 6.0, 5.2, 4.9]), 4.09, self.GMT, "open")
+        self.assertEqual(L["setup"], "faded")
+        self.assertIsNone(L["plan"])
+        self.assertLess(L["fromHighPct"], -25)
+
+    def test_premarket_uses_premarket_high_and_closed_plans_the_next_day(self):
+        pre = self.bars([2, 2.3, 2.6, 2.5], start=self.OPEN - 3600)  # 8:30 New York time
+        L = srv.runner_levels(pre, 2.0, self.GMT, "pre")
+        self.assertEqual(L["setup"], "pre")
+        self.assertAlmostEqual(L["plan"]["entry"], L["pmHigh"] + 0.01, places=2)
+        day = self.bars([2, 2.4, 2.8, 3.0, 3.1])
+        C = srv.runner_levels(day, 2.0, self.GMT, "closed")
+        self.assertEqual(C["setup"], "next")
+        self.assertLessEqual(C["plan"]["stop"], C["vwap"])
+
+    def test_sub_dollar_prices_keep_four_decimals(self):
+        L = srv.runner_levels(self.bars([0.5, 0.56, 0.6, 0.62]), 0.45, self.GMT, "open")
+        self.assertAlmostEqual(L["plan"]["entry"], L["hod"] + 0.0001, places=4)
+
+    def test_who_gets_in(self):
+        q = {"symbol": "RUN", "quoteType": "EQUITY", "marketState": "REGULAR", "regularMarketPrice": 3.0,
+             "regularMarketPreviousClose": 2.0, "regularMarketChangePercent": 50.0, "regularMarketVolume": 5e6,
+             "averageDailyVolume3Month": 5e5, "sharesOutstanding": 8e6, "fullExchangeName": "NasdaqCM"}
+        x = srv.runner_quote(q)
+        self.assertEqual(x["relVol"], 10.0)
+        self.assertTrue(srv.runner_ok(x))
+        self.assertFalse(srv.runner_ok(dict(x, exchange="Other OTC")))
+        self.assertFalse(srv.runner_ok(dict(x, price=0.04)))
+        self.assertFalse(srv.runner_ok(dict(x, changePct=4.0)))
+        self.assertFalse(srv.runner_ok(dict(x, volume=1000)))
+        self.assertFalse(srv.runner_ok(dict(x, type="WARRANT")))
+        pre = srv.runner_quote(dict(q, marketState="PRE", preMarketPrice=4.0, preMarketChangePercent=33.3))
+        self.assertEqual((pre["price"], pre["prev"], pre["changePct"]), (4.0, 3.0, 33.3))
+        self.assertTrue(srv.runner_ok(dict(pre, volume=0)))  # pre-market volume is thin: no volume rule
+
+    def test_score_rewards_the_checklist(self):
+        hot = {"changePct": 60, "relVol": 25, "shares": 9e6, "price": 4, "news": [1], "levels": {"setup": "breakout"}}
+        s, why = srv.runner_score(hot)
+        self.assertEqual(s, 100)
+        self.assertTrue(any("volume" in w for w in why))
+        faded = dict(hot, levels={"setup": "faded"})
+        self.assertLess(srv.runner_score(faded)[0], s)
+        self.assertEqual(srv.runner_score({})[0], 0)
+
+    def test_runners_end_to_end_offline(self):
+        q = lambda sym, chg, vol: {"symbol": sym, "quoteType": "EQUITY", "marketState": "REGULAR", "regularMarketPrice": 3.3,
+                                   "regularMarketPreviousClose": 2.0, "regularMarketChangePercent": chg, "regularMarketVolume": vol,
+                                   "averageDailyVolume3Month": 1e5, "sharesOutstanding": 1e7, "fullExchangeName": "NasdaqCM"}
+        lists = {"small_cap_gainers": [q("AAA", 65, 4e6), q("BBB", 3, 4e6)], "day_gainers": [q("AAA", 65, 4e6), q("CCC", 20, 1e6)]}
+        rows = self.bars([2, 2.4, 2.8, 3.0, 3.2, 3.3])
+        chart = {"meta": {"gmtoffset": self.GMT, "regularMarketPrice": 3.3, "chartPreviousClose": 2.0, "longName": "Mine Co"},
+                 "timestamp": [x[0] for x in rows],
+                 "indicators": {"quote": [{k: [x[i] for x in rows] for i, k in enumerate(("t", "open", "high", "low", "close", "volume")) if k != "t"}]}}
+        old = (srv._screen, srv._chart, srv._rss)
+        srv._screen = lambda scr: lists.get(scr, [])
+        srv._chart = lambda sym, query, ttl: chart
+        srv._rss = lambda sym: []
+        srv.purge(lambda k: k[0] in ("runners", "news"))
+        try:
+            d = srv.runners(("ZZZ",))
+        finally:
+            srv._screen, srv._chart, srv._rss = old
+            srv.purge(lambda k: k[0] in ("runners", "news"))
+        syms = [x["symbol"] for x in d["rows"]]
+        self.assertEqual(d["session"], "open")
+        self.assertEqual(syms[0], "ZZZ")  # the user's own ticker comes first
+        self.assertTrue(d["rows"][0]["mine"])
+        self.assertEqual(d["rows"][0]["changePct"], 65.0)  # filled from the chart
+        self.assertEqual(sorted(syms[1:]), ["AAA", "CCC"])  # BBB is up only 3%, AAA listed once
+        self.assertEqual(syms.count("AAA"), 1)
+        self.assertEqual(d["rows"][1]["symbol"], "AAA")  # bigger move and volume ranks first
+        self.assertEqual(d["rows"][1]["levels"]["setup"], "breakout")
+
+
 if __name__ == "__main__":
     unittest.main()
