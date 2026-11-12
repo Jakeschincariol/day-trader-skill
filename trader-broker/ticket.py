@@ -560,7 +560,19 @@ def cmd_approve(a):
     ready, label, rv = status_of(order, risk, state, today, now, cfg)
     if not ready:
         raise TicketError("order %d is not ready: %s" % (a.index, label))
-    ok, why = parse_yes(a.reply, order, [o.get("symbol", "") for o in orders])
+    if a.auto:
+        # Standing approval: paper accounts only, set by the user in trader/config.json.
+        # trader-risk's PASS (checked above by status_of) is still required for every order.
+        if not cfg.get("auto_approve"):
+            raise TicketError('auto approval is off: set "auto_approve": true in trader/config.json')
+        if cfg.get("paper", True) is not True:
+            raise TicketError("auto approval works on the paper account only; a live order needs your yes")
+        if str(cfg.get("broker", "alpaca")).lower() != "alpaca":
+            raise TicketError("auto approval is for the Alpaca paper account only")
+        a.reply = "auto: standing paper-account approval (auto_approve in trader/config.json)"
+        ok, why = True, ""
+    else:
+        ok, why = parse_yes(a.reply, order, [o.get("symbol", "") for o in orders])
     if not ok:
         print("Not recorded: %s. Ask the user again with the ticket for order %d." % (why, a.index))
         return 1
@@ -725,7 +737,10 @@ def main(argv=None):
     p = sub.add_parser("approve", help="record the user's explicit yes for one order")
     common(p)
     p.add_argument("--index", type=int, required=True)
-    p.add_argument("--reply", required=True, help="the user's reply, word for word")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--reply", help="the user's reply, word for word")
+    g.add_argument("--auto", action="store_true",
+                   help='standing approval: paper account only, needs "auto_approve": true in the config')
     p = sub.add_parser("decline", help="record a no")
     common(p)
     p.add_argument("--index", type=int, required=True)

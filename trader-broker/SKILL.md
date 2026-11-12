@@ -33,6 +33,14 @@ separate gates, every time, for every order:
 
 Two yeses from the user, one PASS from the rules. No yes, no order.
 
+**Standing approval (paper account only).** The user can replace gate 2 with
+a standing approval by setting `"auto_approve": true` in `trader/config.json`.
+Then `ticket.py approve --index N --auto` records the approval with no reply.
+It refuses unless `"paper": true` and the broker is Alpaca, so a live order
+always needs the user's typed yes. Gate 1 (a recent trader-risk PASS for that
+exact order) still applies to every order. Gate 3 is whatever the user set
+for the order tool's permission.
+
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash

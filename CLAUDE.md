@@ -13,8 +13,13 @@
 - Never commit `trader/`. It holds personal account state (portfolio, orders,
   broker log) and the repo is public. Never commit API keys.
 
-## Order safety (unchanged)
+## Order approval
 
-The rules in `trader-broker/SKILL.md` are not relaxed by anything above: every
-order still needs a recent trader-risk PASS, the user's explicit yes for that
-one order, and Allow once.
+- On the **paper** account the user gave standing approval (2026-11-12):
+  `"auto_approve": true` in `trader/config.json`, then
+  `ticket.py approve --index N --auto`. Claude may enter and exit as it sees
+  fit. Every order still needs a recent trader-risk PASS.
+- A **live** account always needs the user's typed yes for each order.
+  `--auto` refuses unless `"paper": true`.
+- Research can fan out to parallel agents. Orders are staged, risk-checked
+  and placed by the main session one at a time, so the daily limits hold.
