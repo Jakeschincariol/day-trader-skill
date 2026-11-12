@@ -22,12 +22,12 @@
 
   async function loadPick(sym, lt) {
     const e = encodeURIComponent(sym);
-    const [a, l, f, bt, sb, news] = await Promise.all([
+    const [a, l, f, bt, sb, news, kp] = await Promise.all([
       get("/api/analysis?symbol=" + e), get("/api/lt?symbol=" + e), get("/api/fundamentals?symbol=" + e),
-      get("/api/ltbacktest?symbol=" + e), lt ? null : get("/api/backtest?symbol=" + e), get("/api/news?symbols=" + e),
+      get("/api/ltbacktest?symbol=" + e), lt ? null : get("/api/backtest?symbol=" + e), get("/api/news?symbols=" + e), get("/api/keyperson?symbol=" + e),
     ]);
     if (!a) throw new Error("No data for " + sym);
-    return { sym, a, l: l || {}, f: f && f.available ? f : null, bt, sb, news: news || [] };
+    return { sym, a, l: l || {}, f: f && f.available ? f : null, bt, sb, news: news || [], kp: kp && kp.available ? kp : null };
   }
 
   // derived numbers per pick (data the expert asked for)
@@ -74,6 +74,7 @@
     if (D.ndEbitda != null && D.ndEbitda > 3) out.push(`High debt: net debt ${D.ndEbitda.toFixed(1)}× EBITDA`);
     if (D.payout != null && D.payout > 100) out.push(`Pays out more than it earns (payout ${D.payout.toFixed(0)}%)`);
     if (P.l.zone === "Speculative") out.push("Long-term score in the Speculative band");
+    if (P.kp && P.kp.band === "High") out.push(`High key-person risk (${P.kp.score}/100): depends a lot on ${P.kp.ceo && P.kp.ceo.name ? P.kp.ceo.name : "one leader"}`);
     if (P.a.earnings && P.a.earnings.days <= 10) out.push(`Earnings in ${P.a.earnings.days} day${P.a.earnings.days === 1 ? "" : "s"} (${P.a.earnings.date}): expect a big move`);
     return out;
   }

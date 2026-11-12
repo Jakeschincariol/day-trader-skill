@@ -297,6 +297,18 @@
     positions.forEach((p) => { const c = fundIndex(p.symbol) ? "Index funds" : (lt[p.symbol] && lt[p.symbol].country) || null; if (c) ctry[c] = (ctry[c] || 0) + val(p); });
     const topC = Object.entries(ctry).filter(([k]) => k !== "Index funds").sort((a, b) => b[1] - a[1]);
     if (topC.length) row("Countries (single stocks)", topC.slice(0, 3).map(([c, v]) => `${td.esc(c)} ${(100 * v / total).toFixed(0)}%`).join(" · "), 100 * topC[0][1] / total <= 70, "where the companies are based (FinanceDatabase)");
+    const singlesList = [...new Set(positions.filter((p) => !fundIndex(p.symbol)).map((p) => p.symbol))];
+    if (singlesList.length) {
+      const kp = await td.api("/api/keyperson?symbols=" + encodeURIComponent(singlesList.join(","))).catch(() => null);
+      if (kp) {
+        const high = singlesList.filter((s) => kp[s] && kp[s].band === "High");
+        const hv = positions.filter((p) => high.includes(p.symbol)).reduce((a, p) => a + val(p), 0);
+        const hp = total ? 100 * hv / total : 0;
+        const known = singlesList.filter((s) => kp[s] && kp[s].available).length;
+        if (known) row("High key-person risk", high.length ? `${hp.toFixed(0)}% · ${high.map(td.esc).join(", ")}` : "none", hp <= 30,
+          high.length ? "these depend a lot on one leader: news about that person can move the price a lot" : `checked ${known} of ${singlesList.length} stocks`);
+      }
+    }
     row("Currencies", Object.entries(ccys).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${c} ${(100 * v / total).toFixed(0)}%`).join(" · "), true, "");
     if (acct.free != null) { const cp = 100 * acct.free / total; row("Cash", cp.toFixed(0) + "%", cp <= 10, cp > 10 ? "cash drag: idle money doesn't compound" : ""); }
     el.innerHTML = `<ul class="risk-list">${rows.join("")}</ul>

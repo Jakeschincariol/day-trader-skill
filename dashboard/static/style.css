@@ -853,3 +853,20 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
   .kpi b { font-size: 17px; }
 }
 @media (max-width: 760px) { .page-title .sub { display: none; } .kpi-strip .hero-k { font-size: 11px; letter-spacing: .04em; } }
+
+/* ---------- key person risk */
+.kp-top { display: flex; align-items: center; gap: 16px; }
+.kp-score { display: flex; align-items: baseline; gap: 2px; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); }
+.kp-score b { font-size: 30px; }
+.kp-score span { color: var(--text-muted); font-size: 13px; }
+.kp-score.down b, .kp-band.down { color: var(--bad-text); }
+.kp-score.flat b, .kp-band.flat { color: var(--warning); }
+.kp-score.up b, .kp-band.up { color: var(--good-text); }
+.kp-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 14px; color: var(--text-secondary); }
+.kp-txt b.kp-band { font-size: 16px; }
+.kp-bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin: 14px 0 6px; }
+.kp-bar span { display: block; height: 100%; border-radius: 999px; }
+.kp-bar span.down { background: var(--bad); } .kp-bar span.flat { background: var(--warning); } .kp-bar span.up { background: var(--good); }
+.kp-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.kp-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 14px; }
+.kp-list li b { color: var(--bad-text); }

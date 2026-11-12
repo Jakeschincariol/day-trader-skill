@@ -22,7 +22,7 @@
   }, true);
 
   // ------------------------------------------------------------ morning briefing
-  const ICON = { market: "activity", portfolio: "wallet", movers: "zap", news: "newspaper", earnings: "calendar-clock", event: "landmark" };
+  const ICON = { market: "activity", portfolio: "wallet", movers: "zap", news: "newspaper", earnings: "calendar-clock", event: "landmark", ceo: "user-x" };
   function greeting() {
     const h = new Date().getHours();
     return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";

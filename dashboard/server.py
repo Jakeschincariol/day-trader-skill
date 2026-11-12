@@ -40,6 +40,7 @@ import socket
 import calendar
 import datetime
 import email.utils
+import http.cookiejar
 import concurrent.futures
 import json
 import math
@@ -2859,6 +2860,12 @@ def briefing(symbols, weights=None):
         lines.append({"kind": "news", "tone": {"bullish": "up", "bearish": "down"}.get(n["mood"], "flat"), "text": n["title"],
                       "link": n.get("link"), "publisher": n.get("publisher"), "time": n.get("time"), "mood": n["mood"], "impact": n["impact"],
                       "symbols": n.get("tickers") or []})
+    try:
+        for c in ceo_news(symbols[:12]):
+            lines.append({"kind": "ceo", "tone": "down", "text": "CEO in the news (%s, %s): %s" % (c["symbol"], c["ceo"], c["title"]),
+                          "link": c.get("link"), "publisher": c.get("publisher"), "time": c.get("time"), "symbols": [c["symbol"]]})
+    except Exception:
+        pass
     cal = calendar_for(symbols)
     soon = [e for e in cal["earnings"] if e["days"] <= 7]
     if soon:
@@ -3730,6 +3737,227 @@ def company_figures(sym):
     return fa
 
 
+# ---------------------------------------------------------------- key person risk: how much a stock depends on one leader
+
+KP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # separate from POOL: key_person itself uses POOL (no nested waits)
+_ycrumb = {"crumb": None, "cookie": "", "at": 0, "fail": 0}
+_ycrumb_lock = threading.Lock()
+
+
+def _yahoo_crumb(force=False):
+    """Yahoo's company profile needs the same cookie + crumb a browser gets on its first visit."""
+    with _ycrumb_lock:
+        now = time.time()
+        if not force and _ycrumb["crumb"] and now - _ycrumb["at"] < 6 * 3600:
+            return _ycrumb["crumb"], _ycrumb["cookie"]
+        if now - _ycrumb["fail"] < 600:
+            raise RuntimeError("Yahoo company profile unavailable right now")
+        jar = http.cookiejar.CookieJar()
+        op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+        try:
+            op.open(urllib.request.Request("https://fc.yahoo.com", headers={"User-Agent": UA}), timeout=10)
+        except Exception:
+            pass  # the cookie comes with an error page: that is normal
+        try:
+            crumb = op.open(urllib.request.Request("https://query1.finance.yahoo.com/v1/test/getcrumb", headers={"User-Agent": UA}),
+                            timeout=10).read().decode("utf-8", "replace").strip()
+        except Exception as e:
+            _ycrumb["fail"] = now
+            raise RuntimeError("Yahoo company profile unavailable: %s" % str(e)[:80])
+        if not crumb or "<" in crumb or len(crumb) > 40:
+            _ycrumb["fail"] = now
+            raise RuntimeError("Yahoo company profile unavailable")
+        _ycrumb.update(crumb=crumb, cookie="; ".join("%s=%s" % (c.name, c.value) for c in jar), at=now, fail=0)
+        return crumb, _ycrumb["cookie"]
+
+
+def yahoo_summary(sym, modules):
+    last = None
+    for attempt in (0, 1):
+        crumb, cookie = _yahoo_crumb(force=attempt == 1)
+        url = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=%s&crumb=%s" % (
+            urllib.parse.quote(sym), modules, urllib.parse.quote(crumb))
+        try:
+            d = http_get(url, headers={"Cookie": cookie}, timeout=15)
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code == 401 and attempt == 0:
+                continue
+            raise
+        res = ((d.get("quoteSummary") or {}).get("result") or [None])[0]
+        if not res:
+            raise RuntimeError("no company profile for %s" % sym)
+        return res
+    raise last
+
+
+CEO_RE = re.compile(r"\bC\.?E\.?O\b|chief executive", re.I)
+NUMBER_TWO_RE = re.compile(r"(?<!vice )(?<!vice-)\bpresident\b|\bC\.?O\.?O\b|chief operating", re.I)
+CEO_NEWS_RE = re.compile(r"resign|step(s|ping)? down|stepped down|replace|successor|succession|ouster|ousted|oust|fired|health|illness|"
+                         r"investigation|probe|lawsuit|sued|leave|leaving|depart|retire|scandal|arrest", re.I)
+
+
+def key_person_score(ceo, others, insiders_pct, mcap, tenure_years=None, year=None):
+    """Points per warning sign (0-100, higher = more depending on one person). Returns score, band and plain reasons."""
+    pts, reasons, unknown = 0, [], []
+    if not ceo:
+        return {"score": None, "band": "Not known", "reasons": [], "unknown": ["who the CEO is"]}
+    title = ceo.get("title") or ""
+    founder = bool(re.search(r"founder", title, re.I))
+    if founder:
+        pts += 30
+        reasons.append(("The CEO founded the company", 30))
+    if tenure_years is None:
+        unknown.append("how long the CEO has been in the job")
+    elif tenure_years > 15:
+        pts += 20
+        reasons.append(("CEO for %d years: the company is built around them" % tenure_years, 20))
+    elif tenure_years >= 8:
+        pts += 10
+        reasons.append(("CEO for %d years" % tenure_years, 10))
+    elif tenure_years < 3:
+        pts += 10
+        reasons.append(("New CEO (%s): not proven yet" % ("less than a year" if tenure_years < 1 else "%d year%s" % (tenure_years, "" if tenure_years == 1 else "s")), 10))
+    age = ceo.get("age")
+    if age is None:
+        unknown.append("the CEO's age")
+    elif age >= 70:
+        pts += 15
+        reasons.append(("CEO is %d: a handover is getting closer" % age, 15))
+    elif age >= 65:
+        pts += 8
+        reasons.append(("CEO is %d" % age, 8))
+    two = [o for o in others if NUMBER_TWO_RE.search(o.get("title") or "")]
+    if not two:
+        pts += 15
+        reasons.append(("No President or COO listed besides the CEO: no clear number two", 15))
+    if re.search(r"\bchair", title, re.I):
+        pts += 10
+        reasons.append(("The CEO is also Chair of the board", 10))
+    if insiders_pct is None:
+        unknown.append("insider ownership")
+    elif insiders_pct >= 10:
+        pts += 10
+        reasons.append(("Insiders own %.0f%% of the shares: a lot of power in few hands" % insiders_pct, 10))
+    if mcap is None:
+        unknown.append("company size")
+    elif mcap < 20e9:
+        pts += 10
+        reasons.append(("Smaller company (worth $%.1f billion): usually more dependent on one leader" % (mcap / 1e9), 10))
+    pts = min(100, pts)
+    band = "High" if pts >= 55 else "Medium" if pts >= 30 else "Low"
+    return {"score": pts, "band": band, "founder": founder, "reasons": [{"text": t, "points": n} for t, n in reasons], "unknown": unknown,
+            "numberTwo": [{"name": o.get("name"), "title": o.get("title")} for o in two[:2]]}
+
+
+def _kp_from_yahoo(sym):
+    r = yahoo_summary(sym, "assetProfile,majorHoldersBreakdown,price")
+    prof = r.get("assetProfile") or {}
+    raw = lambda v: v.get("raw") if isinstance(v, dict) else v
+    officers = [{"name": o.get("name"), "title": o.get("title"), "age": raw(o.get("age")), "yearBorn": raw(o.get("yearBorn"))}
+                for o in prof.get("companyOfficers") or []]
+    ins = raw((r.get("majorHoldersBreakdown") or {}).get("insidersPercentHeld"))
+    price = r.get("price") or {}
+    return {"officers": officers, "insiders": None if ins is None else 100 * ins, "mcap": raw(price.get("marketCap")),
+            "type": price.get("quoteType"), "source": "Yahoo"}
+
+
+def _kp_from_fmp(sym):
+    ex = fmp_get("key-executives", sym) or []
+    officers = []
+    for o in ex if isinstance(ex, list) else []:
+        try:
+            since = int(str(o.get("titleSince"))[:4]) if o.get("titleSince") else None
+        except ValueError:
+            since = None
+        officers.append({"name": o.get("name"), "title": o.get("title"), "age": None, "yearBorn": _num(o, "yearBorn"), "since": since})
+    prof = fmp_get("profile", sym) or []
+    prof = prof[0] if isinstance(prof, list) and prof else prof if isinstance(prof, dict) else {}
+    return {"officers": officers, "insiders": None, "mcap": _num(prof, "marketCap", "mktCap"),
+            "type": "ETF" if prof.get("isEtf") else "FUND" if prof.get("isFund") else "EQUITY", "source": "Financial Modeling Prep"}
+
+
+def key_person(symbol):
+    sym = symbol.upper()
+
+    def load():
+        data = None
+        for fn in (_kp_from_yahoo, _kp_from_fmp):
+            try:
+                got = fn(sym)
+            except Exception:
+                continue
+            if data is None or got.get("officers"):
+                data = got
+            if data.get("officers") or (data.get("type") or "EQUITY") != "EQUITY":
+                break
+        if data is None:
+            return {"symbol": sym, "available": False, "why": "No company profile could be loaded (Yahoo, or a Financial Modeling Prep key on the Portfolio page)."}
+        if (data.get("type") or "EQUITY") not in ("EQUITY",):
+            return {"symbol": sym, "available": False, "applies": False, "why": "Funds and ETFs don't depend on one CEO."}
+        year = time.gmtime().tm_year
+        for o in data["officers"]:
+            if o.get("age") is None and o.get("yearBorn"):
+                o["age"] = int(year - o["yearBorn"])
+        ceo = next((o for o in data["officers"] if CEO_RE.search(o.get("title") or "")), None)
+        others = [o for o in data["officers"] if o is not ceo]
+        if ceo and not ceo.get("since") and FMP["key"] and data["source"] != "Financial Modeling Prep":
+            # Yahoo has no "in the job since": take it from Financial Modeling Prep when a key is set
+            try:
+                last = _surname(ceo.get("name"))
+                for o in _kp_from_fmp(sym)["officers"]:
+                    if o.get("since") and last and last.lower() in (o.get("name") or "").lower() and CEO_RE.search(o.get("title") or ""):
+                        ceo["since"] = o["since"]
+                        break
+            except Exception:
+                pass
+        tenure = (year - ceo["since"]) if ceo and ceo.get("since") else None
+        mcap = data.get("mcap")
+        if mcap is None:
+            try:
+                fa = company_figures(sym)
+                mcap = (((fa or {}).get("valuation") or {}).get("marketCap"))
+            except Exception:
+                mcap = None
+        if mcap is None:
+            inf = fdb_info(sym)
+            if inf and inf.get("size"):
+                mcap = 5e9 if re.search(r"mid|small|micro|nano", inf["size"], re.I) else 100e9
+        out = key_person_score(ceo, others, data.get("insiders"), mcap, tenure, year)
+        out.update(symbol=sym, available=out["score"] is not None, source=data["source"],
+                   ceo={"name": ceo.get("name"), "title": ceo.get("title"), "age": ceo.get("age"), "years": tenure} if ceo else None,
+                   insiders=data.get("insiders"), marketCap=mcap)
+        return out
+    return cached(("keyperson", sym), 7 * 86400, load)
+
+
+def _surname(name):
+    parts = [w for w in re.findall(r"[A-Za-z][A-Za-z'\-]+", name or "") if w.lower() not in ("mr", "mrs", "ms", "dr", "jr", "sr", "ii", "iii", "iv")]
+    return parts[-1] if parts else None
+
+
+def ceo_news(symbols):
+    """Headlines from the last 7 days that name a holding's CEO together with words like resign, health or investigation."""
+    out = []
+    kps = dict(KP_POOL.map(lambda s: (s, key_person(s)), symbols[:15])) if symbols else {}
+    now = time.time()
+    for sym, kp in kps.items():
+        ceo = (kp or {}).get("ceo") or {}
+        last = _surname(ceo.get("name"))
+        if not last or len(last) < 3:
+            continue
+        for n in get_news([sym]):
+            title = n.get("title") or ""
+            if (n.get("time") or 0) >= now - 7 * 86400 and re.search(r"\b%s\b" % re.escape(last), title, re.I) and CEO_NEWS_RE.search(title):
+                out.append({"symbol": sym, "ceo": ceo.get("name"), "title": title, "link": n.get("link"), "publisher": n.get("publisher"), "time": n.get("time")})
+    seen, uniq = set(), []
+    for x in sorted(out, key=lambda x: -(x.get("time") or 0)):
+        if x["title"] not in seen:
+            seen.add(x["title"])
+            uniq.append(x)
+    return uniq[:5]
+
+
 # ---------------------------------------------------------------- FinanceDatabase (MIT, Jeroen Bouma): 120,000+ companies worldwide
 
 FDB_URL = "https://raw.githubusercontent.com/JerBouma/FinanceDatabase/main/compression/equities.bz2"
@@ -4174,6 +4402,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
         if path == "/api/ltentry":
             return self.send_json(lt_entry(q.get("symbol", "SPY")))
+        if path == "/api/keyperson":
+            if q.get("symbols"):
+                ss = syms(q.get("symbols"))[:40]
+                return self.send_json({s: r for s, r in KP_POOL.map(lambda s: (s, key_person(s)), ss)})
+            return self.send_json(key_person(q.get("symbol", "SPY")))
         if path == "/api/ltbacktest":
             return self.send_json(lt_backtest(q.get("symbol", "SPY").upper()))
         if path == "/api/t212/dividends":

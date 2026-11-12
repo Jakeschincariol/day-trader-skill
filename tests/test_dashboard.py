@@ -1195,3 +1195,72 @@ class Runners(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeyPersonRisk(unittest.TestCase):
+    def setUp(self):
+        self.saved = (srv._kp_from_yahoo, srv._kp_from_fmp, srv.get_news)
+        with srv._cache_lock:
+            for k in [k for k in srv._cache if k[0] == "keyperson"]:
+                del srv._cache[k]
+
+    def tearDown(self):
+        srv._kp_from_yahoo, srv._kp_from_fmp, srv.get_news = self.saved
+
+    def test_founder_without_number_two_scores_high(self):
+        ceo = {"name": "Ann Founder", "title": "Co-Founder, CEO & Chairman", "age": 71}
+        r = srv.key_person_score(ceo, [{"name": "B", "title": "CFO"}], 22.0, 8e9, tenure_years=25)
+        # founder 30 + tenure 20 + age 15 + no number two 15 + chair 10 + insiders 10 + small 10 = 110 -> capped
+        self.assertEqual(r["score"], 100)
+        self.assertEqual(r["band"], "High")
+        self.assertTrue(r["founder"])
+
+    def test_hired_ceo_with_president_scores_low(self):
+        ceo = {"name": "C Hired", "title": "CEO & Director", "age": 58}
+        r = srv.key_person_score(ceo, [{"name": "D", "title": "President & COO"}, {"name": "E", "title": "Vice President, Sales"}], 1.0, 300e9, tenure_years=5)
+        self.assertEqual(r["score"], 0)
+        self.assertEqual(r["band"], "Low")
+        self.assertEqual(r["numberTwo"][0]["name"], "D")
+
+    def test_vice_president_is_not_a_number_two(self):
+        ceo = {"name": "C", "title": "CEO", "age": 50}
+        r = srv.key_person_score(ceo, [{"name": "V", "title": "Executive Vice President of Operations"}], 1.0, 300e9, tenure_years=5)
+        self.assertEqual(r["score"], 15)
+
+    def test_unknowns_are_listed_not_counted(self):
+        r = srv.key_person_score({"name": "X", "title": "Chief Executive Officer"}, [], None, None)
+        self.assertEqual(r["score"], 15)  # only the missing number two
+        self.assertIn("the CEO's age", r["unknown"])
+        self.assertIn("how long the CEO has been in the job", r["unknown"])
+
+    def test_key_person_falls_back_to_fmp_and_skips_funds(self):
+        def boom(sym):
+            raise RuntimeError("blocked")
+        srv._kp_from_yahoo = boom
+        srv._kp_from_fmp = lambda sym: {"officers": [{"name": "Jen Smith", "title": "Founder & CEO", "yearBorn": 1960, "since": 2000},
+                                                     {"name": "P", "title": "Chief Financial Officer"}],
+                                        "insiders": None, "mcap": 500e9, "type": "EQUITY", "source": "Financial Modeling Prep"}
+        r = srv.key_person("ABC")
+        year = time.gmtime().tm_year
+        self.assertTrue(r["available"])
+        self.assertEqual(r["ceo"]["age"], year - 1960)
+        self.assertEqual(r["ceo"]["years"], year - 2000)
+        self.assertEqual(r["source"], "Financial Modeling Prep")
+        self.assertGreaterEqual(r["score"], 30 + 20 + 15)
+        srv._kp_from_fmp = lambda sym: {"officers": [], "insiders": None, "mcap": None, "type": "ETF", "source": "x"}
+        self.assertFalse(srv.key_person("ETF1")["available"])
+        self.assertFalse(srv.key_person("ETF1").get("applies", True))
+
+    def test_ceo_news_needs_name_and_trigger_word(self):
+        srv._kp_from_yahoo = lambda sym: {"officers": [{"name": "Mr. Jensen Huang", "title": "Co-Founder, CEO", "age": 63}],
+                                          "insiders": 3.5, "mcap": 4e12, "type": "EQUITY", "source": "Yahoo"}
+        now = time.time()
+        srv.get_news = lambda syms: [
+            {"title": "Huang to step down as CEO, board names successor", "time": now - 3600, "link": "https://x"},
+            {"title": "Huang unveils new chip at keynote", "time": now - 3600},
+            {"title": "Analyst says CEO succession matters", "time": now - 3600},
+            {"title": "Huang resigns (old story)", "time": now - 30 * 86400},
+        ]
+        out = srv.ceo_news(["NVDA"])
+        self.assertEqual([x["title"] for x in out], ["Huang to step down as CEO, board names successor"])
+        self.assertEqual(out[0]["ceo"], "Mr. Jensen Huang")

@@ -410,6 +410,23 @@
     el.innerHTML = list.map((x, i) => row(x, res[i])).join("");
   }
 
+  function keyPersonCard(el, k) {
+    if (!k || !k.available) {
+      if (k && k.applies === false) { const c = $("#kpCard"); if (c) c.hidden = true; return; }
+      el.innerHTML = `<p class="muted">${esc((k && k.why) || "No leadership data for this company.")}</p>`; return;
+    }
+    const tone = k.band === "High" ? "down" : k.band === "Medium" ? "flat" : "up";
+    const c = k.ceo || {};
+    el.innerHTML = `<div class="kp-top"><div class="kp-score ${tone}"><b class="num">${k.score}</b><span>/100</span></div>
+        <div class="kp-txt"><b class="kp-band ${tone}">${esc(k.band)} key person risk</b>
+          <span>${c.name ? `CEO: <b>${esc(c.name)}</b>${c.title ? ` · ${esc(c.title)}` : ""}${c.age ? ` · age ${c.age}` : ""}${c.years != null ? ` · ${c.years} years in the job` : ""}` : "CEO not listed"}</span></div></div>
+      <div class="kp-bar" aria-hidden="true"><span class="${tone}" style="width:${k.score}%"></span></div>
+      ${k.reasons.length ? `<ul class="kp-list">${k.reasons.map((r) => `<li><span>${esc(r.text)}</span><b class="num">+${r.points}</b></li>`).join("")}</ul>` : `<p class="sec" style="margin:10px 0 0">No warning signs found.</p>`}
+      ${k.numberTwo && k.numberTwo.length ? `<p class="muted" style="font-size:13px;margin:8px 0 0">Number two: ${k.numberTwo.map((o) => `${esc(o.name)} (${esc(o.title)})`).join(", ")}</p>` : ""}
+      ${k.unknown && k.unknown.length ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">Not known, so not counted: ${esc(k.unknown.join(", "))}.</p>` : ""}
+      <p class="muted" style="font-size:11.5px;margin:8px 0 0">0–29 low, 30–54 medium, 55+ high. A warning light, not a prediction: founder-led companies can also be a strength. It does not change the buy advice. Source: ${esc(k.source || "")}, refreshed weekly.</p>`;
+  }
+
   async function homeMarket() {
     const [rows, t212] = await Promise.all([getScreener(), getT212().catch(() => null)]);
     if (!$("#top")) return;
@@ -644,6 +661,7 @@
             <ul class="reasons">${a.reasons.map((x) => `<li class="${x.ok ? "" : "no"}">${esc(x.text)}</li>`).join("")}</ul></div>
         </div>
       </div>
+      ${a.type === "EQUITY" ? `<div class="card" style="margin-top:16px" id="kpCard"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="user-round"></i>Key person risk</h2><span class="muted" style="font-size:12.5px">how much ${esc(a.symbol)} depends on one leader</span></div><div id="kpBox">${skeleton(4)}</div></div>` : ""}
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="line-chart"></i>If you invest every month in ${esc(a.symbol)}</h2><span class="muted" style="font-size:12.5px">set your own amount</span></div><div id="stockFc">${skeleton(5)}</div></div>
       <div class="card" id="hourlyCard" style="margin-top:16px" hidden></div>
       <div class="grid g2" style="margin-top:16px">
@@ -740,6 +758,12 @@
           (lp && lp.score != null ? `<span class="muted">Long-term score <b>${lp.score}</b>${lp.zone ? " · " + esc(window.LT.zoneLabel(lp.zone)) : ""}</span>` : "") + `<span class="go">Details ↓</span>`;
         if (window.lucide) window.lucide.createIcons();
       });
+    }
+
+    // ---- key person risk (information only: it does not change the buy advice)
+    if ($("#kpBox")) {
+      api("/api/keyperson?symbol=" + encodeURIComponent(a.symbol)).then((k) => { if ($("#kpBox")) keyPersonCard($("#kpBox"), k); })
+        .catch((e) => { if ($("#kpBox")) $("#kpBox").innerHTML = `<p class="muted">Key person data unavailable: ${esc(e.message)}</p>`; });
     }
 
     // ---- monthly-investing forecast for this stock

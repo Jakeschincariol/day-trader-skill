@@ -80,6 +80,17 @@ Four reviewers (long-term investing, trading and risk, visual design, mobile use
 - **Fixes**: positions already below their stop are flagged in the risk panel; the stock *Max* return compares from the same start date as the S&P 500; weak stocks say *Avoid*; swing backtests include 0.4% costs and buy-and-hold; Copy works on the iPhone; sparkline colours follow the day's change; one €1,200 monthly default.
 - **Clearer pages**: portfolio value first on the Dashboard; positions first on Portfolio; on stock pages (long-term mode) a verdict strip under the price, a full-width calm chart (price and 200-day average; tick *Trader view* for candles, volume and RSI), and Statistics / Earnings folded; plainer labels (*Good time to add*, *Keep buying as planned*, *Pricey: buy small*, *Gain so far*); compact market banner on the iPhone.
 
+## Key person risk (stock page)
+
+How much a stock depends on one leader, usually the CEO, from 0 to 100 (0-29 low, 30-54 medium, 55+ high). Points per warning sign:
+the CEO founded the company +30; CEO more than 15 years in the job +20, 8-15 years +10, less than 3 years +10; CEO aged 70+ +15, 65-69 +8;
+no President or COO besides the CEO +15; CEO is also Chair +10; insiders own 10%+ +10; company worth under $20 billion +10 (max 100).
+Data: Yahoo's company profile (officers, ages, titles, insider ownership), with a Financial Modeling Prep key as backup and for "years in the job"
+(Yahoo doesn't give it: without a key that sign is listed as *not known* and not counted). Refreshed weekly. Funds and ETFs get no score.
+It is shown as information only and never changes the buy advice. It also appears as a red flag in **Compare** (high only), as a line in
+**Diversification** on the Portfolio page (share of your money in high key-person-risk stocks), and the home **briefing** shows
+**CEO in the news** when a headline from the last 7 days names a holding's CEO with words like resign, step down, successor, health or investigation.
+
 ## Right moment to buy? (long-term entry check)
 
 On every stock page in Long-term mode, above the Long-term view. It answers "should I buy it all now, in parts, or wait?":
