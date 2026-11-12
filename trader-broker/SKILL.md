@@ -49,6 +49,7 @@ python3 "${CLAUDE_SKILL_DIR}/ticket.py" approve --index 1 --reply "yes"
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" result --index 1 --status placed --broker-id ID --filled-qty 8 --filled-price 364.20
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" fill --symbol TSLA --side sell --qty 8 --price 370.04
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" flatten --symbol TSLA --qty 8
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" canceled --broker-id ID   # placed, then canceled before any fill
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" log
 ```
 
