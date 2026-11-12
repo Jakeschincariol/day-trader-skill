@@ -26,10 +26,35 @@ after. Newest session first. Rules that have been learned are collected in
 5. **Test monitoring scripts once before the long loop.** A price regex
    `([\d.]+)` grabbed the sentence's trailing period ("406.44.") and crashed
    the first watch. Use `(\d+\.\d+)`. *(2026-11-12)*
-6. **A 2R target late in the day rarely fills.** With about 2 hours to the
-   close, a 2R target often can't be reached. Consider `--target 1R` for
-   entries after 1:00 PM ET, or expect the flat-by close to decide the trade.
-   *(2026-11-12, pending the ROK outcome)*
+6. **A 2R target late in the day rarely fills.** ROK, entered at 1:52 PM,
+   never got within $6 of its 2R target. For entries after 1:00 PM ET use
+   `--target 1R`. *(2026-11-12)*
+7. **Don't take ORB breakouts more than about 2 hours after they trigger.**
+   ROK (breakout at 9:50 AM, entered at 1:52 PM) chopped sideways, then slid
+   back under the breakout level. By mid-afternoon the opening range is no
+   longer the level that matters. For late trades, use the day's high and a
+   fresh 30-minute structure. *(2026-11-12)*
+8. **Cut a trade early once it closes back under its breakout level.** That
+   is the failed-breakout signal. Closing ROK there lost $12.42 instead of
+   risking the full $29.52. *(2026-11-12)*
+9. **Screen late-day setups at about 11:00 AM–1:30 PM, not at 3:00 PM.** By
+   3:00 PM there are 30 minutes of entry window left, and the 3 parallel
+   screeners found nothing that passed. Run the agents earlier, while there
+   is still time to act. *(2026-11-12)*
+10. **The free IEX quote feed is unusable for most names.** About 80% of
+    symbols showed spreads of 1–11%. Screen spread and size on liquid
+    large-caps only, or check `get_stock_latest_trade`. Treat "no quote" as
+    unknown, not as wide. *(2026-11-12)*
+11. **Buy-stop triggers beat chasing.** Placing bracket buy-stops just above
+    the day high (DVN, XOM, CVX) meant no fill unless the breakout happened.
+    None triggered, so the cost was zero, which beats buying a fade. Cancel
+    unfilled triggers at `no_entries_after` (3:30 PM). Stage them with
+    `exit.py --stop price:X --target 1R`, then `size.py --write`, then set
+    `type: stop` and `stop_price` in orders.json, then run `check.py`.
+    *(2026-11-12)*
+12. **Keep `trader/portfolio.json` cash in line with the budget.** After raising
+    `budget`, also raise the portfolio cash, or `size.py` stays bound by the
+    old cash. *(2026-11-12)*
 
 ## Session log
 
@@ -50,10 +75,25 @@ the range high by the distance from the live price to the range-midpoint stop.
   Lesson: late breakouts need a clear reason to still work (a fresh push or
   new highs), not just "still above the level".
 
-**Trade.**
+**Trades.**
 | symbol | entry | stop | target | qty | max loss | result |
 | --- | --- | --- | --- | --- | --- | --- |
-| ROK | 406.60 (1:52 PM) | 403.60 | 413.44 | 9 | $29.52 | open, about -$6.60 at 2:09 PM |
+| ROK | 406.60 (1:52 PM, market) | 403.60 | 413.44 (2R) | 9 | $29.52 | closed early at 405.22 (2:54 PM): **-$12.42** |
+| DVN | buy-stop 46.52 | 46.27 | 46.77 (1R) | 85 | $21.25 | never triggered (high 46.47), canceled 3:30 PM |
+| XOM | buy-stop 170.93 | 170.40 | 171.46 (1R) | 23 | $12.19 | never triggered (high about 170.78), canceled 3:30 PM |
+| CVX | buy-stop 218.10 | 217.37 | 218.83 (1R) | 18 | $13.14 | never triggered (high about 217.93), canceled 3:30 PM |
+
+**Day:** -$12.42 (paper equity $99,987.58). One filled trade, a loss.
+
+**Process changes made today.** The user gave standing approval for paper
+orders (`auto_approve`, `ticket.py approve --auto`). Research fanned out to 3
+parallel screener agents, and all orders were placed centrally. The budget was
+raised to $20,000 with the $50/trade and $150/day loss limits unchanged.
+
+**Tooling gap.** `ticket.py result` has no `canceled` status, so the three
+canceled buy-stops are logged as "placed" with a note. trader-risk counts their
+max loss toward the daily limit, which is conservative but wrong. Add a
+`canceled` status.
 
 **What went right.** All three gates held (risk PASS, explicit yes, Allow
 once). The bracket put the stop at the broker the moment the entry filled, and
