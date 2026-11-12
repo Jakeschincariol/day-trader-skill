@@ -209,6 +209,14 @@ class DayTradeChecks(unittest.TestCase):
         yesterday = {"orders": [placed(s, day="2026-10-16") for s in ("AAPL", "AMD", "NVDA")]}
         self.assertEqual(verdicts(check.check([tsla()], cfg(), state=yesterday, now=at(NOW))), ["PASS"])
 
+    def test_an_entry_canceled_before_it_filled_does_not_count(self):
+        a, b, c = (dict(placed(s), broker_order_id=s.lower()) for s in ("AAPL", "AMD", "NVDA"))
+        st = {"orders": [a, b, c, {"status": "canceled", "broker_order_id": "amd", "symbol": "AMD",
+                                   "date": TODAY, "at": TODAY + "T15:30:00-04:00"}]}
+        res = check.check([tsla()], cfg(), state=st, now=at(NOW))
+        self.assertEqual(verdicts(res), ["PASS"])
+        self.assertEqual((res["today"]["entries_placed"], res["today"]["loss_at_risk"]), (2, 93.76))
+
     def test_exits_and_declines_do_not_count_as_trades(self):
         st = {"orders": [placed("AAPL"), placed("AAPL", side="sell", kind="exit", max_loss=None),
                          placed("AMD", status="declined"), placed("NVDA", status="failed")]}

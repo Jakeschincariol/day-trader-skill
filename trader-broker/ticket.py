@@ -623,6 +623,8 @@ def cmd_result(a):
         new["broker_order_id"] = a.broker_id
     if a.note:
         new["note"] = a.note
+    if a.status == "placed" and a.filled_qty:
+        new["filled_qty"] = a.filled_qty
     state["orders"].append(new)
     write_json(a.state, state)
     print("Recorded order %d as %s." % (a.index, a.status))
@@ -635,6 +637,31 @@ def cmd_result(a):
               % (rec["symbol"], rec["side"]))
         if rec.get("kind") == "entry" and is_bracket(order):
             print("When the stop-loss or the take-profit fills later, record that sell the same way.")
+    return 0
+
+
+def cmd_canceled(a):
+    """An order placed today that was canceled before it filled (an unfilled buy-stop at the
+    entry cutoff, say). trader-risk then leaves it out of the day's trades and max loss."""
+    state = load_state(a.state)
+    now, today = _clock(a)
+    placed = [r for r in state.get("orders", [])
+              if r.get("status") == "placed" and r.get("broker_order_id") == a.broker_id]
+    if not placed:
+        raise TicketError("no placed order with broker id %s in %s" % (a.broker_id, a.state))
+    rec = placed[-1]
+    if rec.get("filled_qty"):
+        raise TicketError("order %s already filled; close the position instead of marking it canceled"
+                          % a.broker_id)
+    new = {"at": ny_iso(now), "date": today, "status": "canceled", "broker_order_id": a.broker_id}
+    for k in ("index", "fingerprint", "symbol", "side", "plain", "qty", "kind"):
+        if rec.get(k) is not None:
+            new[k] = rec[k]
+    if a.note:
+        new["note"] = a.note
+    state["orders"].append(new)
+    write_json(a.state, state)
+    print("Recorded %s %s (%s) as canceled before it filled." % (new.get("side"), new.get("symbol"), a.broker_id))
     return 0
 
 
@@ -754,6 +781,11 @@ def main(argv=None):
     p.add_argument("--filled-qty")
     p.add_argument("--filled-price")
     p.add_argument("--portfolio", default="trader/portfolio.json")
+    p = sub.add_parser("canceled", help="a placed order canceled before it filled (left out of the day's limits)")
+    p.add_argument("--broker-id", required=True)
+    p.add_argument("--note")
+    p.add_argument("--state", default="trader/state/broker.json")
+    clock(p)
     p = sub.add_parser("fill", help="record a fill in trader/portfolio.json")
     p.add_argument("--symbol", required=True)
     p.add_argument("--side", required=True, choices=["buy", "sell"])
@@ -782,7 +814,7 @@ def main(argv=None):
         return 1
     try:
         return {"show": cmd_show, "approve": cmd_approve, "decline": cmd_decline, "result": cmd_result,
-                "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
+                "canceled": cmd_canceled, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1

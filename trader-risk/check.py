@@ -350,10 +350,14 @@ def rec_is_entry(rec):
 
 
 def placed_today(state, today):
-    """Orders recorded as placed today by trader-broker."""
+    """Orders recorded as placed today by trader-broker, minus any canceled before they filled."""
+    recs = (state or {}).get("orders", [])
+    canceled = {r.get("broker_order_id") for r in recs
+                if r.get("status") == "canceled" and r.get("broker_order_id")}
     out = []
-    for rec in (state or {}).get("orders", []):
-        if rec.get("status") == "placed" and rec_day(rec) == today:
+    for rec in recs:
+        if rec.get("status") == "placed" and rec_day(rec) == today \
+                and not (rec.get("broker_order_id") and rec.get("broker_order_id") in canceled):
             out.append(rec)
     return out
 
@@ -364,8 +368,13 @@ def day_trades(state, today):
     is meant to be flat by the close. Returns (count, sorted list of "day SYM")."""
     days = set(business_days(datetime.date.fromisoformat(today)))
     sides = {}
-    for rec in (state or {}).get("orders", []):
+    recs = (state or {}).get("orders", [])
+    canceled = {r.get("broker_order_id") for r in recs
+                if r.get("status") == "canceled" and r.get("broker_order_id")}
+    for rec in recs:
         if rec.get("status") not in ("placed", "filled"):
+            continue
+        if rec.get("broker_order_id") and rec.get("broker_order_id") in canceled:
             continue
         d = rec_day(rec)
         if d not in days:

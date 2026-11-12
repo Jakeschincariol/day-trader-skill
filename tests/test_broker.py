@@ -339,6 +339,54 @@ class Flow(unittest.TestCase):
         code, text, _ = run(self.args("show", "--index", "1"))
         self.assertIn("DONE: declined", text)
 
+    def test_auto_approval_is_paper_only_and_still_needs_the_pass(self):
+        code, _, err = run(self.args("approve", "--index", "1", "--auto"))
+        self.assertEqual(code, 1)
+        self.assertIn("not ready", err)
+        self.run_risk()
+        code, _, err = run(self.args("approve", "--index", "1", "--auto"))
+        self.assertEqual(code, 1)
+        self.assertIn("auto approval is off", err)
+        with open(self.cfg) as fh:
+            c = json.load(fh)
+        c.update(auto_approve=True, paper=False)
+        with open(self.cfg, "w") as fh:
+            json.dump(c, fh)
+        code, _, err = run(self.args("approve", "--index", "1", "--auto"))
+        self.assertEqual(code, 1)
+        self.assertIn("paper account only", err)
+        c["paper"] = True
+        with open(self.cfg, "w") as fh:
+            json.dump(c, fh)
+        code, text, _ = run(self.args("approve", "--index", "1", "--auto"))
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(text[text.index("{"):text.rindex("}") + 1]), TSLA_CALL)
+        self.assertTrue(self.state_doc()["orders"][0]["reply"].startswith("auto:"))
+
+    def test_an_unfilled_order_can_be_marked_canceled(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "stop1"))
+        code, text, _ = run(["canceled", "--broker-id", "stop1", "--state", self.state, "--now", "2026-10-19 15:30"])
+        self.assertEqual(code, 0)
+        self.assertIn("canceled before it filled", text)
+        st = self.state_doc()
+        self.assertEqual([r["status"] for r in st["orders"]], ["approved", "placed", "canceled"])
+        res = check.check([tsla()], {"budget": 5000}, state=st, now=check.parse_now("2026-10-19 15:00"))
+        self.assertEqual((res["today"]["entries_placed"], res["today"]["loss_at_risk"]), (0, 0.0))
+        code, _, err = run(["canceled", "--broker-id", "nope", "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("no placed order", err)
+
+    def test_a_filled_order_cannot_be_marked_canceled(self):
+        self.run_risk()
+        run(self.args("approve", "--index", "1", "--reply", "yes"))
+        run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "f1",
+                      "--filled-qty", "8", "--filled-price", "364.20", "--portfolio", self.pf))
+        code, _, err = run(["canceled", "--broker-id", "f1", "--state", self.state])
+        self.assertEqual(code, 1)
+        self.assertIn("already filled", err)
+
     def test_ibkr_tickets_send_the_final_yes_to_ibkr(self):
         with open(self.cfg) as fh:
             c = json.load(fh)

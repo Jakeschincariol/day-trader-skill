@@ -90,10 +90,19 @@ orders (`auto_approve`, `ticket.py approve --auto`). Research fanned out to 3
 parallel screener agents, and all orders were placed centrally. The budget was
 raised to $20,000 with the $50/trade and $150/day loss limits unchanged.
 
-**Tooling gap.** `ticket.py result` has no `canceled` status, so the three
-canceled buy-stops are logged as "placed" with a note. trader-risk counts their
-max loss toward the daily limit, which is conservative but wrong. Add a
-`canceled` status.
+**Tooling gap (fixed the same day).** `ticket.py` had no way to record a
+canceled order. Added `ticket.py canceled --broker-id ID`. trader-risk now
+leaves an order canceled before it filled out of the day's trade count and
+max loss. Use it for every unfilled trigger canceled at the cutoff.
+
+**Plan for the next session.**
+1. 9:00–9:30 AM ET: run the scanner pre-market. Read the Standing rules.
+2. 9:45 AM–11:00 AM: opening-range breakouts with buy-stop triggers just
+   above the range high. Check the live Alpaca quote first (Rule 1).
+3. 11:00 AM–1:30 PM: parallel screener agents for second-leg setups
+   (Rule 9), with 1R targets after 1:00 PM (Rule 6).
+4. 3:30 PM: cancel unfilled triggers and run `ticket.py canceled`.
+   3:55 PM: flat.
 
 **What went right.** All three gates held (risk PASS, explicit yes, Allow
 once). The bracket put the stop at the broker the moment the entry filled, and
