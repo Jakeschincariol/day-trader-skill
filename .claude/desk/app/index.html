@@ -25,12 +25,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .muted{color:var(--text-muted)} .sec{color:var(--text-secondary)}
 
 /* ---------- top bar ---------- */
-header{flex:none;position:relative;z-index:5;display:flex;align-items:center;gap:18px;padding:10px 18px;background:rgba(14,14,13,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+header{flex:none;position:relative;z-index:5;display:flex;align-items:center;gap:12px;padding:10px 16px;white-space:nowrap;background:rgba(14,14,13,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.2px}
 .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#3987e5,#9085e9);display:grid;place-items:center;font-size:13px}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
 .pill .dot{width:7px;height:7px;border-radius:50%}
-.kpis{display:flex;gap:22px;margin-left:8px}
+.kpis{display:flex;gap:18px;margin-left:4px}
+.kpi{white-space:nowrap}
 .kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted)}
 .kpi .value{font-size:15px;font-weight:600}
 .meter{width:110px;height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden;margin-top:4px}
@@ -120,6 +121,26 @@ td b{color:var(--text-primary)}
 .panel pre{margin:0;padding:14px;font-family:var(--mono);font-size:11.5px;color:var(--text-secondary);white-space:pre-wrap}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--surface-3);border:1px solid var(--line-2);padding:9px 14px;border-radius:10px;font-weight:500;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none}
 .toast.show{opacity:1}
+.tabs{display:flex;gap:4px;margin-left:6px}
+.tab{border:0;background:transparent;color:var(--text-muted);font:600 11.5px Inter;padding:3px 9px;border-radius:7px;text-transform:none;letter-spacing:0}
+.tab.active{background:var(--surface-3);color:var(--text-primary)}
+.pane{display:none;min-height:0;flex:1;flex-direction:column} .pane.active{display:flex}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:25;place-items:center}
+.modal.open{display:grid}
+.dialog{width:min(480px,92vw);background:var(--surface-1);border:1px solid var(--line-2);border-radius:14px;padding:18px}
+.dialog h3{margin:0 0 6px;font-size:15px}
+.dialog p{margin:0 0 12px;color:var(--text-secondary);font-size:12.5px}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.field label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px}
+.field input{background:var(--surface-2);border:1px solid var(--line-2);border-radius:9px;color:var(--text-primary);padding:8px 10px;font:13px var(--mono)}
+.field input:focus{outline:none;border-color:var(--accent)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.typing{display:inline-block;width:6px;height:13px;background:var(--text-secondary);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-right:5px;box-shadow:0 0 0 0 rgba(12,163,12,.6);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 6px rgba(12,163,12,0)}100%{box-shadow:0 0 0 0 rgba(12,163,12,0)}}
+.agent .tools{display:flex;gap:4px;margin-left:4px}
 @media (max-width:1250px){main{grid-template-columns:290px minmax(0,1fr)} .col.right{display:none}}
 </style>
 </head>
@@ -128,11 +149,12 @@ td b{color:var(--text-primary)}
   <div class="brand"><div class="logo">◆</div>Trading Desk</div>
   <span class="pill" id="acct"><span class="dot" style="background:var(--good)"></span>PAPER</span>
   <span class="pill" id="market">—</span>
-  <span class="pill num" id="clock">--:--:-- NY</span>
+  <span class="pill num" id="clock" style="min-width:104px;justify-content:center">--:--:-- NY</span>
   <div class="kpis">
     <div class="kpi"><div class="label">Day P/L</div><div class="value num" id="k-pl">—</div></div>
     <div class="kpi"><div class="label">Risk used</div><div class="value num" id="k-risk">—</div><div class="meter"><i id="k-riskbar" style="width:0"></i></div></div>
     <div class="kpi"><div class="label">Entries</div><div class="value num" id="k-entries">—</div></div>
+    <div class="kpi"><div class="label">Equity</div><div class="value num" id="k-eq">—</div></div>
     <div class="kpi"><div class="label">Breakout gate</div><div class="value" id="k-gate">—</div></div>
   </div>
   <div class="spacer"></div>
@@ -140,6 +162,8 @@ td b{color:var(--text-primary)}
     <span class="t">Autotrade</span><span class="muted" id="auto-label" style="font-size:11.5px">—</span>
     <button class="toggle" id="auto-toggle" aria-label="Toggle autotrade"></button>
   </div>
+  <span class="pill" id="live-pill" title="Live push from the desk server"><span class="live-dot"></span>LIVE</span>
+  <button class="btn" id="settings-btn" title="Alpaca connection and notifications">Settings</button>
   <button class="btn danger" id="stop-btn">Stop desk</button>
 </header>
 
@@ -168,18 +192,29 @@ td b{color:var(--text-primary)}
       </div>
     </div>
     <div class="card" style="flex:.7">
-      <h2>Order log <span class="right">trader/state/broker.json</span></h2>
-      <div class="scroll"><table id="log"></table></div>
+      <h2><span class="tabs" data-tabs="bottom"><button class="tab active" data-tab="b-pos">Positions</button><button class="tab" data-tab="b-ord">Alpaca orders</button><button class="tab" data-tab="b-log">Order log</button></span><span class="right" id="alp-status"></span></h2>
+      <div class="pane active scroll" id="b-pos"><table id="positions"></table></div>
+      <div class="pane scroll" id="b-ord"><table id="aorders"></table></div>
+      <div class="pane scroll" id="b-log"><table id="log"></table></div>
     </div>
   </section>
 
   <section class="col right">
     <div class="card" style="flex:1.6">
-      <h2>Claude <span class="right" id="chat-src"></span></h2>
-      <div class="scroll" id="chat"></div>
-      <div class="composer">
-        <textarea id="say" placeholder="Message Claude (read at its next desk check)…"></textarea>
-        <button class="btn" id="send">Send</button>
+      <h2><span class="tabs" data-tabs="chat"><button class="tab active" data-tab="c-desk">Desk chat</button><button class="tab" data-tab="c-main">Main session</button></span><span class="right" id="chat-src"></span></h2>
+      <div class="pane active" id="c-desk">
+        <div class="scroll" id="dchat" style="flex:1;padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px"></div>
+        <div class="composer">
+          <textarea id="dsay" placeholder="Ask or tell the desk trader… (Enter to send)"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary" id="dsend">Send</button><button class="btn" id="dnew" title="Start a new conversation">New</button></div>
+        </div>
+      </div>
+      <div class="pane" id="c-main">
+        <div class="scroll" id="chat" style="flex:1"></div>
+        <div class="composer">
+          <textarea id="say" placeholder="Leave a note for the main session (read at its next desk check)…"></textarea>
+          <button class="btn" id="send">Send</button>
+        </div>
       </div>
     </div>
     <div class="card" style="flex:.8">
@@ -192,6 +227,17 @@ td b{color:var(--text-primary)}
 <div class="drawer" id="drawer"><div class="panel">
   <header><b id="d-title"></b><div class="spacer"></div><button class="btn" id="d-close">Close</button></header>
   <div class="scroll" style="flex:1"><pre id="d-body"></pre></div>
+</div></div>
+<div class="modal" id="settings"><div class="dialog">
+  <h3>Alpaca paper account</h3>
+  <p>Read-only live data: equity, positions, orders, fills and prices refresh every 2 seconds. Keys are saved on this PC only (<span class="num">%APPDATA%\\TradingDesk</span>), never in the repo or the chat. Paper keys only (they start with PK); the app never places orders.</p>
+  <div class="field"><label>API key ID</label><input id="kid" placeholder="PK…" autocomplete="off"></div>
+  <div class="field"><label>Secret key</label><input id="ksec" type="password" autocomplete="off"></div>
+  <p class="muted" id="kstat"></p>
+  <h3 style="margin-top:14px">Desk folder</h3>
+  <p>Your day-trader-skill folder on this PC (agents, tickets, journal). Without it the app runs standalone: Alpaca, charts and chat.</p>
+  <div class="field" style="flex-direction:row;gap:8px"><input id="repo" style="flex:1" placeholder="C:\path\to\day-trader-skill"><button class="btn" id="reposave">Save folder</button></div>
+  <div class="actions"><button class="btn" id="kforget">Remove keys</button><button class="btn" id="knotify">Enable notifications</button><button class="btn" id="kclose">Close</button><button class="btn primary" id="ksave">Save</button></div>
 </div></div>
 <div class="toast" id="toast"></div>
 
@@ -226,6 +272,7 @@ const age = s => s == null ? '' : s < 60 ? s+'s ago' : Math.floor(s/60)+'m ago';
 function renderHeader(s){
   $('clock').textContent = NYS.format(new Date()) + ' NY';
   const m = s.clock; $('market').innerHTML = `<span class="dot" style="background:${m.open?css('--good'):css('--text-muted')}"></span>${m.label}${m.open?` · closes in ${Math.floor(m.closes_in_min/60)}h ${m.closes_in_min%60}m`:''}`;
+  if (s.standalone) $('agents-sum').textContent = 'standalone: set the desk folder in Settings';
   $('acct').innerHTML = s.account.paper ? `<span class="dot" style="background:var(--good)"></span>PAPER · ${esc(s.account.broker)}` : `<span class="dot" style="background:var(--critical)"></span>LIVE`;
   const pl = s.risk.day_pl ?? s.risk.realized;
   $('k-pl').innerHTML = `<span class="${pl<0?'neg':pl>0?'pos':''}">${signed(pl)}</span>`;
@@ -253,7 +300,8 @@ function renderAgents(s){
     <div class="agent" data-agent="${esc(a.name)}">
       <div class="row1">${statusTag(a)}<span class="name">${esc(a.name.replace('desk-',''))}</span>
         <span class="age num">${a.cycle!=null?'#'+a.cycle+' · ':''}${age(a.age_s)}</span>
-        <button class="iconbtn" data-pause="${esc(a.name)}" title="${a.paused?'Resume':'Pause'} this agent">${a.paused?'▶':'❚❚'}</button></div>
+        <span class="tools">${a.has_loop?`<button class="iconbtn" data-run="${esc(a.name)}" title="${a.owned?'Stop':'Start'} its loop from the app">${a.owned?'■':'⏻'}</button><button class="iconbtn" data-log="${esc(a.name)}" title="Loop log">≡</button>`:''}
+        <button class="iconbtn" data-pause="${esc(a.name)}" title="${a.paused?'Resume':'Pause'} this agent">${a.paused?'▶':'❚❚'}</button></span></div>
       <div class="skill">${esc(a.skill)}</div>
       <div class="head">${esc(a.headline)}</div>
     </div>`).join('');
@@ -345,9 +393,8 @@ async function loadBars(fit){
   }catch(e){ $('legend').innerHTML = `<b>${esc(SYMBOL)}</b><span class="neg">${esc(e.message)}</span>`; }
 }
 function renderPnl(s){
-  const pts = [{time: 0, value: 0}];
+  const pts = [{time: s.session_open_ts, value: 0}];
   s.pnl_timeline.forEach(p => pts.push({time: Math.floor(new Date(p.at).getTime()/1000), value: p.cum}));
-  pts[0].time = pts.length > 1 ? Math.min(pts[1].time - 60, Math.floor(Date.now()/1000) - 6*3600) : Math.floor(Date.now()/1000) - 3600;
   const now = Math.floor(Date.now()/1000); if (now > pts[pts.length-1].time) pts.push({time: now, value: pts[pts.length-1].value});
   const seen = new Set(); const clean = pts.filter(p => !seen.has(p.time) && seen.add(p.time)).sort((a,b)=>a.time-b.time);
   pnlSeries.setData(clean); pnlChart.timeScale().fitContent();
@@ -382,20 +429,101 @@ async function loadChat(){
     box.innerHTML = d.messages.map(m => `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Claude'} · ${tNY(m.at)}
         ${(m.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(t.replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}</div>${m.text?md(m.text):'<span class="muted">working…</span>'}</div>`).join('') +
       queued.map(m => `<div class="msg user queued"><div class="meta">You · ${tNY(m.at)} · queued for Claude</div>${esc(m.text)}</div>`).join('');
-    $('chat-src').textContent = d.path ? 'this session' : 'no transcript found';
+    if (document.getElementById('c-main').classList.contains('active')) $('chat-src').textContent = d.path ? 'this session' : 'no transcript found';
     if (atBottom) box.scrollTop = box.scrollHeight;
   }catch(e){ $('chat-src').textContent = 'chat unavailable'; }
 }
 
 /* ---------------- wiring ---------------- */
+function renderAll(){
+  renderHeader(STATE); renderAgents(STATE); renderRecs(STATE); renderTrades(STATE); renderChips(STATE); renderPnl(STATE);
+  renderAlpaca(STATE); renderDeskChat(STATE); liveCandle(STATE); notifyDiff(STATE);
+}
 async function refresh(){
-  try{
-    const r = await fetch('/api/state'); STATE = await r.json();
-    renderHeader(STATE); renderAgents(STATE); renderRecs(STATE); renderTrades(STATE); renderChips(STATE); renderPnl(STATE);
-  }catch(e){ toast('Desk server not reachable'); }
+  try{ const r = await fetch('/api/state'); STATE = await r.json(); renderAll(); }catch(e){ toast('Desk server not reachable'); }
+}
+let ES = null;
+function connect(){
+  ES = new EventSource('/api/events');
+  ES.addEventListener('state', ev => { STATE = JSON.parse(ev.data); renderAll(); $('live-pill').innerHTML = '<span class="live-dot"></span>LIVE'; });
+  ES.onerror = () => { $('live-pill').innerHTML = '<span class="dot" style="background:var(--warning)"></span>RECONNECTING'; };
+}
+
+/* ---------------- alpaca ---------------- */
+function renderAlpaca(s){
+  const a = s.alpaca || {};
+  const acct = a.account;
+  if (acct) {
+    const eq = +acct.equity, pl = eq - (+acct.last_equity);
+    $('k-eq').innerHTML = `${money(eq)} <span class="${pl<0?'neg':'pos'}" style="font-size:12px">${signed(pl)}</span>`;
+  } else $('k-eq').innerHTML = `<span class="muted" style="font-size:12px">${a.configured ? 'connecting…' : 'not connected'}</span>`;
+  $('alp-status').innerHTML = a.ok ? `<span class="live-dot"></span>Alpaca paper · ${esc(acct?.account_number||'')} · ${a.updated?tNY(a.updated):''}` :
+     a.error ? `<span class="neg">${esc(a.error)}</span>` : (a.configured ? 'connecting…' : '<a href="#" id="connect-link" style="color:var(--accent)">Connect Alpaca for live data</a>');
+  const pos = a.positions || [];
+  $('positions').innerHTML = `<thead><tr><th>Symbol</th><th class="r">Qty</th><th class="r">Avg</th><th class="r">Last</th><th class="r">Value</th><th class="r">Unrealized</th></tr></thead><tbody>${
+    pos.map(x => `<tr><td><b>${esc(x.symbol)}</b></td><td class="r num">${x.qty}</td><td class="r num">${(+x.avg_entry_price).toFixed(2)}</td><td class="r num">${(+x.current_price).toFixed(2)}</td><td class="r num">${money(+x.market_value)}</td><td class="r num ${+x.unrealized_pl<0?'neg':'pos'}">${signed(+x.unrealized_pl)} <span class="muted">(${(100*x.unrealized_plpc).toFixed(2)}%)</span></td></tr>`).join('')
+    || `<tr><td colspan="6" class="empty">${a.ok ? 'Flat: no open positions.' : 'Connect Alpaca in Settings to see live positions.'}</td></tr>`}</tbody>`;
+  const flat = []; (a.orders||[]).forEach(o => { flat.push(o); (o.legs||[]).forEach(l => flat.push({...l, leg:true})); });
+  $('aorders').innerHTML = `<thead><tr><th>Submitted</th><th>Order</th><th>Status</th><th class="r">Filled</th></tr></thead><tbody>${
+    flat.map(o => `<tr><td class="num">${tNY(o.submitted_at)}</td><td>${o.leg?'<span class="muted">↳ </span>':''}<b>${esc(o.side?.toUpperCase())} ${esc(o.qty)} ${esc(o.symbol)}</b> <span class="muted">${esc(o.type)}${o.stop_price?' stop '+o.stop_price:''}${o.limit_price?' limit '+o.limit_price:''}${o.group_role?' · '+o.group_role:''}</span></td><td>${esc(o.status)}</td><td class="r num">${o.filled_avg_price?`${o.filled_qty} @ ${(+o.filled_avg_price).toFixed(2)}`:'—'}</td></tr>`).join('')
+    || `<tr><td colspan="4" class="empty">${a.ok ? 'No orders today.' : 'Connect Alpaca in Settings.'}</td></tr>`}</tbody>`;
+}
+function liveCandle(s){
+  const q = s.alpaca?.quotes?.[SYMBOL]; if (!q || !LAST_BARS || !LAST_BARS.bars.length) return;
+  const t = Math.floor(new Date(q.t).getTime()/1000), px = +q.p, last = LAST_BARS.bars[LAST_BARS.bars.length-1];
+  const bucket = t - (t % 300);
+  if (bucket < last.time) return;
+  if (bucket === last.time) { last.high = Math.max(last.high, px); last.low = Math.min(last.low, px); last.close = px; }
+  else LAST_BARS.bars.push(last && {time:bucket, open:px, high:px, low:px, close:px, volume:0});
+  const b = LAST_BARS.bars[LAST_BARS.bars.length-1];
+  candles.update({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close}); legend(null);
+}
+
+/* ---------------- desk chat ---------------- */
+let DCHAT_SIG = '';
+function renderDeskChat(s){
+  const c = s.desk_chat || {}; const box = $('dchat');
+  const sig = (c.history||[]).length + ':' + c.running + ':' + (c.partial||'').length + ':' + (c.tools||[]).length + ':' + (c.error||'');
+  if (sig === DCHAT_SIG) return; DCHAT_SIG = sig;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const hist = (c.history||[]).map(m => m.role === 'system' ? `<div class="muted" style="text-align:center;font-size:11px">— ${esc(m.text)} —</div>` :
+    `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Desk trader'} · ${tNY(m.at)} ${(m.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(String(t).replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}${m.cost_usd?` <span class="muted">$${(+m.cost_usd).toFixed(3)}</span>`:''}</div>${m.error?`<span class="neg">${esc(m.error)}</span><br>`:''}${md(m.text||'')}</div>`).join('');
+  const live = c.running ? `<div class="msg assistant"><div class="meta">Desk trader · now ${(c.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(String(t).replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}</div>${md(c.partial||'')}<span class="typing"></span></div>` : '';
+  box.innerHTML = (hist || (c.available === false ? '<div class="empty">The Claude Code CLI is not installed on this PC.</div>' : '<div class="empty">Ask the desk trader anything: “why did FISV fail?”, “what is READY?”, “buy KNX if it breaks 63.33”. It answers in seconds and can trade the paper account (through the risk check and the shared order lock).</div>')) + live;
+  $('dsend').textContent = c.running ? 'Stop' : 'Send';
+  $('chat-src').textContent = c.running ? 'answering…' : '';
+  if (atBottom || c.running) box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------- notifications ---------------- */
+let PREV = null;
+function beep(freq){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = freq||880; g.gain.value = .06; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop(); ctx.close();}, 180);}catch(e){} }
+function notify(title, body, freq){
+  beep(freq); toast(title + (body ? ' — ' + body : ''));
+  if (window.Notification && Notification.permission === 'granted') try { new Notification(title, {body}); } catch(e){}
+}
+function notifyDiff(s){
+  if (PREV) {
+    const was = Object.fromEntries(PREV.agents.map(a => [a.name, a.status]));
+    s.agents.forEach(a => { if (a.status === 'alert' && was[a.name] !== 'alert') notify('ALERT · ' + a.name.replace('desk-',''), a.headline, 660); });
+    const filled = o => (o.status === 'filled') ? o.id : null;
+    const prevIds = new Set(); (PREV.alpaca?.orders||[]).forEach(o => { [o, ...(o.legs||[])].forEach(x => { if (filled(x)) prevIds.add(x.id); }); });
+    (s.alpaca?.orders||[]).forEach(o => [o, ...(o.legs||[])].forEach(x => { if (filled(x) && !prevIds.has(x.id) && PREV.alpaca?.ok)
+      notify(`Filled · ${x.side?.toUpperCase()} ${x.filled_qty} ${x.symbol}`, `@ ${(+x.filled_avg_price).toFixed(2)}${x.group_role?' ('+x.group_role+')':''}`, x.side==='buy'?988:523); }));
+    if (PREV.desk_chat?.running && !s.desk_chat?.running) beep(740);
+  }
+  PREV = s;
 }
 document.addEventListener('click', async e => {
-  const chip = e.target.closest('[data-sym]'); if (chip) { SYMBOL = chip.dataset.sym; renderChips(STATE); loadBars(true); return; }
+  const chip = e.target.closest('[data-sym]'); if (chip) { SYMBOL = chip.dataset.sym; post('/api/watch',{symbol:SYMBOL}).catch(()=>{}); renderChips(STATE); loadBars(true); return; }
+  const tab = e.target.closest('[data-tab]'); if (tab) { const grp = tab.parentElement; grp.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t===tab));
+    const card = grp.closest('.card'); card.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === tab.dataset.tab)); if (tab.dataset.tab==='c-main') { CHAT_SIG=''; loadChat(); } return; }
+  const run = e.target.closest('[data-run]'); if (run) { e.stopPropagation(); const a = STATE.agents.find(x=>x.name===run.dataset.run);
+    try { toast((await post('/api/control',{action:a.owned?'stop_agent':'start_agent', agent:a.name})).message); } catch(err){ toast(err.message); } return; }
+  const lg = e.target.closest('[data-log]'); if (lg) { e.stopPropagation(); const r = await fetch('/api/agent_log?agent='+encodeURIComponent(lg.dataset.log)); const d = await r.json();
+    $('d-title').textContent = `${d.agent} · loop log`; $('d-body').textContent = d.log; $('drawer').classList.add('open'); return; }
+  if (e.target.id === 'connect-link') { e.preventDefault(); openSettings(); return; }
   const pz = e.target.closest('[data-pause]');
   if (pz) { e.stopPropagation(); const a = STATE.agents.find(x=>x.name===pz.dataset.pause);
     try { toast((await post('/api/control',{action:a.paused?'resume':'pause', agent:a.name})).message); refresh(); } catch(err){ toast(err.message); } return; }
@@ -425,9 +553,25 @@ $('send').onclick = send;
 $('say').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 document.addEventListener('keydown', e => { if (e.target.id === 'symin' && e.key === 'Enter') { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z.\-]{1,10}$/.test(v)) { SYMBOL = v; renderChips(STATE); loadBars(true); } } if (e.key==='Escape') $('drawer').classList.remove('open'); });
 
+function openSettings(){ $('repo').value = STATE?.repo || ''; const a = STATE?.alpaca || {}; $('kstat').textContent = a.configured ? `Connected key ${a.key_hint}${a.ok ? ' · live' : a.error ? ' · ' + a.error : ' · connecting…'}` : 'Not connected.'; $('settings').classList.add('open'); }
+$('settings-btn').onclick = openSettings;
+$('reposave').onclick = async () => { try { toast((await post('/api/settings/repo',{path:$('repo').value})).message); } catch(e){ $('kstat').textContent = e.message; } };
+$('kclose').onclick = () => $('settings').classList.remove('open');
+$('ksave').onclick = async () => { try { toast((await post('/api/settings/alpaca',{key_id:$('kid').value, secret:$('ksec').value})).message); $('ksec').value=''; $('settings').classList.remove('open'); } catch(e){ $('kstat').textContent = e.message; } };
+$('kforget').onclick = async () => { if (!confirm('Remove the Alpaca keys from this PC?')) return; try { toast((await post('/api/settings/alpaca',{forget:true})).message); } catch(e){ toast(e.message); } };
+$('knotify').onclick = async () => { if (!window.Notification) return toast('Notifications are not supported here'); const r = await Notification.requestPermission(); toast('Notifications: ' + r); beep(880); };
+async function dsend(){
+  if (STATE?.desk_chat?.running) { try { await post('/api/ask/stop',{}); } catch(e){ toast(e.message); } return; }
+  const t = $('dsay').value.trim(); if (!t) return;
+  try { await post('/api/ask',{text:t}); $('dsay').value=''; } catch(e){ toast(e.message); }
+}
+$('dsend').onclick = dsend;
+$('dsay').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); dsend(); } });
+$('dnew').onclick = async () => { try { toast((await post('/api/ask/new',{})).message); } catch(e){ toast(e.message); } };
+
 initCharts();
-refresh().then(() => loadBars(true)); loadChat();
-setInterval(refresh, 5000); setInterval(loadChat, 5000); setInterval(() => loadBars(false), 30000);
+refresh().then(() => loadBars(true)); loadChat(); connect();
+setInterval(loadChat, 4000); setInterval(() => loadBars(false), 60000);
 setInterval(() => { $('clock').textContent = NYS.format(new Date()) + ' NY'; }, 1000);
 </script>
 </body>

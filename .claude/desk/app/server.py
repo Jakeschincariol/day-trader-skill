@@ -28,9 +28,40 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+FROZEN = getattr(sys, "frozen", False)  # running as TradingDesk.exe (PyInstaller)
+HERE = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+APPDIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "TradingDesk")
+
+
+def _is_repo(d):
+    return bool(d) and os.path.isdir(os.path.join(d, "trader-broker")) and os.path.isdir(os.path.join(d, "trader-scanner"))
+
+
+def find_root():
+    """The day-trader-skill folder: TRADING_DESK_ROOT, then the saved setting, then the folders around the
+    script / exe / current directory. None = standalone mode (Alpaca, charts and chat; no local desk)."""
+    cands = [os.environ.get("TRADING_DESK_ROOT")]
+    try:
+        with open(os.path.join(APPDIR, "settings.json"), encoding="utf-8") as fh:
+            cands.append(json.load(fh).get("repo"))
+    except (OSError, ValueError):
+        pass
+    starts = [os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__)), os.getcwd()]
+    for s in starts:
+        d = s
+        for _ in range(6):
+            cands.append(d)
+            d = os.path.dirname(d)
+    for c in cands:
+        if _is_repo(c):
+            return os.path.abspath(c)
+    return None
+
+
+REPO = find_root()
+ROOT = REPO or os.path.join(APPDIR, "standalone")
 DESK = os.path.join(ROOT, "trader", "desk")
+os.makedirs(DESK, exist_ok=True)
 NY = ZoneInfo("America/New_York")
 TOKEN = secrets.token_urlsafe(24)
 AGENTS = ["desk-alerts", "desk-broker", "desk-risk", "desk-exit", "desk-entry", "desk-budget",
@@ -40,6 +71,8 @@ AUTO_TOOLS = ["mcp__alpaca__place_stock_order", "mcp__alpaca__cancel_order_by_id
               "mcp__alpaca__replace_order_by_id"]
 PROJECTS = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 sys.path.insert(0, os.path.join(ROOT, "trader-scanner"))
+sys.path.insert(0, HERE)
+import live  # noqa: E402
 
 
 def p(*parts):
@@ -94,6 +127,8 @@ def agents_state(n):
                     "updated": r.get("updated"), "age_s": age, "cadence_s": cad, "cycle": r.get("cycle"),
                     "stale": bool(age is not None and st != "done" and age > 2 * cad), "paused": paused,
                     "items": (r.get("items") or [])[:25], "recommendations": r.get("recommendations") or []})
+    for a in out:
+        a.update(live.agent_proc_state(DESK, a["name"]))
     return out
 
 
@@ -166,6 +201,7 @@ def build_state():
     inbox = read_inbox()
     return {
         "now": n.isoformat(timespec="seconds"), "clock": market_clock(n),
+        "session_open_ts": int(n.replace(hour=9, minute=30, second=0, microsecond=0).timestamp()),
         "account": {"paper": cfg.get("paper", True) is True, "broker": cfg.get("broker", "alpaca"),
                     "cash": pf.get("cash"), "positions": pf.get("positions") or []},
         "limits": {"budget": cfg.get("budget"), "max_loss_per_trade": cfg.get("max_loss_per_trade_usd"),
@@ -179,7 +215,29 @@ def build_state():
                  "plain": r.get("plain"), "note": r.get("note"), "max_loss": r.get("max_loss")}
                 for r in rows][-60:],
         "inbox": inbox[-20:],
+        "alpaca": live.alpaca_state(), "desk_chat": live.chat_state(DESK),
+        "repo": REPO, "standalone": REPO is None,
     }
+
+
+def change_signature():
+    paths = glob.glob(os.path.join(DESK, "*.json")) + glob.glob(os.path.join(DESK, "*.jsonl")) + [
+        os.path.join(DESK, "STOP"), p("trader", "state", "broker.json"), p("trader", "portfolio.json"),
+        p("trader", "config.json"), p(".claude", "settings.local.json")]
+    paths += glob.glob(os.path.join(DESK, "PAUSE-*"))
+    sig = []
+    for f in sorted(set(paths)):
+        try:
+            sig.append((f, os.path.getmtime(f)))
+        except OSError:
+            pass
+    tp = transcript_path()
+    if tp:
+        try:
+            sig.append((tp, os.path.getmtime(tp)))
+        except OSError:
+            pass
+    return tuple(sig)
 
 
 # ------------------------------------------------------------------ chart
@@ -346,8 +404,14 @@ def control(action, agent=None):
         except OSError:
             pass
         return "%s resumed." % agent
+    if action == "start_agent":
+        return live.start_agent(ROOT, DESK, agent)
+    if action == "stop_agent":
+        return live.stop_agent(agent)
     if action in ("autotrade_on", "autotrade_off"):
-        r = subprocess.run([sys.executable, p("trader-broker", "ticket.py"), "auto", action.split("_")[1]],
+        if not REPO:
+            raise ValueError("no desk folder set: open Settings and point the app at your day-trader-skill folder")
+        r = subprocess.run([live.python_exe(), p("trader-broker", "ticket.py"), "auto", action.split("_")[1]],
                            cwd=ROOT, capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             raise ValueError((r.stderr or r.stdout).strip() or "ticket.py auto failed")
@@ -399,9 +463,43 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, data)
             if u.path == "/api/chat":
                 return self._send(200, chat_tail(int(q.get("limit", 60))))
+            if u.path == "/api/events":
+                return self._events()
+            if u.path == "/api/agent_log":
+                return self._send(200, {"agent": q.get("agent"), "log": live.agent_log(DESK, q.get("agent", ""))})
             return self._send(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001
             return self._send(500, {"error": str(e)})
+
+    def _events(self):
+        """Server-sent events: push the whole state the moment any desk file, the ticket log, Alpaca or the
+        desk chat changes (checked every 0.5 s), plus a keep-alive every 15 s."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        last, last_beat = None, time.time()
+        CLIENTS["n"] += 1
+        CLIENTS["seen"] = True
+        try:
+            while True:
+                sig = (live.VERSION["n"], change_signature())
+                if sig != last:
+                    last = sig
+                    data = json.dumps(build_state())
+                    self.wfile.write(("event: state\ndata: %s\n\n" % data).encode("utf-8"))
+                    self.wfile.flush()
+                elif time.time() - last_beat > 15:
+                    self.wfile.write(b": beat\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+                time.sleep(0.5)
+        except (OSError, ValueError):
+            return
+        finally:
+            CLIENTS["n"] -= 1
+            CLIENTS["since"] = time.time()
 
     def do_POST(self):
         origin = self.headers.get("Origin")
@@ -416,9 +514,55 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "message": control(body.get("action"), body.get("agent"))})
             if self.path == "/api/chat":
                 return self._send(200, {"ok": True, "message": post_message(body.get("text"))})
+            if self.path == "/api/ask":
+                return self._send(200, {"ok": True, "message": live.ask(ROOT, DESK, body.get("text"))})
+            if self.path == "/api/ask/stop":
+                return self._send(200, {"ok": True, "message": live.stop_chat()})
+            if self.path == "/api/ask/new":
+                return self._send(200, {"ok": True, "message": live.reset_chat(DESK)})
+            if self.path == "/api/settings/alpaca":
+                if body.get("forget"):
+                    live.forget_keys()
+                    return self._send(200, {"ok": True, "message": "Alpaca keys removed from this PC."})
+                live.save_keys(body.get("key_id"), body.get("secret"))
+                return self._send(200, {"ok": True, "message": "Saved. Connecting to the Alpaca paper account…"})
+            if self.path == "/api/settings/repo":
+                d = os.path.abspath(str(body.get("path", "")).strip().strip('"'))
+                if not _is_repo(d):
+                    raise ValueError("that folder is not a day-trader-skill checkout (no trader-broker / trader-scanner)")
+                os.makedirs(APPDIR, exist_ok=True)
+                cur = {}
+                try:
+                    with open(os.path.join(APPDIR, "settings.json"), encoding="utf-8") as fh:
+                        cur = json.load(fh)
+                except (OSError, ValueError):
+                    pass
+                cur["repo"] = d
+                with open(os.path.join(APPDIR, "settings.json"), "w", encoding="utf-8") as fh:
+                    json.dump(cur, fh, indent=2)
+                return self._send(200, {"ok": True, "message": "Saved. Restart the app to load that desk."})
+            if self.path == "/api/watch":
+                sym = str(body.get("symbol", "")).upper()[:10]
+                if sym.replace(".", "").isalpha():
+                    live.WATCH_SYMBOLS.add(sym)
+                return self._send(200, {"ok": True})
             return self._send(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001
             return self._send(400, {"ok": False, "error": str(e)})
+
+
+CLIENTS = {"n": 0, "seen": False, "since": time.time()}
+
+
+def exit_when_closed(grace=45):
+    """Exe mode: once the window has connected, quit when no window has been open for `grace` seconds."""
+    while True:
+        time.sleep(5)
+        if CLIENTS["seen"] and CLIENTS["n"] <= 0 and time.time() - CLIENTS["since"] > grace:
+            for pr in list(live.PROCS.values()):
+                if pr.poll() is None:
+                    pr.terminate()
+            os._exit(0)
 
 
 def open_window(url):
@@ -436,6 +580,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Trading Desk app (local only)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument("--exit-when-closed", action="store_true", default=FROZEN,
+                    help="quit when the window is closed (default for TradingDesk.exe)")
     a = ap.parse_args(argv)
     url = "http://127.0.0.1:%d/" % a.port
     try:
@@ -446,6 +592,10 @@ def main(argv=None):
             open_window(url)
         return 0
     print("Trading Desk on %s (Ctrl+C to stop)" % url, flush=True)
+    threading.Thread(target=live.alpaca_loop, daemon=True).start()
+    if a.exit_when_closed:
+        threading.Thread(target=exit_when_closed, daemon=True).start()
+    print("Desk folder: %s" % (REPO or "none (standalone mode: Alpaca, charts and chat only)"), flush=True)
     if not a.no_open:
         threading.Timer(0.8, open_window, args=(url,)).start()
     try:

@@ -424,6 +424,29 @@ class Flow(unittest.TestCase):
         self.assertEqual(json.loads(text[text.index("{"):text.rindex("}") + 1]), TSLA_CALL)
         self.assertTrue(self.state_doc()["orders"][0]["reply"].startswith("auto:"))
 
+    def test_the_order_lock_lets_one_trader_stage_at_a_time(self):
+        self.run_risk()
+        lock = os.path.join(os.path.dirname(self.state), "order.lock.json")
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        with open(lock, "w") as fh:  # the desk app's chat is mid-order
+            json.dump({"who": "app", "at": "2026-10-19T10:14:00-04:00", "what": "BUY 3 X",
+                       "expires": "2026-10-19T10:19:00-04:00"}, fh)
+        code, _, err = run(self.args("approve", "--index", "1", "--reply", "yes"))
+        self.assertEqual(code, 1)
+        self.assertIn("order lock held by app", err)
+        code, text, _ = run(["lock", "status", "--state", self.state, "--now", NOW])
+        self.assertIn("held by app", text)
+        code, _, err = run(["lock", "release", "--state", self.state, "--now", NOW])
+        self.assertEqual(code, 1)  # not main's lock
+        # main approves after the app's lock expires, holds it, and the result releases it
+        code, _, _ = run(self.args("approve", "--index", "1", "--reply", "yes", now="2026-10-19 10:25"))
+        self.assertEqual(code, 0)
+        code, text, _ = run(["lock", "status", "--state", self.state, "--now", "2026-10-19 10:25"])
+        self.assertIn("held by main", text)
+        run(self.args("result", "--index", "1", "--status", "placed", "--broker-id", "x1", now="2026-10-19 10:26"))
+        code, text, _ = run(["lock", "status", "--state", self.state, "--now", "2026-10-19 10:26"])
+        self.assertIn("free", text)
+
     def test_an_unfilled_order_can_be_marked_canceled(self):
         self.run_risk()
         run(self.args("approve", "--index", "1", "--reply", "yes"))

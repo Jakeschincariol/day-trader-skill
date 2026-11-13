@@ -554,6 +554,65 @@ def cmd_show(a):
     return 0 if any_ready else 1
 
 
+LOCK_TTL = 300  # seconds an order lock lasts without a result
+
+
+def _lock_path(a):
+    return os.path.join(os.path.dirname(os.path.abspath(a.state)), "order.lock.json")
+
+
+def _lock_read(a, now):
+    try:
+        with open(_lock_path(a), encoding="utf-8") as fh:
+            lk = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    try:
+        exp = parse_now(lk.get("expires"))  # naive UTC, like now
+    except (TypeError, TicketError):
+        return None
+    return lk if exp > now else None
+
+
+def _lock_take(a, now, what):
+    """One trader at a time: the main session and the desk app's chat both stage orders. The lock is taken at
+    approve and released by result/decline (or after LOCK_TTL), so two orders cannot pass the daily limits at once."""
+    who = getattr(a, "who", None) or "main"
+    lk = _lock_read(a, now)
+    if lk and lk.get("who") != who:
+        raise TicketError("order lock held by %s since %s (%s); wait for its result, or `ticket.py lock release "
+                          "--force` if it is stuck" % (lk.get("who"), lk.get("at"), lk.get("what")))
+    write_json(_lock_path(a), {"who": who, "at": ny_iso(now), "what": what,
+                               "expires": ny_iso(now + datetime.timedelta(seconds=LOCK_TTL))})
+
+
+def _lock_drop(a, now):
+    who = getattr(a, "who", None) or "main"
+    lk = _lock_read(a, now)
+    if lk is None or lk.get("who") == who:
+        try:
+            os.remove(_lock_path(a))
+        except OSError:
+            pass
+
+
+def cmd_lock(a):
+    now, _ = _clock(a)
+    lk = _lock_read(a, now)
+    if a.action == "release":
+        if lk and lk.get("who") != a.who and not a.force:
+            raise TicketError("the lock belongs to %s; use --force to clear it" % lk.get("who"))
+        try:
+            os.remove(_lock_path(a))
+        except OSError:
+            pass
+        print("Order lock released.")
+        return 0
+    print("Order lock: %s" % ("free" if not lk else "held by %s since %s (%s), expires %s"
+                                 % (lk["who"], lk["at"], lk.get("what"), lk["expires"])))
+    return 0
+
+
 def cmd_approve(a):
     orders, cfg, risk, state, today, now = _load(a)
     order = _pick(orders, a.index)
@@ -576,6 +635,7 @@ def cmd_approve(a):
     if not ok:
         print("Not recorded: %s. Ask the user again with the ticket for order %d." % (why, a.index))
         return 1
+    _lock_take(a, now, plain(order))
     loss, stop = max_loss(order)
     rec = {"at": ny_iso(now), "date": today, "index": a.index, "fingerprint": fingerprint(order),
            "symbol": str(order.get("symbol", "")).upper(), "side": order.get("side"),
@@ -603,6 +663,7 @@ def cmd_decline(a):
            "plain": plain(order), "status": "declined", "reply": a.reply or "no"}
     state.setdefault("orders", []).append(rec)
     write_json(a.state, state)
+    _lock_drop(a, now)
     print("Recorded: you said no to order %d (%s). Nothing was sent." % (a.index, plain(order)))
     return 0
 
@@ -627,6 +688,7 @@ def cmd_result(a):
         new["filled_qty"] = a.filled_qty
     state["orders"].append(new)
     write_json(a.state, state)
+    _lock_drop(a, now)
     print("Recorded order %d as %s." % (a.index, a.status))
     if a.status == "placed" and a.filled_qty and a.filled_price:
         apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], a.filled_qty, a.filled_price, today)
@@ -825,6 +887,7 @@ def main(argv=None):
         p.add_argument("--config", default="trader/config.json")
         p.add_argument("--risk", default="trader/state/risk.json")
         p.add_argument("--state", default="trader/state/broker.json")
+        p.add_argument("--who", default="main", help="which trader holds the order lock (main or app)")
         clock(p)
 
     p = sub.add_parser("show", help="render the tickets")
@@ -878,6 +941,12 @@ def main(argv=None):
     p.add_argument("--state", default="trader/state/broker.json")
     clock(p)
     p.add_argument("--all", action="store_true")
+    p = sub.add_parser("lock", help="the order lock shared by the main session and the desk app's chat")
+    p.add_argument("action", choices=["status", "release"])
+    p.add_argument("--who", default="main")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--state", default="trader/state/broker.json")
+    clock(p)
     p = sub.add_parser("auto", help="autotrade switch: on, off or status (paper account only)")
     p.add_argument("mode", choices=["on", "off", "status"])
     p.add_argument("--config", default="trader/config.json")
@@ -890,7 +959,7 @@ def main(argv=None):
     try:
         return {"show": cmd_show, "approve": cmd_approve, "decline": cmd_decline, "result": cmd_result,
                 "canceled": cmd_canceled, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log,
-                "auto": cmd_auto}[a.cmd](a)
+                "auto": cmd_auto, "lock": cmd_lock}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1
