@@ -38,6 +38,67 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
+class AutotradeSwitch(unittest.TestCase):
+    TOOLS = ["mcp__alpaca__place_stock_order", "mcp__alpaca__cancel_order_by_id",
+             "mcp__alpaca__replace_order_by_id"]
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.cfg = os.path.join(self.d, "config.json")
+        self.settings = os.path.join(self.d, ".claude", "settings.local.json")
+        os.makedirs(os.path.dirname(self.settings))
+        with open(self.cfg, "w") as fh:
+            json.dump({"paper": True, "broker": "alpaca", "auto_approve": False}, fh)
+        with open(self.settings, "w") as fh:
+            json.dump({"permissions": {"allow": ["Bash(git status)"], "ask": [self.TOOLS[0]]}, "theme": "dark"}, fh)
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+
+    def auto(self, mode):
+        return run(["auto", mode, "--config", self.cfg, "--settings", self.settings])
+
+    def read(self, p):
+        with open(p) as fh:
+            return json.load(fh)
+
+    def test_on_then_off_flips_both_gates_and_keeps_other_settings(self):
+        code, text, _ = self.auto("on")
+        self.assertEqual(code, 0)
+        self.assertIn("Autotrade ON (PAPER", text)
+        self.assertTrue(self.read(self.cfg)["auto_approve"])
+        s = self.read(self.settings)
+        self.assertEqual(s["permissions"]["allow"], ["Bash(git status)"] + self.TOOLS)
+        self.assertNotIn("ask", s["permissions"])
+        self.assertEqual(s["theme"], "dark")
+        code, text, _ = self.auto("on")  # idempotent
+        self.assertEqual(self.read(self.settings)["permissions"]["allow"], ["Bash(git status)"] + self.TOOLS)
+        code, text, _ = self.auto("off")
+        self.assertEqual(code, 0)
+        self.assertIn("Autotrade OFF", text)
+        self.assertFalse(self.read(self.cfg)["auto_approve"])
+        self.assertEqual(self.read(self.settings)["permissions"]["allow"], ["Bash(git status)"])
+
+    def test_on_refuses_a_live_account_and_changes_nothing(self):
+        with open(self.cfg, "w") as fh:
+            json.dump({"paper": False, "broker": "alpaca", "auto_approve": False}, fh)
+        before = self.read(self.settings)
+        code, _, err = self.auto("on")
+        self.assertEqual(code, 1)
+        self.assertIn("paper account only", err)
+        self.assertFalse(self.read(self.cfg)["auto_approve"])
+        self.assertEqual(self.read(self.settings), before)
+
+    def test_status_reports_a_half_on_switch(self):
+        code, text, _ = self.auto("status")
+        self.assertEqual(code, 0)
+        self.assertIn("Autotrade OFF", text)
+        with open(self.cfg, "w") as fh:
+            json.dump({"paper": True, "broker": "alpaca", "auto_approve": True}, fh)
+        code, text, _ = self.auto("status")
+        self.assertIn("Partly on", text)
+
+
 class ExplicitYes(unittest.TestCase):
     def yes(self, reply, order=AAPL, batch=BATCH):
         return ticket.parse_yes(reply, order, batch)[0]

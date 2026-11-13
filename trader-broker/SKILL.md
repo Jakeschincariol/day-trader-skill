@@ -41,6 +41,23 @@ always needs the user's typed yes. Gate 1 (a recent trader-risk PASS for that
 exact order) still applies to every order. Gate 3 is whatever the user set
 for the order tool's permission.
 
+**Autotrade switch (paper account only).** One command flips gates 2 and 3
+together, and the user can flip it back at any time:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" auto on       # no typed yes, no Allow card: Claude trades the paper account
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" auto off      # the yes and the card are back
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" auto status
+```
+
+`on` sets `"auto_approve": true` and adds `place_stock_order`,
+`cancel_order_by_id` and `replace_order_by_id` to `permissions.allow` in
+`.claude/settings.local.json` (never committed). It refuses unless the config
+says `"paper": true` and Alpaca. `off` removes both. Gate 1 (trader-risk's
+PASS) is never switched off. Turn autotrade off before ever pointing the
+Alpaca server at live keys, because the permission rule cannot tell paper from
+live.
+
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash

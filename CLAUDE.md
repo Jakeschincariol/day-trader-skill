@@ -19,6 +19,11 @@
   `"auto_approve": true` in `trader/config.json`, then
   `ticket.py approve --index N --auto`. Claude may enter and exit as it sees
   fit. Every order still needs a recent trader-risk PASS.
+- **Autotrade switch:** `python3 trader-broker/ticket.py auto on|off|status`.
+  `on` (paper only) also removes the Allow card for the order tools, so Claude
+  opens, adjusts and closes paper trades with no approval at all. Check
+  `auto status` at the start of a session and say which mode is active. Only
+  the user turns it on or off.
 - A **live** account always needs the user's typed yes for each order.
   `--auto` refuses unless `"paper": true`.
 - Research can fan out to parallel agents. Orders are staged, risk-checked

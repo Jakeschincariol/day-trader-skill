@@ -742,6 +742,76 @@ def cmd_log(a):
     return 0
 
 
+AUTO_TOOLS = ["mcp__alpaca__place_stock_order", "mcp__alpaca__cancel_order_by_id",
+              "mcp__alpaca__replace_order_by_id"]
+
+
+def _read_json_file(path, default):
+    if not os.path.exists(path):
+        return default
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read().strip()
+    return json.loads(text) if text else default
+
+
+def _write_json_file(path, doc):
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, path)
+
+
+def cmd_auto(a):
+    """Autotrade switch: one command flips both gates the user controls.
+    on:  "auto_approve": true in the config (ticket.py approve --auto works) and the order tools in
+         .claude/settings.local.json permissions.allow (no Allow once card). Paper + Alpaca only.
+    off: "auto_approve": false and the order tools out of allow (the card and the typed yes are back).
+    trader-risk's PASS is required for every order either way."""
+    cfg = _read_json_file(a.config, None)
+    if cfg is None:
+        raise TicketError("no config at %s (copy trader-budget/config.example.json there first)" % a.config)
+    settings = _read_json_file(a.settings, {})
+    perms = settings.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    if a.mode == "on":
+        if cfg.get("paper", True) is not True:
+            raise TicketError('autotrade works on the paper account only ("paper": true); a live order needs your yes')
+        if str(cfg.get("broker", "alpaca")).lower() != "alpaca":
+            raise TicketError("autotrade is for the Alpaca paper account only")
+        cfg["auto_approve"] = True
+        for t in AUTO_TOOLS:
+            if t not in allow:
+                allow.append(t)
+        ask = perms.get("ask") or []
+        perms["ask"] = [t for t in ask if t not in AUTO_TOOLS]
+        if not perms["ask"]:
+            perms.pop("ask")
+    elif a.mode == "off":
+        cfg["auto_approve"] = False
+        perms["allow"] = [t for t in allow if t not in AUTO_TOOLS]
+    if a.mode in ("on", "off"):
+        _write_json_file(a.config, cfg)
+        _write_json_file(a.settings, settings)
+    allowed = [t for t in AUTO_TOOLS if t in (settings.get("permissions", {}).get("allow") or [])]
+    on = bool(cfg.get("auto_approve")) and len(allowed) == len(AUTO_TOOLS)
+    print("Autotrade %s (%s account, %s)." % ("ON" if on else "OFF", "PAPER" if cfg.get("paper", True) is True else "LIVE",
+                                              cfg.get("broker", "alpaca")))
+    print("  auto_approve in %s: %s" % (a.config, bool(cfg.get("auto_approve"))))
+    print("  order tools allowed without a card in %s: %s" % (a.settings, ", ".join(t.split("__")[-1] for t in allowed) or "none"))
+    if on:
+        print("  Claude places, cancels and adjusts paper orders without asking. Every entry still needs a trader-risk PASS.")
+        print("  Turn it off: python3 trader-broker/ticket.py auto off")
+    elif cfg.get("auto_approve") or allowed:
+        print("  Partly on: run `ticket.py auto on` or `ticket.py auto off` to make both gates agree.")
+    else:
+        print("  Every order needs your typed yes and the Allow once card.")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Order tickets and your yes (trader-broker). Never places orders.")
     sub = ap.add_subparsers(dest="cmd")
@@ -808,13 +878,19 @@ def main(argv=None):
     p.add_argument("--state", default="trader/state/broker.json")
     clock(p)
     p.add_argument("--all", action="store_true")
+    p = sub.add_parser("auto", help="autotrade switch: on, off or status (paper account only)")
+    p.add_argument("mode", choices=["on", "off", "status"])
+    p.add_argument("--config", default="trader/config.json")
+    p.add_argument("--settings", default=".claude/settings.local.json",
+                   help="Claude Code's local permissions file (never committed)")
     a = ap.parse_args(argv)
     if not a.cmd:
         ap.print_help()
         return 1
     try:
         return {"show": cmd_show, "approve": cmd_approve, "decline": cmd_decline, "result": cmd_result,
-                "canceled": cmd_canceled, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
+                "canceled": cmd_canceled, "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log,
+                "auto": cmd_auto}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1

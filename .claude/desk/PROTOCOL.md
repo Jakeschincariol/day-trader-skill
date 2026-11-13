@@ -32,6 +32,10 @@ one that touches orders.
 
 ## The loop
 
+**Do not hand back after one cycle.** A desk agent's whole value is that it
+keeps running: one cycle, sleep, the next cycle, until the stop time. Handing
+back early leaves the main agent blind (desk-broker did this on 2026-11-13).
+
 ```
 until the stop time (default 15:55 New York) or trader/desk/STOP exists:
     do one cycle of your job
