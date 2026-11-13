@@ -161,6 +161,21 @@ class PlanRules(unittest.TestCase):
             self.assertIn("No order:", text)
             self.assertFalse(os.path.exists(out))
 
+    def test_max_loss_flag_only_lowers_the_cap(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "plan.json")
+            with open(p, "w") as fh:
+                json.dump(plan(), fh)
+            base = ["--plan", p, "--config", CFG, "--portfolio", os.path.join(d, "none"), "--now", NOW, "--json"]
+            code, text, _ = run(base + ["--max-loss", "30"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(text)["sizing"]["qty"], 5)  # 30 / 5.86 -> 5 shares
+            code, _, err = run(base + ["--max-loss", "80"])
+            self.assertEqual(code, 1)
+            self.assertIn("can only lower it", err)
+            code, _, err = run(base + ["--max-loss", "0"])
+            self.assertEqual(code, 1)
+
     def test_each_limit_can_bind(self):
         self.assertEqual(size.size_trade(plan(), cfg(max_order_usd=1000), today=TODAY)["bound_by"], "max order")
         s = size.size_trade(plan(), cfg(max_position_pct=20), today=TODAY)

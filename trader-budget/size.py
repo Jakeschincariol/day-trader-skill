@@ -849,6 +849,8 @@ def main(argv=None):
     ap.add_argument("--plan", default="trader/plan.json", help="the trade plan (default trader/plan.json)")
     ap.add_argument("--config", default="trader/config.json", help="rules (default trader/config.json)")
     ap.add_argument("--budget", type=float, help="override the budget in the config")
+    ap.add_argument("--max-loss", type=float, metavar="USD",
+                    help="risk less than max_loss_per_trade_usd on this one trade (it can only lower it)")
     ap.add_argument("--limit", nargs="?", const="plan", metavar="PRICE",
                     help="a limit order instead of market, at the plan's entry or at PRICE")
     ap.add_argument("--prices", help="prices JSON (default trader/prices.json if it exists)")
@@ -867,6 +869,14 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         cfg = load_config(a.config)
+        if a.max_loss is not None:
+            cap = _f(cfg.get("max_loss_per_trade_usd"))
+            if a.max_loss <= 0:
+                raise SizeError("--max-loss wants a dollar amount above 0, like --max-loss 30")
+            if cap and a.max_loss > cap + 1e-9:
+                raise SizeError("--max-loss %s is above your max_loss_per_trade_usd %s; it can only lower it"
+                                % (money(a.max_loss), money(cap)))
+            cfg = dict(cfg, max_loss_per_trade_usd=a.max_loss)
         if a.weights or a.targets:
             return run_weights(a, cfg)
         if a.top or a.whole_shares or a.cents:

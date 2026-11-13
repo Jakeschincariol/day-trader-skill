@@ -23,3 +23,18 @@
   `--auto` refuses unless `"paper": true`.
 - Research can fan out to parallel agents. Orders are staged, risk-checked
   and placed by the main session one at a time, so the daily limits hold.
+
+## The trading desk (one agent per skill, one main agent watching)
+
+- At the start of a trading session, launch the eleven desk agents in
+  `.claude/agents/` (`desk-scanner`, `desk-entry`, `desk-exit`, `desk-budget`,
+  `desk-risk`, `desk-broker`, `desk-alerts`, `desk-news`, `desk-analyst`,
+  `desk-pelosi`, `desk-timemachine`). Each one loops through the session
+  and writes `trader/desk/<agent>.json` per `.claude/desk/PROTOCOL.md`.
+- The main session is the observer and the only executor. Every few minutes
+  it runs `python3 .claude/desk/desk.py`, shows the user the dashboard, acts
+  on `alert`s, and places orders itself (budget, then risk, then
+  `ticket.py approve --auto`, then the broker), one at a time.
+- Desk agents never place, cancel or replace orders. Their tool lists hold
+  only read-only Alpaca tools. Their recommendations are advice.
+- To stop them early: create `trader/desk/STOP`.
