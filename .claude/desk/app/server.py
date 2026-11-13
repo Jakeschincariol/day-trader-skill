@@ -441,7 +441,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == "application/json" else body).encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", ctype + "; charset=utf-8")
+        self.send_header("Content-Type", ctype + ("" if ctype.startswith("image/") else "; charset=utf-8"))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -457,6 +457,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path in ("/favicon.ico", "/icon.png"):
                 with open(os.path.join(HERE, "saladi.ico" if u.path.endswith(".ico") else "saladi.png"), "rb") as fh:
                     return self._send(200, fh.read(), "image/x-icon" if u.path.endswith(".ico") else "image/png")
+            if u.path == "/api/version":
+                return self._send(200, {"app": "saladi", "build": BUILD})
             if u.path == "/api/state":
                 return self._send(200, build_state())
             if u.path == "/api/bars":
@@ -589,6 +591,40 @@ def exit_when_closed(grace=45):
             os._exit(0)
 
 
+class ExclusiveServer(ThreadingHTTPServer):
+    allow_reuse_address = False  # on Windows, reuse would let two copies listen on one port
+
+    def server_bind(self):
+        import socket
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def _build_id():
+    import hashlib
+    h = hashlib.sha256()
+    for name in ("index.html", "saladi.ico"):
+        try:
+            with open(os.path.join(HERE, name), "rb") as fh:
+                h.update(fh.read())
+        except OSError:
+            pass
+    return "saladi-" + h.hexdigest()[:12]
+
+
+BUILD = _build_id()
+
+
+def running_build(url):
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url + "api/version", timeout=1.5) as r:
+            return json.loads(r.read().decode("utf-8")).get("build")
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def open_window(url):
     edge = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
@@ -607,14 +643,22 @@ def main(argv=None):
     ap.add_argument("--exit-when-closed", action="store_true", default=FROZEN,
                     help="quit when the window is closed (default for TradingDesk.exe)")
     a = ap.parse_args(argv)
-    url = "http://127.0.0.1:%d/" % a.port
-    try:
-        srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    except OSError:
-        print("Saladi is already running on %s; opening the window." % url, flush=True)
-        if not a.no_open:
-            open_window(url)
-        return 0
+    srv = url = None
+    for port in range(a.port, a.port + 10):
+        url = "http://127.0.0.1:%d/" % port
+        if running_build(url) == BUILD:  # this same version is already up: just show its window
+            print("Saladi is already running on %s; opening the window." % url, flush=True)
+            if not a.no_open:
+                open_window(url)
+            return 0
+        try:
+            srv = ExclusiveServer(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            continue  # the port belongs to an older copy or another program: try the next one
+    if srv is None:
+        print("No free port between %d and %d." % (a.port, a.port + 9), flush=True)
+        return 1
     print("Saladi on %s (Ctrl+C to stop)" % url, flush=True)
     threading.Thread(target=live.alpaca_loop, daemon=True).start()
     if a.exit_when_closed:
