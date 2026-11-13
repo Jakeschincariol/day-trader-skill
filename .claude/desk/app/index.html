@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Desk</title>
+<title>Saladi</title>
+<link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -539,7 +540,7 @@ const tickFmt = (t, type) => type <= 1 ? YF.format(new Date(t*1000)) : type === 
 const chartBase = (el, fmt) => LightweightCharts.createChart(el, {autoSize:true,
   layout:{background:{type:'solid',color:'#151c26'}, textColor:'#73829a', fontFamily:'IBM Plex Sans', fontSize:12, attributionLogo:false},
   grid:{vertLines:{color:'#1b2430'}, horzLines:{color:'#1b2430'}}, rightPriceScale:{borderColor:'#222d3b'},
-  timeScale:{borderColor:'#222d3b', timeVisible:true, tickMarkFormatter:fmt}, localization:{timeFormatter:t => stamp(t)}, crosshair:{mode:0}});
+  timeScale:{borderColor:'#222d3b', timeVisible:true, tickMarkFormatter:fmt}, handleScroll:{mouseWheel:false, pressedMouseMove:true, horzTouchDrag:true, vertTouchDrag:false}, handleScale:{mouseWheel:false, pinch:true, axisPressedMouseMove:true}, localization:{timeFormatter:t => stamp(t)}, crosshair:{mode:0}});
 let chart, mainS = null, pnlChart, pnlSeries, priceLines = [], overlays = [], LAST_BARS = null;
 function initCharts(){
   chart = chartBase($('chart'), tickFmt);
@@ -549,6 +550,11 @@ function initCharts(){
     bottomLineColor:css('--down'), bottomFillColor1:'rgba(240,97,109,.02)', bottomFillColor2:'rgba(240,97,109,.28)', priceFormat:{type:'custom', formatter:v => (v<0?'−$':'$')+Math.abs(v).toFixed(0)}});
   pnlChart.priceScale('right').applyOptions({scaleMargins:{top:.15,bottom:.15}});
   renderTools();
+  const wheel = on => chart.applyOptions({handleScroll:{mouseWheel:on}, handleScale:{mouseWheel:on}});
+  const sync = e => wheel(!!(e && e.ctrlKey) || $('chart-card').classList.contains('full'));
+  addEventListener('keydown', sync); addEventListener('keyup', sync); addEventListener('blur', () => sync(null));
+  $('chart').addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, {passive:false});
+  window.syncWheel = sync;
 }
 function renderTools(){
   const seg = (map, cur, attr, keys) => `<div class="seg">${keys.map(k => `<button class="${k===cur?'active':''}" ${attr}="${k}">${map[k]}</button>`).join('')}</div>`;
@@ -556,7 +562,7 @@ function renderTools(){
     `<details class="menu"><summary>${TYPES[CP.type]}</summary><div class="pop">${Object.keys(TYPES).map(k => `<button class="${k===CP.type?'active':''}" data-ct="${k}">${TYPES[k]}</button>`).join('')}</div></details>` +
     `<details class="menu"><summary>Indicators (${CP.inds.length})</summary><div class="pop">${Object.keys(INDS).map(k => `<button class="${CP.inds.includes(k)?'active':''}" data-ind="${k}"><span class="ck">${CP.inds.includes(k)?'✓':''}</span>${INDS[k]}${INDCOL[k]?`<span class="sw" style="background:${INDCOL[k]}"></span>`:''}</button>`).join('')}</div></details>` +
     `<div class="seg"><button class="${!CP.log&&!CP.pct?'active':''}" data-scale="lin">Linear</button><button class="${CP.log?'active':''}" data-scale="log">Log</button><button class="${CP.pct?'active':''}" data-scale="pct">%</button></div>` +
-    `<span class="sp"></span><button class="btn ghost" id="c-fit">Fit</button><button class="btn ghost" id="c-full">${$('chart-card').classList.contains('full')?'Exit full screen':'Full screen'}</button>`;
+    `<span class="sp"></span><span class="muted" style="font-size:12px">Ctrl + scroll to zoom, drag to pan</span><button class="btn ghost" id="c-fit">Fit</button><button class="btn ghost" id="c-full">${$('chart-card').classList.contains('full')?'Exit full screen':'Full screen'}</button>`;
 }
 const sma = (b, n) => { const o = []; let sum = 0; b.forEach((x,i) => { sum += x.close; if (i >= n) sum -= b[i-n].close; if (i >= n-1) o.push({time:x.time, value:sum/n}); }); return o; };
 const ema = (b, n) => { const o = [], k = 2/(n+1); let e = null; b.forEach((x,i) => { e = e == null ? x.close : x.close*k + e*(1-k); if (i >= n-1) o.push({time:x.time, value:e}); }); return o; };
@@ -624,7 +630,7 @@ function chartClick(t){
   if ((x = el('data-ind'))) { const k = x.dataset.ind; CP.inds = CP.inds.includes(k) ? CP.inds.filter(i => i !== k) : [...CP.inds, k]; saveCP(); x.classList.toggle('active'); x.querySelector('.ck').textContent = CP.inds.includes(k) ? '✓' : ''; x.closest('details').querySelector('summary').textContent = `Indicators (${CP.inds.length})`; draw(false); return true; }
   if ((x = el('data-scale'))) { CP.log = x.dataset.scale === 'log'; CP.pct = x.dataset.scale === 'pct'; saveCP(); renderTools(); draw(false); return true; }
   if (t.id === 'c-fit') { chart.timeScale().fitContent(); return true; }
-  if (t.id === 'c-full') { $('chart-card').classList.toggle('full'); renderTools(); return true; }
+  if (t.id === 'c-full') { $('chart-card').classList.toggle('full'); renderTools(); syncWheel(null); return true; }
   document.querySelectorAll('details.menu[open]').forEach(m => { if (!m.contains(t)) m.open = false; });
   return false;
 }
@@ -632,7 +638,7 @@ function chartClick(t){
 /* ---------- urgent alarm ---------- */
 const ACK = new Set(JSON.parse(sessionStorage.getItem('ack')||'[]')); let SIREN = null, URGENT = [];
 const pageOf = name => Object.keys(GROUPS).find(g => GROUPS[g].includes(name)) || 'overview';
-function siren(){ beep(880); setTimeout(() => beep(587), 220); document.title = document.title.startsWith('⚠') ? 'Desk' : '⚠ ALERT'; }
+function siren(){ beep(880); setTimeout(() => beep(587), 220); document.title = document.title.startsWith('⚠') ? 'Saladi' : '⚠ ALERT'; }
 function renderAlarm(s){
   const all = [];
   s.agents.forEach(a => { if (a.paused) return; if (a.status === 'alert') all.push({key:a.name+'|'+a.headline, who:short(a.name), text:a.headline, page:pageOf(a.name)});
@@ -641,7 +647,7 @@ function renderAlarm(s){
   el.classList.toggle('on', on); document.body.classList.toggle('alarming', on);
   if (on) { const u = URGENT[0]; setHTML('alarm', `<svg class="i"><use href="#i-alert"/></svg><span class="t"><b>${esc(u.who)}:</b> ${esc(u.text)}${URGENT.length>1?` <span style="opacity:.8">and ${URGENT.length-1} more</span>`:''}</span><button class="btn primary" data-alarm="show">Show me</button><button class="btn" data-alarm="ack">Acknowledge</button>`);
     if (!SIREN) { siren(); SIREN = setInterval(siren, 2500); if (window.Notification && Notification.permission === 'granted') try { new Notification('ALERT: ' + u.who, {body:u.text, requireInteraction:true}); } catch(e){} } }
-  else if (SIREN) { clearInterval(SIREN); SIREN = null; document.title = 'Desk'; }
+  else if (SIREN) { clearInterval(SIREN); SIREN = null; document.title = 'Saladi'; }
 }
 function alarmClick(t){ const x = t.closest('[data-alarm]'); if (!x) return false; const page = URGENT[0]?.page;
   URGENT.forEach(u => ACK.add(u.key)); sessionStorage.setItem('ack', JSON.stringify([...ACK])); renderAlarm(STATE); if (x.dataset.alarm === 'show' && page) go(page); return true; }
@@ -752,7 +758,7 @@ $('dsend').onclick = dsend; $('dnew').onclick = () => act('/api/ask/new');
 $('dsay').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); dsend(); } });
 async function send(){ const t = $('say').value.trim(); if (!t) return; await act('/api/chat',{text:t}); $('say').value=''; CSIG=''; loadChat(); }
 $('send').onclick = send; $('say').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-document.addEventListener('keydown', e => { if (e.target.id === 'symin' && e.key === 'Enter') { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z.\-]{1,10}$/.test(v)) { e.target.blur(); pick(v); renderOverview(STATE); } } if (e.key==='Escape') { $('drawer').classList.remove('open'); if ($('chart-card').classList.contains('full')) { $('chart-card').classList.remove('full'); renderTools(); } } });
+document.addEventListener('keydown', e => { if (e.target.id === 'symin' && e.key === 'Enter') { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z.\-]{1,10}$/.test(v)) { e.target.blur(); pick(v); renderOverview(STATE); } } if (e.key==='Escape') { $('drawer').classList.remove('open'); if ($('chart-card').classList.contains('full')) { $('chart-card').classList.remove('full'); renderTools(); syncWheel(null); } } });
 
 if (localStorage.getItem('slim')) $('nav').classList.add('slim');
 initCharts(); refresh().then(() => loadBars(true)); connect();

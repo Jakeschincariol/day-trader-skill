@@ -1,4 +1,4 @@
-"""Trading Desk: a local desktop control room for the day-trader desk.
+"""Saladi (the trading desk app): a local desktop control room for the day-trader desk.
 
     python3 .claude/desk/app/server.py            # serves http://127.0.0.1:8765 and opens an app window
     python3 .claude/desk/app/server.py --no-open  # just serve
@@ -433,7 +433,7 @@ def post_message(text):
 # ------------------------------------------------------------------ http
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "TradingDesk/1.0"
+    server_version = "Saladi/1.0"
 
     def log_message(self, fmt, *args):
         pass
@@ -454,6 +454,9 @@ class Handler(BaseHTTPRequestHandler):
             if u.path in ("/", "/index.html"):
                 with open(os.path.join(HERE, "index.html"), encoding="utf-8") as fh:
                     return self._send(200, fh.read().replace("__DESK_TOKEN__", TOKEN), "text/html")
+            if u.path in ("/favicon.ico", "/icon.png"):
+                with open(os.path.join(HERE, "saladi.ico" if u.path.endswith(".ico") else "saladi.png"), "rb") as fh:
+                    return self._send(200, fh.read(), "image/x-icon" if u.path.endswith(".ico") else "image/png")
             if u.path == "/api/state":
                 return self._send(200, build_state())
             if u.path == "/api/bars":
@@ -598,7 +601,7 @@ def open_window(url):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Trading Desk app (local only)")
+    ap = argparse.ArgumentParser(description="Saladi desk app (local only)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--exit-when-closed", action="store_true", default=FROZEN,
@@ -608,11 +611,11 @@ def main(argv=None):
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     except OSError:
-        print("Trading Desk is already running on %s; opening the window." % url, flush=True)
+        print("Saladi is already running on %s; opening the window." % url, flush=True)
         if not a.no_open:
             open_window(url)
         return 0
-    print("Trading Desk on %s (Ctrl+C to stop)" % url, flush=True)
+    print("Saladi on %s (Ctrl+C to stop)" % url, flush=True)
     threading.Thread(target=live.alpaca_loop, daemon=True).start()
     if a.exit_when_closed:
         threading.Thread(target=exit_when_closed, daemon=True).start()
