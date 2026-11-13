@@ -465,6 +465,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, chat_tail(int(q.get("limit", 60))))
             if u.path == "/api/events":
                 return self._events()
+            if u.path == "/api/journal":
+                try:
+                    with open(p("MACHINE_LEARNING.md"), encoding="utf-8") as fh:
+                        return self._send(200, {"text": fh.read()})
+                except OSError:
+                    return self._send(200, {"text": ""})
+            if u.path == "/api/connections":
+                return self._send(200, {"claude": live.claude_status(q.get("force") == "1"),
+                                        "alpaca": live.alpaca_state(), "other": live.connections(),
+                                        "sec_user_agent_set": "example.com" not in str(
+                                            (read_json(p("trader", "config.json"), {}) or {}).get("sec_user_agent", "example.com")),
+                                        "repo": REPO})
             if u.path == "/api/agent_log":
                 return self._send(200, {"agent": q.get("agent"), "log": live.agent_log(DESK, q.get("agent", ""))})
             return self._send(404, {"error": "not found"})
@@ -541,6 +553,11 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(APPDIR, "settings.json"), "w", encoding="utf-8") as fh:
                     json.dump(cur, fh, indent=2)
                 return self._send(200, {"ok": True, "message": "Saved. Restart the app to load that desk."})
+            if self.path == "/api/claude":
+                return self._send(200, {"ok": True, "message": live.claude_login(bool(body.get("logout")))})
+            if self.path == "/api/settings/connection":
+                return self._send(200, {"ok": True, "message": live.save_connection(
+                    body.get("name"), body.get("key"), body.get("note"), bool(body.get("remove")))})
             if self.path == "/api/watch":
                 sym = str(body.get("symbol", "")).upper()[:10]
                 if sym.replace(".", "").isalpha():

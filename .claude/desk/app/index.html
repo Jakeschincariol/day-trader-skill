@@ -3,405 +3,532 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trading Desk</title>
+<title>Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 :root{
-  color-scheme: dark;
-  --bg:#0e0e0d; --surface-1:#1a1a19; --surface-2:#222220; --surface-3:#2b2b29; --line:#2f2f2c; --line-2:#3a3a37;
+  color-scheme:dark;
+  --bg:#0d0d0c; --surface-1:#171716; --surface-2:#1f1f1d; --surface-3:#2a2a28; --line:#2a2a27; --line-2:#3a3a37;
   --text-primary:#f0efec; --text-secondary:#c3c2b7; --text-muted:#8d8c84;
   --accent:#3987e5; --accent-soft:rgba(57,135,229,.14);
   --up:#3987e5; --down:#e66767;
   --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
-  --radius:12px; --gap:14px;
-  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  --r:12px; --gap:16px; --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text-primary);font:13px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text-primary);font:13px/1.5 Inter,system-ui,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--text-muted)} .sec{color:var(--text-secondary)}
+.pos{color:#8cc0ff} .neg{color:#ff9a9a}
+svg.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 
-/* ---------- top bar ---------- */
-header{flex:none;position:relative;z-index:5;display:flex;align-items:center;gap:12px;padding:10px 16px;white-space:nowrap;background:rgba(14,14,13,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.2px}
-.logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#3987e5,#9085e9);display:grid;place-items:center;font-size:13px}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
-.pill .dot{width:7px;height:7px;border-radius:50%}
-.kpis{display:flex;gap:18px;margin-left:4px}
-.kpi{white-space:nowrap}
-.kpi .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted)}
-.kpi .value{font-size:15px;font-weight:600}
-.meter{width:110px;height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden;margin-top:4px}
-.meter i{display:block;height:100%;background:var(--accent);border-radius:3px}
-.spacer{flex:1}
-.switch{display:flex;align-items:center;gap:9px;padding:5px 10px 5px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface-1)}
-.switch .t{font-size:12px;font-weight:600}
-.toggle{position:relative;width:38px;height:21px;border-radius:999px;background:var(--surface-3);border:0;transition:background .15s}
-.toggle::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#f0efec;transition:left .15s}
-.toggle.on{background:var(--good)} .toggle.on::after{left:20px}
-.toggle.partly{background:var(--warning)}
-.btn{border:1px solid var(--line-2);background:var(--surface-1);padding:6px 12px;border-radius:9px;font-weight:600;font-size:12px}
-.btn:hover{background:var(--surface-2)}
-.btn.danger{border-color:rgba(208,59,59,.6);color:#ffb4b4}
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr);height:100vh}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--surface-1)}
+
+/* ticker */
+.ticker{flex:1;min-width:0;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.track{display:inline-flex;gap:28px;white-space:nowrap;animation:slide 60s linear infinite;padding-left:12px}
+.ticker:hover .track{animation-play-state:paused}
+@keyframes slide{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.track{animation:none}}
+.tk{display:inline-flex;align-items:baseline;gap:7px;font-size:12px;background:none;border:0;padding:0}
+.tk b{font-weight:600} .tk .l{color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}
+
+.switch{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
+.toggle{position:relative;width:34px;height:19px;border-radius:999px;background:var(--surface-3);border:0;transition:background .15s}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:#f0efec;transition:left .15s}
+.toggle.on{background:var(--good)} .toggle.on::after{left:18px} .toggle.partly{background:var(--warning)}
+.btn{border:1px solid var(--line-2);background:var(--surface-2);padding:6px 12px;border-radius:8px;font-weight:600;font-size:12px;white-space:nowrap}
+.btn:hover{background:var(--surface-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{border-color:rgba(208,59,59,.55);color:#ffb4b4;background:transparent}
 .btn.danger:hover{background:rgba(208,59,59,.15)}
+.btn.ghost{border-color:transparent;background:transparent;padding:6px 8px}
+.btn.ghost:hover{background:var(--surface-3)}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--good);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(12,163,12,.5)}70%{box-shadow:0 0 0 6px rgba(12,163,12,0)}100%{box-shadow:0 0 0 0 rgba(12,163,12,0)}}
 
-/* ---------- layout ---------- */
-body{display:flex;flex-direction:column}
-main{flex:1;min-height:0;display:grid;grid-template-columns:330px minmax(0,1fr) 400px;gap:var(--gap);padding:var(--gap)}
-.col{display:flex;flex-direction:column;gap:var(--gap);min-height:0}
-.card{background:var(--surface-1);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:0}
-.card>h2{margin:0;padding:12px 14px 10px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-secondary);display:flex;align-items:center;gap:8px}
-.card>h2 .right{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500;color:var(--text-muted)}
-.scroll{overflow:auto;min-height:0}
-.scroll::-webkit-scrollbar{width:8px;height:8px} .scroll::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:8px}
+/* nav */
+nav{display:flex;flex-direction:column;gap:2px;padding:10px 8px;width:176px;border-right:1px solid var(--line);background:var(--surface-1);transition:width .15s}
+nav.slim{width:54px}
+nav.slim .nl,nav.slim .badge{display:none}
+.navbtn{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;border:0;background:transparent;color:var(--text-secondary);font-weight:500;text-align:left;width:100%;position:relative}
+.navbtn:hover{background:var(--surface-2);color:var(--text-primary)}
+.navbtn.active{background:var(--accent-soft);color:var(--text-primary)}
+.navbtn.active::before{content:"";position:absolute;left:-8px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--accent)}
+.badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:10.5px;font-weight:700;display:grid;place-items:center;background:var(--surface-3);color:var(--text-secondary)}
+.badge.alert{background:rgba(208,59,59,.25);color:#ffb4b4} .badge.watch{background:rgba(250,178,25,.18);color:var(--warning)}
+.navsep{height:1px;background:var(--line);margin:8px 6px}
+nav .grow{flex:1}
 
-/* ---------- agents ---------- */
-#agents{padding:0 10px 10px;display:flex;flex-direction:column;gap:8px}
-.agent{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:9px 10px;cursor:pointer;transition:border-color .15s,background .15s}
-.agent:hover{border-color:var(--line-2);background:#262624}
-.agent .row1{display:flex;align-items:center;gap:8px}
-.agent .name{font-weight:600}
-.agent .skill{font-size:11px;color:var(--text-muted)}
-.agent .age{margin-left:auto;font-size:11px;color:var(--text-muted)}
-.agent .head{margin-top:5px;color:var(--text-secondary);font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.status{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:6px;background:var(--surface-3);color:var(--text-secondary)}
-.status .ic{font-size:10px}
-.status.ok{color:#7fd67f} .status.watch{color:var(--warning)} .status.alert{color:#ff8a8a;background:rgba(208,59,59,.16)}
-.status.error{color:var(--serious)} .status.stale{color:var(--warning)}
-.iconbtn{border:1px solid var(--line-2);background:transparent;border-radius:7px;padding:2px 7px;font-size:11px;color:var(--text-secondary)}
+/* main */
+main{overflow:auto;padding:20px 24px 40px;min-width:0}
+main::-webkit-scrollbar,.scroll::-webkit-scrollbar,.tw::-webkit-scrollbar{width:9px;height:9px}
+main::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb,.tw::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:8px}
+.page{display:none;max-width:1280px;margin:0 auto;flex-direction:column;gap:var(--gap)} .page.active{display:flex}
+.ph{display:flex;align-items:flex-end;gap:12px}
+.ph h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.2px}
+.ph p{margin:0;color:var(--text-muted);font-size:12.5px}
+.ph .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.grid{display:grid;gap:var(--gap)} .g2{grid-template-columns:1fr 1fr} .g6{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media (max-width:1100px){.g2{grid-template-columns:1fr} .g6{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--surface-1);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.card>h2{margin:0;padding:13px 16px 8px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);display:flex;align-items:center;gap:8px}
+.card>h2 .right{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500}
+.kpi{padding:13px 16px}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted)}
+.kpi .v{font-size:19px;font-weight:600;margin-top:2px;white-space:nowrap}
+.kpi .s{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter{height:4px;border-radius:3px;background:var(--surface-3);overflow:hidden;margin-top:7px}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:3px}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(4,1fr)}
+.stage{padding:14px 16px;border:0;border-right:1px solid var(--line);background:transparent;text-align:left}
+.stage:last-child{border-right:0} .stage:hover{background:var(--surface-2)}
+.stage .n{font-size:10.5px;color:var(--text-muted);font-family:var(--mono)}
+.stage .t{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;margin:2px 0}
+.stage .d{color:var(--text-secondary);font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
+
+/* status */
+.st{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:6px;background:var(--surface-3);color:var(--text-secondary);white-space:nowrap}
+.st.ok,.st.pass,.st.ready{color:#7fd67f} .st.watch,.st.stale,.st.waiting,.st.soon{color:var(--warning)}
+.st.alert,.st.block,.st.invalid,.st.now{color:#ff8a8a;background:rgba(208,59,59,.16)} .st.error{color:var(--serious)}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:600;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;padding:7px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid #222220;color:var(--text-secondary);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right} td b{color:var(--text-primary)}
+.empty{padding:22px;text-align:center;color:var(--text-muted)}
+.tw{overflow:auto;max-height:420px}
+
+/* accordions */
+details.acc{border:1px solid var(--line);border-radius:var(--r);background:var(--surface-1)}
+details.acc>summary{list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;font-weight:600}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::before{content:"";width:7px;height:7px;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(-45deg);transition:transform .15s;flex:none}
+details.acc[open]>summary::before{transform:rotate(45deg)}
+details.acc>summary:hover{background:var(--surface-2);border-radius:var(--r)}
+details.acc>summary .h{font-weight:400;color:var(--text-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+details.acc>summary .meta{margin-left:auto;font-size:11px;color:var(--text-muted);white-space:nowrap;display:flex;gap:6px;align-items:center;font-weight:400}
+details.acc>.body{border-top:1px solid var(--line)}
+.iconbtn{border:1px solid var(--line-2);background:transparent;border-radius:7px;padding:2px 8px;font-size:11px;color:var(--text-secondary)}
 .iconbtn:hover{background:var(--surface-3)}
+.stack{display:flex;flex-direction:column;gap:10px}
 
-/* ---------- chart ---------- */
-.chart-card{flex:1.25}
-.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px;align-items:center}
+/* chart */
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px;align-items:center}
 .chip{border:1px solid var(--line-2);background:transparent;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text-secondary)}
+.chip:hover{border-color:var(--accent)}
 .chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text-primary)}
-.chip.held{border-style:dashed}
 .symin{background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:3px 10px;color:var(--text-primary);width:90px;font:600 12px Inter;text-transform:uppercase}
-#chart{flex:1;min-height:260px;margin:0 8px 8px;position:relative}
+#chart{height:340px;margin:0 8px 8px;position:relative} #pnl{height:240px;margin:0 8px 8px}
 .legend{position:absolute;left:10px;top:6px;z-index:3;font-size:12px;color:var(--text-secondary);pointer-events:none}
 .legend b{color:var(--text-primary);font-size:14px;margin-right:8px}
-.row{display:grid;grid-template-columns:1fr 1.25fr;gap:var(--gap);flex:1;min-height:0}
-#pnl{flex:1;min-height:150px;margin:0 8px 8px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{position:sticky;top:0;background:var(--surface-1);text-align:left;font-weight:600;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid var(--line)}
-td{padding:6px 10px;border-bottom:1px solid #242422;color:var(--text-secondary)}
-td.r,th.r{text-align:right}
-td b{color:var(--text-primary)}
-.pos{color:#8cc0ff} .neg{color:#ff9a9a}
-.empty{padding:18px;text-align:center;color:var(--text-muted)}
+.rec{display:flex;gap:10px;align-items:flex-start;padding:9px 16px;border-top:1px solid var(--line);font-size:12.5px}
+.rec:first-child{border-top:0} .rec .who{font-weight:600;white-space:nowrap}
 
-/* ---------- chat ---------- */
-#chat{padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px}
+/* chat dock */
+aside{width:380px;border-left:1px solid var(--line);background:var(--surface-1);display:flex;flex-direction:column;min-height:0}
+aside.closed{display:none}
+.tabs{display:flex;gap:4px;padding:10px 12px 6px;align-items:center}
+.tab{border:0;background:transparent;color:var(--text-muted);font:600 12px Inter;padding:5px 10px;border-radius:7px}
+.tab.active{background:var(--surface-3);color:var(--text-primary)}
+.pane{display:none;flex:1;min-height:0;flex-direction:column} .pane.active{display:flex}
+.msgs{flex:1;overflow:auto;padding:6px 12px 12px;display:flex;flex-direction:column;gap:10px}
 .msg{max-width:94%;padding:9px 11px;border-radius:12px;font-size:12.5px;line-height:1.5;word-wrap:break-word}
 .msg.user{align-self:flex-end;background:var(--accent-soft);border:1px solid rgba(57,135,229,.35)}
 .msg.assistant{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line)}
-.msg .meta{font-size:10.5px;color:var(--text-muted);margin-bottom:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.msg .meta{font-size:10.5px;color:var(--text-muted);margin-bottom:4px;display:flex;gap:6px;flex-wrap:wrap}
 .msg .tool{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:5px;background:var(--surface-3);color:var(--text-muted)}
-.msg code{font-family:var(--mono);font-size:11.5px;background:var(--surface-3);padding:1px 5px;border-radius:5px}
-.msg pre{background:#121211;border:1px solid var(--line);padding:8px;border-radius:8px;overflow:auto;font-family:var(--mono);font-size:11px}
-.msg table{margin:6px 0;font-size:11.5px} .msg td,.msg th{padding:3px 6px;border-bottom:1px solid var(--line)}
-.msg.queued{opacity:.75;border-style:dashed}
+.msg code,.prose code,.conn code{font-family:var(--mono);font-size:11.5px;background:var(--surface-3);padding:1px 5px;border-radius:5px}
+.msg pre,.prose pre{background:#111110;border:1px solid var(--line);padding:8px;border-radius:8px;overflow:auto;font-family:var(--mono);font-size:11px}
+.msg table,.prose table{margin:6px 0;font-size:11.5px}
+.prose{padding:10px 18px 18px;color:var(--text-secondary);line-height:1.6;max-height:560px;overflow:auto}
 .composer{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
-.composer textarea{flex:1;resize:none;height:42px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--text-primary);padding:9px 11px;font:13px Inter}
+.composer textarea{flex:1;resize:none;height:44px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;color:var(--text-primary);padding:9px 11px;font:13px Inter}
 .composer textarea:focus{outline:none;border-color:var(--accent)}
-.composer .btn{background:var(--accent);border-color:var(--accent);color:#fff}
-.recs{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
-.rec{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);font-size:12px}
-.rec .who{font-weight:600;color:var(--text-primary);white-space:nowrap}
+.typing{display:inline-block;width:6px;height:13px;background:var(--text-secondary);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
 
-/* ---------- drawer & toast ---------- */
-.drawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:20}
-.drawer.open{display:block}
+/* settings */
+.conn{display:flex;gap:14px;align-items:flex-start;padding:16px;border-top:1px solid var(--line)}
+.conn:first-of-type{border-top:0}
+.conn .ic{width:36px;height:36px;border-radius:10px;background:var(--surface-3);display:grid;place-items:center;flex:none}
+.conn .b{flex:1;min-width:0} .conn h3{margin:0;font-size:14px;display:flex;gap:8px;align-items:center}
+.conn p{margin:3px 0 0;color:var(--text-muted);font-size:12.5px}
+.conn .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.conn .acts:empty{display:none}
+input.f{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;color:var(--text-primary);padding:7px 10px;font:12.5px var(--mono);min-width:0}
+input.f:focus{outline:none;border-color:var(--accent)}
+.rowset{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid var(--line)}
+.rowset:first-of-type{border-top:0} .rowset .b{flex:1;min-width:0} .rowset .b div{font-weight:600} .rowset .b span{color:var(--text-muted);font-size:12px}
+
+.drawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:20} .drawer.open{display:block}
 .panel{position:absolute;right:0;top:0;bottom:0;width:min(720px,92vw);background:var(--surface-1);border-left:1px solid var(--line);display:flex;flex-direction:column}
-.panel header{position:static;background:transparent}
+.panel .hd{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
 .panel pre{margin:0;padding:14px;font-family:var(--mono);font-size:11.5px;color:var(--text-secondary);white-space:pre-wrap}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--surface-3);border:1px solid var(--line-2);padding:9px 14px;border-radius:10px;font-weight:500;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none}
 .toast.show{opacity:1}
-.tabs{display:flex;gap:4px;margin-left:6px}
-.tab{border:0;background:transparent;color:var(--text-muted);font:600 11.5px Inter;padding:3px 9px;border-radius:7px;text-transform:none;letter-spacing:0}
-.tab.active{background:var(--surface-3);color:var(--text-primary)}
-.pane{display:none;min-height:0;flex:1;flex-direction:column} .pane.active{display:flex}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:25;place-items:center}
-.modal.open{display:grid}
-.dialog{width:min(480px,92vw);background:var(--surface-1);border:1px solid var(--line-2);border-radius:14px;padding:18px}
-.dialog h3{margin:0 0 6px;font-size:15px}
-.dialog p{margin:0 0 12px;color:var(--text-secondary);font-size:12.5px}
-.field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
-.field label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px}
-.field input{background:var(--surface-2);border:1px solid var(--line-2);border-radius:9px;color:var(--text-primary);padding:8px 10px;font:13px var(--mono)}
-.field input:focus{outline:none;border-color:var(--accent)}
-.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.typing{display:inline-block;width:6px;height:13px;background:var(--text-secondary);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
-@keyframes blink{50%{opacity:0}}
-.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-right:5px;box-shadow:0 0 0 0 rgba(12,163,12,.6);animation:pulse 2s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 6px rgba(12,163,12,0)}100%{box-shadow:0 0 0 0 rgba(12,163,12,0)}}
-.agent .tools{display:flex;gap:4px;margin-left:4px}
-@media (max-width:1250px){main{grid-template-columns:290px minmax(0,1fr)} .col.right{display:none}}
 </style>
 </head>
 <body>
-<header>
-  <div class="brand"><div class="logo">◆</div>Trading Desk</div>
-  <span class="pill" id="acct"><span class="dot" style="background:var(--good)"></span>PAPER</span>
-  <span class="pill" id="market">—</span>
-  <span class="pill num" id="clock" style="min-width:104px;justify-content:center">--:--:-- NY</span>
-  <div class="kpis">
-    <div class="kpi"><div class="label">Day P/L</div><div class="value num" id="k-pl">—</div></div>
-    <div class="kpi"><div class="label">Risk used</div><div class="value num" id="k-risk">—</div><div class="meter"><i id="k-riskbar" style="width:0"></i></div></div>
-    <div class="kpi"><div class="label">Entries</div><div class="value num" id="k-entries">—</div></div>
-    <div class="kpi"><div class="label">Equity</div><div class="value num" id="k-eq">—</div></div>
-    <div class="kpi"><div class="label">Breakout gate</div><div class="value" id="k-gate">—</div></div>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><path d="M9 4h6v3H9zM7 6H5v14h14V6h-2M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-trade" viewBox="0 0 24 24"><path d="M4 7h13l-3-3M20 17H7l3 3"/></symbol>
+  <symbol id="i-review" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16M8 15l4-5 3 3 4-6"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="14" r="4"/><path d="M11 11l9-9M16 6l3 3"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.700 3.100 3 7 3s7-1.300 7-3V6M5 12c0 1.700 3.100 3 7 3s7-1.300 7-3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+
+<div class="app">
+  <div class="topbar">
+    <button class="btn ghost" id="nav-toggle" aria-label="Collapse menu"><svg class="i"><use href="#i-menu"/></svg></button>
+    <div class="ticker" aria-label="Live ticker"><div class="track" id="track"></div></div>
+    <span class="live" id="live"><i></i>LIVE</span>
+    <div class="switch" title="Paper only. On: Claude trades with no approval; every entry still needs a risk PASS.">Autotrade <button class="toggle" id="auto-toggle" aria-label="Toggle autotrade"></button></div>
+    <button class="btn danger" id="stop-btn">Stop desk</button>
+    <button class="btn ghost" id="chat-toggle" aria-label="Toggle chat"><svg class="i"><use href="#i-chat"/></svg></button>
   </div>
-  <div class="spacer"></div>
-  <div class="switch" title="Paper account only. On: Claude opens and closes trades with no approval. Every entry still needs a trader-risk PASS.">
-    <span class="t">Autotrade</span><span class="muted" id="auto-label" style="font-size:11.5px">—</span>
-    <button class="toggle" id="auto-toggle" aria-label="Toggle autotrade"></button>
-  </div>
-  <span class="pill" id="live-pill" title="Live push from the desk server"><span class="live-dot"></span>LIVE</span>
-  <button class="btn" id="settings-btn" title="Alpaca connection and notifications">Settings</button>
-  <button class="btn danger" id="stop-btn">Stop desk</button>
-</header>
 
-<main>
-  <section class="col">
-    <div class="card" style="flex:1">
-      <h2>Agents <span class="right" id="agents-sum"></span></h2>
-      <div class="scroll" id="agents"></div>
-    </div>
-  </section>
+  <nav id="nav">
+    <button class="navbtn active" data-page="overview" title="Overview"><svg class="i"><use href="#i-home"/></svg><span class="nl">Overview</span></button>
+    <div class="navsep"></div>
+    <button class="navbtn" data-page="find" title="Find"><svg class="i"><use href="#i-find"/></svg><span class="nl">Find</span><span class="badge" id="nb-find"></span></button>
+    <button class="navbtn" data-page="plan" title="Plan"><svg class="i"><use href="#i-plan"/></svg><span class="nl">Plan</span><span class="badge" id="nb-plan"></span></button>
+    <button class="navbtn" data-page="trade" title="Trade"><svg class="i"><use href="#i-trade"/></svg><span class="nl">Trade</span><span class="badge" id="nb-trade"></span></button>
+    <button class="navbtn" data-page="review" title="Review"><svg class="i"><use href="#i-review"/></svg><span class="nl">Review</span><span class="badge" id="nb-review"></span></button>
+    <div class="grow"></div>
+    <button class="navbtn" data-page="settings" title="Settings"><svg class="i"><use href="#i-set"/></svg><span class="nl">Settings</span></button>
+  </nav>
 
-  <section class="col">
-    <div class="card chart-card">
-      <h2>Chart <span class="right">5-minute candles · New York time · Yahoo · charts by <a href="https://www.tradingview.com/" target="_blank" style="color:inherit">TradingView</a> Lightweight Charts</span></h2>
-      <div class="chips" id="chips"></div>
-      <div id="chart"><div class="legend" id="legend"></div></div>
-    </div>
-    <div class="row">
+  <main id="main">
+    <section class="page active" id="p-overview">
+      <div class="grid g6" id="kpis"></div>
+      <div class="card"><div class="pipe" id="pipe"></div></div>
       <div class="card">
-        <h2>Realized P/L today <span class="right num" id="pnl-now"></span></h2>
-        <div id="pnl"></div>
+        <h2>Chart <span class="right muted">5-minute · New York · charts by <a href="https://www.tradingview.com/" target="_blank" style="color:inherit">TradingView</a></span></h2>
+        <div class="chips" id="chips"></div>
+        <div id="chart"><div class="legend" id="legend"></div></div>
       </div>
-      <div class="card">
-        <h2>Trades today <span class="right" id="trades-sum"></span></h2>
-        <div class="scroll"><table id="trades"></table></div>
-      </div>
-    </div>
-    <div class="card" style="flex:.7">
-      <h2><span class="tabs" data-tabs="bottom"><button class="tab active" data-tab="b-pos">Positions</button><button class="tab" data-tab="b-ord">Alpaca orders</button><button class="tab" data-tab="b-log">Order log</button></span><span class="right" id="alp-status"></span></h2>
-      <div class="pane active scroll" id="b-pos"><table id="positions"></table></div>
-      <div class="pane scroll" id="b-ord"><table id="aorders"></table></div>
-      <div class="pane scroll" id="b-log"><table id="log"></table></div>
-    </div>
-  </section>
+      <div class="card"><h2>Needs attention <span class="right muted" id="att-sum"></span></h2><div id="attention"></div></div>
+    </section>
 
-  <section class="col right">
-    <div class="card" style="flex:1.6">
-      <h2><span class="tabs" data-tabs="chat"><button class="tab active" data-tab="c-desk">Desk chat</button><button class="tab" data-tab="c-main">Main session</button></span><span class="right" id="chat-src"></span></h2>
-      <div class="pane active" id="c-desk">
-        <div class="scroll" id="dchat" style="flex:1;padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px"></div>
-        <div class="composer">
-          <textarea id="dsay" placeholder="Ask or tell the desk trader… (Enter to send)"></textarea>
-          <div style="display:flex;flex-direction:column;gap:6px"><button class="btn primary" id="dsend">Send</button><button class="btn" id="dnew" title="Start a new conversation">New</button></div>
-        </div>
-      </div>
-      <div class="pane" id="c-main">
-        <div class="scroll" id="chat" style="flex:1"></div>
-        <div class="composer">
-          <textarea id="say" placeholder="Leave a note for the main session (read at its next desk check)…"></textarea>
-          <button class="btn" id="send">Send</button>
-        </div>
-      </div>
-    </div>
-    <div class="card" style="flex:.8">
-      <h2>Recommendations <span class="right">advice · Claude decides</span></h2>
-      <div class="scroll recs" id="recs"></div>
-    </div>
-  </section>
-</main>
+    <section class="page" id="p-find">
+      <div class="ph"><div><h1>Find</h1><p>Step 1 · Scan the market, read the news, rule out earnings risk.</p></div></div>
+      <div class="card"><h2>Candidates <span class="right muted" id="cand-sum"></span></h2><div class="tw" id="candidates"></div></div>
+      <div class="stack" id="find-agents"></div>
+    </section>
 
-<div class="drawer" id="drawer"><div class="panel">
-  <header><b id="d-title"></b><div class="spacer"></div><button class="btn" id="d-close">Close</button></header>
-  <div class="scroll" style="flex:1"><pre id="d-body"></pre></div>
-</div></div>
-<div class="modal" id="settings"><div class="dialog">
-  <h3>Alpaca paper account</h3>
-  <p>Read-only live data: equity, positions, orders, fills and prices refresh every 2 seconds. Keys are saved on this PC only (<span class="num">%APPDATA%\\TradingDesk</span>), never in the repo or the chat. Paper keys only (they start with PK); the app never places orders.</p>
-  <div class="field"><label>API key ID</label><input id="kid" placeholder="PK…" autocomplete="off"></div>
-  <div class="field"><label>Secret key</label><input id="ksec" type="password" autocomplete="off"></div>
-  <p class="muted" id="kstat"></p>
-  <h3 style="margin-top:14px">Desk folder</h3>
-  <p>Your day-trader-skill folder on this PC (agents, tickets, journal). Without it the app runs standalone: Alpaca, charts and chat.</p>
-  <div class="field" style="flex-direction:row;gap:8px"><input id="repo" style="flex:1" placeholder="C:\path\to\day-trader-skill"><button class="btn" id="reposave">Save folder</button></div>
-  <div class="actions"><button class="btn" id="kforget">Remove keys</button><button class="btn" id="knotify">Enable notifications</button><button class="btn" id="kclose">Close</button><button class="btn primary" id="ksave">Save</button></div>
-</div></div>
+    <section class="page" id="p-plan">
+      <div class="ph"><div><h1>Plan</h1><p>Step 2 · Entry trigger, stop and target, size, then the risk check.</p></div></div>
+      <div class="card"><h2>Trade plans <span class="right muted" id="plan-sum"></span></h2><div class="tw" id="plans"></div></div>
+      <div class="stack" id="plan-agents"></div>
+    </section>
+
+    <section class="page" id="p-trade">
+      <div class="ph"><div><h1>Trade</h1><p>Step 3 · Open positions, working orders and the bells.</p></div><div class="right" id="trade-status"></div></div>
+      <div class="card"><h2>Positions</h2><div class="tw" id="positions"></div></div>
+      <div class="card"><h2>Orders today <span class="right muted">Alpaca</span></h2><div class="tw" id="aorders"></div></div>
+      <div class="stack" id="trade-agents"></div>
+    </section>
+
+    <section class="page" id="p-review">
+      <div class="ph"><div><h1>Review</h1><p>Step 4 · What happened, what it cost, what it taught.</p></div></div>
+      <div class="grid g2">
+        <div class="card"><h2>Realized P/L today <span class="right num" id="pnl-now"></span></h2><div id="pnl"></div></div>
+        <div class="card"><h2>Trades <span class="right muted" id="trades-sum"></span></h2><div class="tw" id="trades"></div></div>
+      </div>
+      <div class="stack" id="review-agents"></div>
+    </section>
+
+    <section class="page" id="p-settings">
+      <div class="ph"><div><h1>Settings</h1><p>Connections live on this PC only. Nothing here is saved in the repo.</p></div><div class="right"><button class="btn" id="conn-refresh">Refresh</button></div></div>
+      <div class="card"><h2>Connections</h2><div id="conns"></div></div>
+      <div class="card"><h2>Trading</h2><div id="trading-set"></div></div>
+      <div class="card"><h2>App</h2><div id="app-set"></div></div>
+    </section>
+  </main>
+
+  <aside id="dock">
+    <div class="tabs"><button class="tab active" data-tab="c-desk">Desk chat</button><button class="tab" data-tab="c-main">Main session</button></div>
+    <div class="pane active" id="c-desk">
+      <div class="msgs scroll" id="dchat"></div>
+      <div class="composer"><textarea id="dsay" placeholder="Ask or tell the desk trader… (Enter)"></textarea>
+        <div class="stack" style="gap:6px"><button class="btn primary" id="dsend">Send</button><button class="btn" id="dnew" title="New conversation">New</button></div></div>
+    </div>
+    <div class="pane" id="c-main">
+      <div class="msgs scroll" id="chat"></div>
+      <div class="composer"><textarea id="say" placeholder="Leave a note for the main session…"></textarea><button class="btn" id="send">Send</button></div>
+    </div>
+  </aside>
+</div>
+
+<div class="drawer" id="drawer"><div class="panel"><div class="hd"><b id="d-title"></b><button class="btn" id="d-close" style="margin-left:auto">Close</button></div><div class="scroll" style="flex:1;overflow:auto"><pre id="d-body"></pre></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
 const TOKEN = "__DESK_TOKEN__";
 const NYF = new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false});
-const NYS = new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money = v => v == null ? '—' : (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const signed = v => v == null ? '—' : (v > 0 ? '+' : '') + money(v);
+const money = v => v == null || isNaN(v) ? '—' : (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const signed = v => v == null || isNaN(v) ? '—' : (v > 0 ? '+' : '') + money(v);
 const tNY = iso => iso ? NYF.format(new Date(iso)) : '';
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-let STATE = null, SYMBOL = 'SPY';
-
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),3200); }
+const age = s => s == null ? '' : s < 60 ? s+'s' : Math.floor(s/60)+'m';
+let STATE = null, SYMBOL = 'SPY', PAGE = 'overview';
+const HTML = {}, OPEN = new Set(JSON.parse(localStorage.getItem('open')||'[]'));
+function setHTML(id, html){ if (HTML[id] === html) return; const el = $(id); if (el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; HTML[id] = html; el.innerHTML = html; }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),3400); }
 async function post(url, body){
-  const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Desk-Token':TOKEN},body:JSON.stringify(body)});
+  const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Desk-Token':TOKEN},body:JSON.stringify(body||{})});
   const j = await r.json(); if(!r.ok || j.ok===false) throw new Error(j.error||r.statusText); return j;
 }
+const act = async (url, body) => { try { const j = await post(url, body); if (j.message) toast(j.message); return j; } catch(e){ toast(e.message); } };
 
-/* ---------------- status ---------------- */
-const STATUS = {ok:['OK','●'], watch:['WATCH','▲'], alert:['ALERT','■'], error:['ERROR','✕'], done:['DONE','✓'], missing:['NO REPORT','○']};
-function statusTag(a){
-  if (a.paused) return `<span class="status"><span class="ic">❚❚</span>PAUSED</span>`;
-  if (a.stale) return `<span class="status stale"><span class="ic">◷</span>STALE</span>`;
-  const [label, ic] = STATUS[a.status] || [String(a.status).toUpperCase(),'•'];
-  return `<span class="status ${esc(a.status)}"><span class="ic">${ic}</span>${label}</span>`;
+/* ---------- helpers ---------- */
+const GROUPS = {find:['desk-scanner','desk-news','desk-analyst','desk-pelosi'], plan:['desk-entry','desk-exit','desk-budget','desk-risk'],
+                trade:['desk-alerts','desk-broker'], review:['desk-timemachine']};
+const A = name => STATE.agents.find(a => a.name === name) || {name, items:[], recommendations:[], status:'missing', headline:''};
+const short = n => n.replace('desk-','');
+function st(a){
+  if (a.paused) return `<span class="st">❚❚ PAUSED</span>`;
+  if (a.stale) return `<span class="st stale">◷ STALE</span>`;
+  const m = {ok:'● OK', watch:'▲ WATCH', alert:'■ ALERT', error:'✕ ERROR', done:'✓ DONE', missing:'○ NO REPORT'}[a.status] || String(a.status).toUpperCase();
+  return `<span class="st ${esc(a.status)}">${m}</span>`;
 }
-const age = s => s == null ? '' : s < 60 ? s+'s ago' : Math.floor(s/60)+'m ago';
-
-function renderHeader(s){
-  $('clock').textContent = NYS.format(new Date()) + ' NY';
-  const m = s.clock; $('market').innerHTML = `<span class="dot" style="background:${m.open?css('--good'):css('--text-muted')}"></span>${m.label}${m.open?` · closes in ${Math.floor(m.closes_in_min/60)}h ${m.closes_in_min%60}m`:''}`;
-  if (s.standalone) $('agents-sum').textContent = 'standalone: set the desk folder in Settings';
-  $('acct').innerHTML = s.account.paper ? `<span class="dot" style="background:var(--good)"></span>PAPER · ${esc(s.account.broker)}` : `<span class="dot" style="background:var(--critical)"></span>LIVE`;
-  const pl = s.risk.day_pl ?? s.risk.realized;
-  $('k-pl').innerHTML = `<span class="${pl<0?'neg':pl>0?'pos':''}">${signed(pl)}</span>`;
-  const lim = s.limits.max_daily_loss || 150;
-  $('k-risk').textContent = `${money(s.risk.used)} / ${money(lim)}`;
-  $('k-riskbar').style.width = Math.min(100, 100*s.risk.used/lim) + '%';
-  $('k-riskbar').style.background = s.risk.used/lim > .8 ? css('--warning') : css('--accent');
-  $('k-entries').textContent = `${s.risk.entries} / ${s.limits.max_trades ?? '—'}`;
-  $('k-gate').innerHTML = s.gate == null ? '<span class="muted">—</span>' :
-     (s.gate.allowed ? `<span class="status ok"><span class="ic">●</span>OPEN</span>` : `<span class="status watch"><span class="ic">▲</span>BLOCKED</span>`) +
-     ` <span class="muted num" style="font-size:11px">SPY ${s.gate.spy_vs_open_pct>0?'+':''}${(+s.gate.spy_vs_open_pct).toFixed(2)}%</span>`;
-  const a = s.autotrade, tg = $('auto-toggle');
-  tg.className = 'toggle' + (a.on ? ' on' : a.partly ? ' partly' : '');
-  $('auto-label').textContent = a.on ? 'ON' : a.partly ? 'PARTLY' : 'OFF';
-  $('stop-btn').textContent = s.desk_stopped ? 'Clear STOP' : 'Stop desk';
+const tag = (cls, text) => `<span class="st ${cls}">${esc(text)}</span>`;
+function cell(v){
+  if (v == null) return '<span class="muted">—</span>';
+  if (typeof v === 'number') return `<span class="num">${Number.isInteger(v) ? v : v.toFixed(2)}</span>`;
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'object') return `<span class="muted">${esc(JSON.stringify(v).slice(0,90))}</span>`;
+  return esc(String(v).slice(0,160));
 }
-
-function renderAgents(s){
-  const counts = {};
-  s.agents.forEach(a => { const k = a.paused?'paused':a.stale?'stale':a.status; counts[k]=(counts[k]||0)+1; });
-  $('agents-sum').textContent = Object.entries(counts).map(([k,v])=>`${v} ${k}`).join(' · ');
-  const order = {alert:0, error:1, watch:2, ok:3, done:4, missing:5};
-  const list = [...s.agents].sort((x,y)=>(order[x.status]??9)-(order[y.status]??9));
-  $('agents').innerHTML = list.map(a => `
-    <div class="agent" data-agent="${esc(a.name)}">
-      <div class="row1">${statusTag(a)}<span class="name">${esc(a.name.replace('desk-',''))}</span>
-        <span class="age num">${a.cycle!=null?'#'+a.cycle+' · ':''}${age(a.age_s)}</span>
-        <span class="tools">${a.has_loop?`<button class="iconbtn" data-run="${esc(a.name)}" title="${a.owned?'Stop':'Start'} its loop from the app">${a.owned?'■':'⏻'}</button><button class="iconbtn" data-log="${esc(a.name)}" title="Loop log">≡</button>`:''}
-        <button class="iconbtn" data-pause="${esc(a.name)}" title="${a.paused?'Resume':'Pause'} this agent">${a.paused?'▶':'❚❚'}</button></span></div>
-      <div class="skill">${esc(a.skill)}</div>
-      <div class="head">${esc(a.headline)}</div>
-    </div>`).join('');
+function itemsTable(items, max=8){
+  const rows = (items||[]).filter(x => x && typeof x === 'object'); if (!rows.length) return '<div class="empty">Nothing reported.</div>';
+  const cols = []; rows.forEach(r => Object.keys(r).forEach(k => { if (!cols.includes(k) && cols.length < max && r[k] !== null && k !== 'order' && k !== 'raw_keys') cols.push(k); }));
+  return `<div class="tw"><table><thead><tr>${cols.map(c=>`<th>${esc(c.replace(/_/g,' '))}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${c==='symbol'?`<b>${esc(r[c])}</b>`:cell(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
+function acc(key, summary, body, meta=''){
+  return `<details class="acc" data-key="${esc(key)}" ${OPEN.has(key)?'open':''}><summary>${summary}<span class="meta">${meta}</span></summary><div class="body">${body}</div></details>`;
+}
+function agentAcc(name){
+  const a = A(name);
+  const ctl = `${a.has_loop?`<button class="iconbtn" data-run="${esc(name)}" title="${a.owned?'Stop':'Start'} its loop">${a.owned?'■ stop':'⏻ start'}</button><button class="iconbtn" data-log="${esc(name)}">log</button>`:''}<button class="iconbtn" data-pause="${esc(name)}">${a.paused?'▶ resume':'❚❚ pause'}</button>`;
+  return acc('ag:'+name, `${st(a)}<span>${esc(short(name))}</span><span class="h">${esc(a.headline)}</span>`, itemsTable(a.items),
+     `${a.age_s!=null?age(a.age_s)+' ago':''} ${ctl}`);
+}
+function worst(names){ const o = {alert:3,error:3,watch:2,ok:1,done:1,missing:0}; let w = 'ok'; names.forEach(n => { const a = A(n), s = a.stale ? 'watch' : a.status; if ((o[s]||0) > (o[w]||0)) w = s; }); return w; }
 
-function renderRecs(s){
-  const recs = [];
-  s.agents.forEach(a => (a.recommendations||[]).forEach(r => recs.push({a:a.name, r})));
-  $('recs').innerHTML = recs.length ? recs.map(({a,r}) => {
-    const t = typeof r === 'string' ? r : `${r.action||''}${r.why?` — <span class="muted">${esc(r.why)}</span>`:''}`;
-    const u = typeof r === 'object' && r.urgency ? `<span class="status ${r.urgency==='now'?'alert':'watch'}">${esc(r.urgency).toUpperCase()}</span>` : '';
-    return `<div class="rec">${u}<span class="who">${esc(a.replace('desk-',''))}</span><span class="sec">${typeof r==='string'?esc(t):t.replace(/^([^<]*)/, m=>esc(m))}</span></div>`;
-  }).join('') : '<div class="empty">No recommendations right now.</div>';
+/* ---------- ticker ---------- */
+function renderTicker(s){
+  const q = s.alpaca?.quotes || {}, items = [];
+  const pl = s.alpaca?.account ? (+s.alpaca.account.equity - +s.alpaca.account.last_equity) : (s.risk.day_pl ?? s.risk.realized);
+  items.push(`<span class="tk"><span class="l">${s.clock.open?'Market open':'Market closed'}</span><b class="num">${NYF.format(new Date())} NY</b></span>`);
+  items.push(`<span class="tk"><span class="l">Day P/L</span><b class="num ${pl<0?'neg':'pos'}">${signed(pl)}</b></span>`);
+  items.push(`<span class="tk"><span class="l">Risk</span><b class="num">${money(s.risk.used)} / ${money(s.limits.max_daily_loss)}</b></span>`);
+  if (s.gate) items.push(`<span class="tk"><span class="l">Gate</span><b class="${s.gate.allowed?'pos':'neg'}">${s.gate.allowed?'OPEN':'BLOCKED'}</b><span class="num muted">SPY ${(+s.gate.spy_vs_open_pct).toFixed(2)}%</span></span>`);
+  const seen = new Set();
+  const sym = (x, last, extra='') => { x = String(x).toUpperCase(); if (seen.has(x)) return; seen.add(x); const p = q[x]?.p ?? last;
+    items.push(`<button class="tk" data-sym="${esc(x)}"><b>${esc(x)}</b><span class="num">${p!=null?(+p).toFixed(2):''}</span>${extra}</button>`); };
+  sym('SPY', null);
+  (s.alpaca?.positions||[]).forEach(p => sym(p.symbol, p.current_price, `<span class="num ${+p.unrealized_pl<0?'neg':'pos'}">${signed(+p.unrealized_pl)}</span>`));
+  A('desk-entry').items.forEach(i => i?.symbol && sym(i.symbol, i.last, i.state ? `<span class="st ${String(i.state).toLowerCase()}">${esc(i.state)}</span>` : ''));
+  A('desk-scanner').items.forEach(i => i?.symbol && sym(i.symbol, i.last, i.pct_chg!=null?`<span class="num ${i.pct_chg<0?'neg':'pos'}">${i.pct_chg>0?'+':''}${(+i.pct_chg).toFixed(2)}%</span>`:''));
+  const html = items.join(''); if (HTML.track === html) return; HTML.track = html; $('track').innerHTML = html + html;
+  $('track').style.animationDuration = Math.max(40, items.length * 6) + 's';
 }
 
-function renderTrades(s){
-  const rows = s.trades.map(t => `<tr><td><b>${esc(t.symbol)}</b></td><td class="num">${tNY(t.entry_at)}</td><td class="r num">${t.entry?.toFixed(2)}</td>
-     <td class="num">${tNY(t.exit_at)}</td><td class="r num">${t.exit?.toFixed(2)}</td><td class="r num">${t.qty}</td>
-     <td class="r num ${t.pnl<0?'neg':t.pnl>0?'pos':''}">${signed(t.pnl)}</td></tr>`);
-  s.open_trips.forEach(t => rows.push(`<tr><td><b>${esc(t.symbol)}</b></td><td class="num">${tNY(t.entry_at)}</td><td class="r num">${(+t.entry).toFixed(2)}</td><td colspan="2" class="muted">open</td><td class="r num">${t.qty}</td><td class="r muted">—</td></tr>`));
-  $('trades').innerHTML = `<thead><tr><th>Symbol</th><th>In</th><th class="r">Entry</th><th>Out</th><th class="r">Exit</th><th class="r">Qty</th><th class="r">P/L</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="7" class="empty">No trades yet today.</td></tr>'}</tbody>`;
-  const wins = s.trades.filter(t=>t.pnl>0).length;
-  $('trades-sum').textContent = s.trades.length ? `${s.trades.length} closed · ${wins} won · ${signed(s.risk.realized)}` : '';
-  $('log').innerHTML = `<thead><tr><th>Time</th><th>Status</th><th>Order</th></tr></thead><tbody>${[...s.log].reverse().map(r =>
-     `<tr><td class="num">${tNY(r.at)}</td><td>${esc(r.status)}</td><td>${esc(r.plain||r.symbol||'')}${r.note?` <span class="muted">· ${esc(r.note)}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing logged today.</td></tr>'}</tbody>`;
+/* ---------- overview ---------- */
+function renderOverview(s){
+  const acct = s.alpaca?.account, eq = acct ? +acct.equity : null, pl = acct ? eq - +acct.last_equity : (s.risk.day_pl ?? s.risk.realized);
+  const lim = s.limits.max_daily_loss || 150, used = s.risk.used, m = s.clock;
+  const k = (l, v, sub='') => `<div class="card kpi"><div class="l">${l}</div><div class="v num">${v}</div><div class="s">${sub}</div></div>`;
+  setHTML('kpis',
+    k('Day P/L', `<span class="${pl<0?'neg':pl>0?'pos':''}">${signed(pl)}</span>`, `realized ${signed(s.risk.realized)}`) +
+    k('Equity', eq!=null?money(eq):'—', acct ? 'Alpaca paper' : '<a href="#" data-goto="settings">connect Alpaca</a>') +
+    `<div class="card kpi"><div class="l">Risk used</div><div class="v num">${money(used)}</div><div class="meter"><i style="width:${Math.min(100,100*used/lim)}%;background:${used/lim>.8?css('--warning'):css('--accent')}"></i></div><div class="s" style="margin-top:4px">of ${money(lim)} a day</div></div>` +
+    k('Entries', `${s.risk.entries} <span class="muted" style="font-size:13px">/ ${s.limits.max_trades ?? '—'}</span>`, `${money(s.limits.max_loss_per_trade)} max a trade`) +
+    k('Breakout gate', s.gate ? (s.gate.allowed ? tag('ok','● OPEN') : tag('watch','▲ BLOCKED')) : '—', s.gate ? `SPY ${(+s.gate.spy_vs_open_pct).toFixed(2)}% vs open` : 'no report') +
+    k('Market', m.open ? `${Math.floor(m.closes_in_min/60)}h ${m.closes_in_min%60}m` : esc(m.label), m.open ? `to the close · flat by ${esc(s.limits.flat_by||'15:55')}` : (s.account.paper?'paper account':'LIVE')));
+  const ready = A('desk-entry').items.filter(i => i?.state === 'READY').length, pass = A('desk-risk').items.filter(i => i?.verdict === 'PASS').length;
+  const npos = (s.alpaca?.ok ? s.alpaca.positions : s.account.positions || []).length;
+  const stage = (n, page, t, d) => { const w = worst(GROUPS[page]); return `<button class="stage" data-goto="${page}"><div class="n">STEP ${n}</div><div class="t">${t} ${tag(w, w.toUpperCase())}</div><div class="d">${d}</div></button>`; };
+  setHTML('pipe',
+    stage(1,'find','Find', `${A('desk-scanner').items.length} setups found`) +
+    stage(2,'plan','Plan', `${ready} ready · ${pass} pass the risk check · ${money((s.limits.max_daily_loss||0)-s.risk.used)} risk left`) +
+    stage(3,'trade','Trade', `${npos} open position${npos===1?'':'s'} · autotrade ${s.autotrade.on?'on':'off'}`) +
+    stage(4,'review','Review', `${s.trades.length} closed · ${s.trades.filter(t=>t.pnl>0).length} won · ${signed(s.risk.realized)}`));
+  const recs = []; s.agents.forEach(a => { if (a.status === 'alert') recs.push({a:a.name, u:'now', t:a.headline}); else if (a.stale) recs.push({a:a.name, u:'stale', t:'no report for ' + age(a.age_s)});
+    (a.recommendations||[]).forEach(r => recs.push({a:a.name, u:(typeof r==='object'&&r.urgency)||'info', t: typeof r==='string'?r:`${r.action||''}${r.why?' — '+r.why:''}`})); });
+  const rank = {now:0, stale:1, soon:2, info:3}; recs.sort((x,y)=>(rank[x.u]??3)-(rank[y.u]??3));
+  const row = r => `<div class="rec">${tag(r.u, r.u.toUpperCase())}<span class="who">${esc(short(r.a))}</span><span class="sec">${esc(r.t)}</span></div>`;
+  const top = recs.filter(r => r.u !== 'info').slice(0,5), rest = recs.filter(r => !top.includes(r));
+  setHTML('attention', (top.map(row).join('') || '<div class="empty">Nothing needs you right now.</div>') +
+     (rest.length ? `<div style="padding:10px 12px">${acc('more-recs', `<span>${rest.length} more note${rest.length===1?'':'s'}</span>`, rest.map(row).join(''))}</div>` : ''));
+  $('att-sum').textContent = top.length ? `${top.length} item${top.length===1?'':'s'}` : '';
+  const syms = ['SPY', ...(s.alpaca?.positions||[]).map(p=>p.symbol), ...s.trades.map(t=>t.symbol), ...A('desk-entry').items.slice(0,6).map(i=>i?.symbol)].filter(Boolean).map(x=>String(x).toUpperCase());
+  const uniq = [...new Set(syms)].slice(0,14); if (!uniq.includes(SYMBOL)) uniq.push(SYMBOL);
+  setHTML('chips', uniq.map(x => `<button class="chip${x===SYMBOL?' active':''}" data-sym="${x}">${x}</button>`).join('') + `<input class="symin" id="symin" placeholder="Symbol" maxlength="10">`);
 }
 
-function renderChips(s){
-  const held = new Set((s.account.positions||[]).map(x=>String(x.symbol).toUpperCase()));
-  const syms = ['SPY', ...held];
-  s.trades.forEach(t => syms.push(t.symbol));
-  s.agents.filter(a => a.name==='desk-entry'||a.name==='desk-scanner').forEach(a => (a.items||[]).slice(0,6).forEach(i => i && i.symbol && syms.push(i.symbol)));
-  const uniq = [...new Set(syms.map(x=>String(x).toUpperCase()))].slice(0,16);
-  if (!uniq.includes(SYMBOL)) uniq.push(SYMBOL);
-  $('chips').innerHTML = uniq.map(x => `<button class="chip${x===SYMBOL?' active':''}${held.has(x)?' held':''}" data-sym="${x}">${x}</button>`).join('') +
-     `<input class="symin" id="symin" placeholder="Symbol" maxlength="10">`;
+/* ---------- find / plan / trade / review ---------- */
+const symBtn = x => `<button class="chip" data-sym="${esc(x)}">${esc(x)}</button>`;
+function renderFind(s){
+  const sc = A('desk-scanner'), vet = Object.fromEntries(A('desk-analyst').items.filter(i=>i?.symbol).map(i => [i.symbol, i]));
+  const rows = sc.items.filter(i => i?.symbol).map(i => `<tr><td>${symBtn(i.symbol)}</td><td class="r num ${i.pct_chg<0?'neg':'pos'}">${i.pct_chg!=null?(i.pct_chg>0?'+':'')+(+i.pct_chg).toFixed(2)+'%':'—'}</td><td class="r">${cell(i.rs_vs_spy)}</td><td class="r">${cell(i.last)}</td><td class="r">${cell(i.trigger)}</td><td class="r">${cell(i.stop)}</td><td class="r num">${i.risk_pct!=null?(+i.risk_pct).toFixed(2)+'%':'—'}</td><td>${vet[i.symbol]?.veto?tag('alert','EARNINGS'):vet[i.symbol]?tag('ok','clear'):'<span class="muted">—</span>'}</td><td class="muted">${esc(i.setup||'')}</td></tr>`);
+  setHTML('candidates', rows.length ? `<table><thead><tr><th>Symbol</th><th class="r">Today</th><th class="r">vs SPY</th><th class="r">Last</th><th class="r">Trigger</th><th class="r">Stop</th><th class="r">Risk</th><th>Earnings</th><th>Setup</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '<div class="empty">The scanner has not reported setups yet.</div>');
+  $('cand-sum').textContent = sc.age_s != null ? `scanned ${age(sc.age_s)} ago` : '';
+  setHTML('find-agents', GROUPS.find.map(agentAcc).join(''));
+}
+function renderPlan(s){
+  const by = {}; const put = (sym, o) => { if (!sym) return; by[sym] = Object.assign(by[sym] || {symbol:sym}, o); };
+  A('desk-entry').items.forEach(i => put(i?.symbol, {state:i.state, last:i.last, trigger:i.trigger, stop:i.stop}));
+  A('desk-exit').items.forEach(i => i?.target!=null && put(i.symbol, {target:i.target}));
+  A('desk-budget').items.forEach(i => put(i?.symbol, {qty:i.qty, cost:i.cost, max_loss:i.max_loss}));
+  A('desk-risk').items.forEach(i => i?.verdict && put(i.symbol, {verdict:i.verdict, reasons:i.reasons}));
+  const ord = {READY:0, TRIGGERED:1, WAITING:2, INVALID:3}; const list = Object.values(by).sort((a,b)=>(ord[a.state]??4)-(ord[b.state]??4));
+  setHTML('plans', list.length ? `<table><thead><tr><th>Symbol</th><th>Entry</th><th class="r">Last</th><th class="r">Trigger</th><th class="r">Stop</th><th class="r">Target</th><th class="r">Shares</th><th class="r">Cost</th><th class="r">Max loss</th><th>Risk check</th></tr></thead><tbody>${list.map(r =>
+    `<tr><td>${symBtn(r.symbol)}</td><td>${r.state?tag(String(r.state).toLowerCase(), r.state):'<span class="muted">—</span>'}</td><td class="r">${cell(r.last)}</td><td class="r">${cell(r.trigger)}</td><td class="r">${cell(r.stop)}</td><td class="r">${cell(r.target)}</td><td class="r">${cell(r.qty)}</td><td class="r num">${r.cost!=null?money(r.cost):'—'}</td><td class="r num">${r.max_loss!=null?money(r.max_loss):'—'}</td><td>${r.verdict?tag(r.verdict.toLowerCase(), r.verdict):'<span class="muted">—</span>'} <span class="muted">${esc([].concat(r.reasons||[]).join('; ').slice(0,80))}</span></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No plans yet. They appear when the scanner finds setups.</div>');
+  $('plan-sum').textContent = `${money((s.limits.max_daily_loss||0)-s.risk.used)} of daily risk left · ${(s.limits.max_trades||0)-s.risk.entries} trades left`;
+  setHTML('plan-agents', GROUPS.plan.map(agentAcc).join(''));
+}
+function renderTrade(s){
+  const a = s.alpaca || {}, pos = a.ok ? a.positions : (s.account.positions||[]);
+  setHTML('trade-status', `${a.ok?tag('ok','● Alpaca live'):a.configured?tag('watch', a.error||'connecting'):'<a href="#" data-goto="settings">Connect Alpaca</a>'} ${tag(s.autotrade.on?'ok':'', 'Autotrade '+(s.autotrade.on?'ON':'OFF'))}`);
+  setHTML('positions', pos.length ? `<table><thead><tr><th>Symbol</th><th class="r">Qty</th><th class="r">Avg</th><th class="r">Last</th><th class="r">Value</th><th class="r">Unrealized</th></tr></thead><tbody>${pos.map(x =>
+    `<tr><td>${symBtn(x.symbol)}</td><td class="r num">${esc(x.qty)}</td><td class="r num">${(+(x.avg_entry_price??x.avg_cost??0)).toFixed(2)}</td><td class="r num">${x.current_price?(+x.current_price).toFixed(2):'—'}</td><td class="r num">${x.market_value?money(+x.market_value):'—'}</td><td class="r num ${+x.unrealized_pl<0?'neg':'pos'}">${x.unrealized_pl!=null?signed(+x.unrealized_pl):'—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Flat. No open positions.</div>');
+  const flat = []; (a.orders||[]).forEach(o => { flat.push(o); (o.legs||[]).forEach(l => flat.push({...l, leg:true})); });
+  setHTML('aorders', flat.length ? `<table><thead><tr><th>Time</th><th>Order</th><th>Status</th><th class="r">Filled</th></tr></thead><tbody>${flat.map(o =>
+    `<tr><td class="num">${tNY(o.submitted_at)}</td><td>${o.leg?'<span class="muted">↳ </span>':''}<b>${esc(o.side?.toUpperCase())} ${esc(o.qty)} ${esc(o.symbol)}</b> <span class="muted">${esc(o.type)}${o.stop_price?' stop '+esc(o.stop_price):''}${o.limit_price?' limit '+esc(o.limit_price):''}${o.group_role?' · '+esc(o.group_role):''}</span></td><td>${esc(o.status)}</td><td class="r num">${o.filled_avg_price?`${esc(o.filled_qty)} @ ${(+o.filled_avg_price).toFixed(2)}`:'—'}</td></tr>`).join('')}</tbody></table>` : `<div class="empty">${a.ok?'No orders today.':'Connect Alpaca in Settings to see live orders.'}</div>`);
+  const log = `<div class="tw"><table><thead><tr><th>Time</th><th>Status</th><th>Order</th></tr></thead><tbody>${[...s.log].reverse().map(r => `<tr><td class="num">${tNY(r.at)}</td><td>${esc(r.status)}</td><td>${esc(r.plain||r.symbol||'')}${r.note?` <span class="muted">· ${esc(r.note)}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing logged today.</td></tr>'}</tbody></table></div>`;
+  setHTML('trade-agents', GROUPS.trade.map(agentAcc).join('') + acc('ticket-log', `<span>Ticket log</span><span class="h">every approval, placement and fill recorded locally</span>`, log, `${s.log.length} today`));
+}
+let JOURNAL = null;
+function renderReview(s){
+  const rows = s.trades.map(t => `<tr><td>${symBtn(t.symbol)}</td><td class="num">${tNY(t.entry_at)}</td><td class="r num">${t.entry?.toFixed(2)}</td><td class="num">${tNY(t.exit_at)}</td><td class="r num">${t.exit?.toFixed(2)}</td><td class="r num">${t.qty}</td><td class="r num ${t.pnl<0?'neg':t.pnl>0?'pos':''}">${signed(t.pnl)}</td></tr>`);
+  setHTML('trades', `<table><thead><tr><th>Symbol</th><th>In</th><th class="r">Entry</th><th>Out</th><th class="r">Exit</th><th class="r">Qty</th><th class="r">P/L</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="7" class="empty">No closed trades today.</td></tr>'}</tbody></table>`);
+  $('trades-sum').textContent = s.trades.length ? `${s.trades.length} closed · ${s.trades.filter(t=>t.pnl>0).length} won` : '';
+  $('pnl-now').innerHTML = `<span class="${s.risk.realized<0?'neg':'pos'}">${signed(s.risk.realized)}</span>`;
+  setHTML('review-agents', GROUPS.review.map(agentAcc).join('') + acc('journal', `<span>Machine Learning log</span><span class="h">standing rules and session notes</span>`, `<div class="prose">${JOURNAL==null?'<span class="muted">Loading…</span>':md(JOURNAL)}</div>`));
+  if (OPEN.has('journal') && JOURNAL == null && !loadJournal.busy) loadJournal();
+  const pts = [{time:s.session_open_ts, value:0}]; s.pnl_timeline.forEach(p => pts.push({time:Math.floor(new Date(p.at).getTime()/1000), value:p.cum}));
+  const now = Math.floor(Date.now()/1000); if (now > pts[pts.length-1].time) pts.push({time:now, value:pts[pts.length-1].value});
+  const seen = new Set(); pnlSeries.setData(pts.filter(p => !seen.has(p.time) && seen.add(p.time)).sort((a,b)=>a.time-b.time)); pnlChart.timeScale().fitContent();
+}
+async function loadJournal(){ loadJournal.busy = true; try { JOURNAL = (await (await fetch('/api/journal')).json()).text || 'No log yet.'; } catch(e){ JOURNAL = 'Could not load the log.'; } loadJournal.busy = false; if (PAGE === 'review') renderReview(STATE); }
+
+/* ---------- settings ---------- */
+let CONN = null;
+async function loadConn(force){ try { CONN = await (await fetch('/api/connections'+(force?'?force=1':''))).json(); HTML.conns = null; if (PAGE === 'settings') renderSettings(STATE); } catch(e){} }
+function renderSettings(s){
+  if (!CONN) setHTML('conns', '<div class="empty">Checking connections…</div>'); else {
+    const c = CONN.claude, a = s.alpaca || CONN.alpaca;
+    const conn = (icon, title, status, desc, acts) => `<div class="conn"><div class="ic"><svg class="i"><use href="#${icon}"/></svg></div><div class="b"><h3>${title} ${status}</h3><p>${desc}</p><div class="acts">${acts}</div></div></div>`;
+    setHTML('conns',
+      conn('i-spark', 'Claude', !c.installed ? tag('alert','not installed') : c.logged_in ? tag('ok', '● connected' + (c.plan ? ' · ' + c.plan : '')) : tag('watch','signed out'),
+        !c.installed ? 'Install Claude Code, then sign in with your Claude subscription: <code>npm install -g @anthropic-ai/claude-code</code>' :
+        c.logged_in ? `Signed in with your Claude subscription. It powers the desk chat and the agents.${c.expires?` Login valid until ${new Date(c.expires).toLocaleDateString()}.`:''}` : 'Sign in with your Claude subscription. The login happens in Claude Code’s own window; this app never sees your password.',
+        c.installed ? `<button class="btn ${c.logged_in?'':'primary'}" data-claude="login">${c.logged_in?'Switch account':'Sign in'}</button>${c.logged_in?'<button class="btn" data-claude="logout">Sign out</button>':''}` : '') +
+      conn('i-trade', 'Alpaca', a.ok ? tag('ok','● live · paper') : a.configured ? tag('watch', a.error || 'connecting') : tag('', 'not connected'),
+        `Read-only live data from your <b>paper</b> account${a.key_hint?` (key ${esc(a.key_hint)})`:''}: equity, positions, orders, fills, prices. Paper keys only (they start with PK).`,
+        `<input class="f" id="kid" placeholder="API key ID (PK…)" autocomplete="off" style="width:190px"><input class="f" id="ksec" type="password" placeholder="Secret key" autocomplete="off" style="width:220px"><button class="btn primary" id="ksave">Save</button>${a.configured?'<button class="btn" id="kforget">Remove</button>':''}`) +
+      conn('i-db', 'Market data · Yahoo', tag('ok','● no key needed'), 'Free delayed bars for the scanner and the charts. Nothing to set up.', '') +
+      conn('i-db', 'SEC EDGAR', CONN.sec_user_agent_set ? tag('ok','● contact set') : tag('watch','placeholder contact'), 'Filings for the analyst and news agents. The SEC asks for a contact: set <code>sec_user_agent</code> in <code>trader/config.json</code>.', '') +
+      (CONN.other||[]).map(o => conn('i-key', esc(o.name), tag('ok','● saved'), `${esc(o.note||'API key')} · <span class="num">${esc(o.hint)}</span>`, `<button class="btn" data-rmconn="${esc(o.name)}">Remove</button>`)).join('') +
+      conn('i-plus', 'Add another API', '', 'Store a key for a service we add later (news, data, alerts). Saved on this PC only.',
+        `<input class="f" id="cname" placeholder="Name (e.g. Polygon)" style="width:160px"><input class="f" id="ckey" type="password" placeholder="API key" style="width:220px"><input class="f" id="cnote" placeholder="Note" style="width:150px"><button class="btn" id="csave">Add</button>`));
+  }
+  const L = s.limits, row = (t, d, r) => `<div class="rowset"><div class="b"><div>${t}</div><span>${d}</span></div>${r}</div>`;
+  setHTML('trading-set',
+    row('Autotrade', 'Paper only. Claude opens and closes trades with no approval; every entry still needs a risk PASS.', `<button class="btn ${s.autotrade.on?'':'primary'}" id="auto2">${s.autotrade.on?'Turn off':'Turn on'}</button>`) +
+    row('Account', `${s.account.paper?'Paper':'LIVE'} · ${esc(s.account.broker)}`, tag(s.account.paper?'ok':'alert', s.account.paper?'PAPER':'LIVE')) +
+    row('Limits', `${money(L.max_loss_per_trade)} a trade · ${money(L.max_daily_loss)} a day · ${esc(L.max_trades)} trades · entries ${esc(L.entries_from)}–${esc(L.entries_until)} · flat by ${esc(L.flat_by)}`, '<span class="muted">edit in trader/config.json</span>'));
+  setHTML('app-set',
+    row('Desk folder', esc(s.repo || 'Not set: standalone mode (Alpaca, charts and chat only)'), `<input class="f" id="repo" placeholder="C:\\path\\to\\day-trader-skill" style="width:260px"><button class="btn" id="reposave">Save</button>`) +
+    row('Notifications', 'Windows pop-ups and sounds for alerts, fills and stops.', `<button class="btn" id="knotify">Enable</button>`));
 }
 
-/* ---------------- charts ---------------- */
+/* ---------- nav ---------- */
+function renderNav(s){
+  const b = (id, n, cls='') => { const e = $(id); e.textContent = n || ''; e.className = 'badge ' + cls; e.style.display = n ? '' : 'none'; };
+  b('nb-find', A('desk-scanner').items.length || '');
+  const ready = A('desk-entry').items.filter(i => i?.state === 'READY').length; b('nb-plan', ready || '', ready ? 'watch' : '');
+  const npos = (s.alpaca?.ok ? s.alpaca.positions : s.account.positions || []).length; b('nb-trade', npos || '', worst(GROUPS.trade)==='alert'?'alert':'');
+  b('nb-review', s.trades.length || '');
+  const a = s.autotrade; $('auto-toggle').className = 'toggle' + (a.on ? ' on' : a.partly ? ' partly' : '');
+  $('stop-btn').textContent = s.desk_stopped ? 'Clear stop' : 'Stop desk';
+}
+function go(page){ PAGE = page; document.querySelectorAll('.navbtn').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'p-' + page)); $('main').scrollTop = 0;
+  if (page === 'settings') loadConn(); if (STATE) renderAll(); }
+
+/* ---------- charts ---------- */
 const tick = t => NYF.format(new Date(t*1000));
-const chartBase = el => LightweightCharts.createChart(el, {
-  autoSize:true,
+const chartBase = el => LightweightCharts.createChart(el, {autoSize:true,
   layout:{background:{type:'solid',color:css('--surface-1')}, textColor:css('--text-muted'), fontFamily:'Inter', fontSize:11, attributionLogo:false},
-  grid:{vertLines:{color:'#232321'}, horzLines:{color:'#232321'}},
-  rightPriceScale:{borderColor:css('--line')}, timeScale:{borderColor:css('--line'), timeVisible:true, tickMarkFormatter:tick},
-  localization:{timeFormatter:tick}, crosshair:{mode:0}
-});
-let chart, candles, volume, pnlChart, pnlSeries, priceLines = [];
+  grid:{vertLines:{color:'#20201e'}, horzLines:{color:'#20201e'}}, rightPriceScale:{borderColor:css('--line')},
+  timeScale:{borderColor:css('--line'), timeVisible:true, tickMarkFormatter:tick}, localization:{timeFormatter:tick}, crosshair:{mode:0}});
+let chart, candles, volume, pnlChart, pnlSeries, priceLines = [], LAST_BARS = null;
 function initCharts(){
   chart = chartBase($('chart'));
   candles = chart.addCandlestickSeries({upColor:css('--up'), downColor:css('--down'), borderVisible:false, wickUpColor:css('--up'), wickDownColor:css('--down')});
-  volume = chart.addHistogramSeries({priceScaleId:'vol', priceFormat:{type:'volume'}, color:'rgba(195,194,183,.22)', lastValueVisible:false, priceLineVisible:false});
+  volume = chart.addHistogramSeries({priceScaleId:'vol', priceFormat:{type:'volume'}, lastValueVisible:false, priceLineVisible:false});
   chart.priceScale('vol').applyOptions({scaleMargins:{top:.82, bottom:0}});
-  chart.subscribeCrosshairMove(p => {
-    const d = p && p.seriesData ? p.seriesData.get(candles) : null;
-    legend(d);
-  });
+  chart.subscribeCrosshairMove(p => legend(p && p.seriesData ? p.seriesData.get(candles) : null));
   pnlChart = chartBase($('pnl'));
-  pnlSeries = pnlChart.addBaselineSeries({baseValue:{type:'price',price:0}, lineWidth:2,
-     topLineColor:css('--up'), topFillColor1:'rgba(57,135,229,.28)', topFillColor2:'rgba(57,135,229,.02)',
-     bottomLineColor:css('--down'), bottomFillColor1:'rgba(230,103,103,.02)', bottomFillColor2:'rgba(230,103,103,.28)',
-     priceFormat:{type:'custom', formatter:v => (v<0?'−$':'$')+Math.abs(v).toFixed(0)}});
+  pnlSeries = pnlChart.addBaselineSeries({baseValue:{type:'price',price:0}, lineWidth:2, topLineColor:css('--up'), topFillColor1:'rgba(57,135,229,.28)', topFillColor2:'rgba(57,135,229,.02)',
+    bottomLineColor:css('--down'), bottomFillColor1:'rgba(230,103,103,.02)', bottomFillColor2:'rgba(230,103,103,.28)', priceFormat:{type:'custom', formatter:v => (v<0?'−$':'$')+Math.abs(v).toFixed(0)}});
   pnlChart.priceScale('right').applyOptions({scaleMargins:{top:.15,bottom:.15}});
 }
-let LAST_BARS = null;
 function legend(d){
-  if (!LAST_BARS) return;
-  const b = d || LAST_BARS.bars[LAST_BARS.bars.length-1]; if (!b) { $('legend').innerHTML = `<b>${esc(LAST_BARS.symbol)}</b>`; return; }
+  if (!LAST_BARS) return; const b = d || LAST_BARS.bars[LAST_BARS.bars.length-1]; if (!b) return;
   const pc = LAST_BARS.prev_close, ch = pc ? (b.close/pc-1)*100 : null;
-  $('legend').innerHTML = `<b>${esc(LAST_BARS.symbol)}</b><span class="num">O ${b.open.toFixed(2)} H ${b.high.toFixed(2)} L ${b.low.toFixed(2)} C ${b.close.toFixed(2)}</span>` +
-     (ch!=null?` <span class="num ${ch<0?'neg':'pos'}">${ch>0?'+':''}${ch.toFixed(2)}%</span>`:'');
+  $('legend').innerHTML = `<b>${esc(LAST_BARS.symbol)}</b><span class="num">O ${b.open.toFixed(2)} H ${b.high.toFixed(2)} L ${b.low.toFixed(2)} C ${b.close.toFixed(2)}</span>` + (ch!=null?` <span class="num ${ch<0?'neg':'pos'}">${ch>0?'+':''}${ch.toFixed(2)}%</span>`:'');
 }
 async function loadBars(fit){
   try{
-    const r = await fetch('/api/bars?symbol='+encodeURIComponent(SYMBOL)); const d = await r.json();
-    if (!r.ok) throw new Error(d.error);
+    const r = await fetch('/api/bars?symbol='+encodeURIComponent(SYMBOL)); const d = await r.json(); if (!r.ok) throw new Error(d.error);
     LAST_BARS = d;
     candles.setData(d.bars.map(b => ({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close})));
-    volume.setData(d.bars.map(b => ({time:b.time, value:b.volume, color: b.close>=b.open ? 'rgba(57,135,229,.28)' : 'rgba(230,103,103,.28)'})));
-    const bt = d.bars.map(b=>b.time);
-    const snap = t => { let best = bt[0]; for (const x of bt) if (x <= t) best = x; return best; };
-    candles.setMarkers((d.marks||[]).map(m => ({time:snap(m.time), position:m.side==='buy'?'belowBar':'aboveBar',
-       color:m.side==='buy'?css('--text-primary'):css('--warning'), shape:m.side==='buy'?'arrowUp':'arrowDown', text:m.text})).sort((a,b)=>a.time-b.time));
+    volume.setData(d.bars.map(b => ({time:b.time, value:b.volume, color:b.close>=b.open?'rgba(57,135,229,.28)':'rgba(230,103,103,.28)'})));
+    const bt = d.bars.map(b=>b.time), snap = t => { let best = bt[0]; for (const x of bt) if (x <= t) best = x; return best; };
+    candles.setMarkers((d.marks||[]).map(m => ({time:snap(m.time), position:m.side==='buy'?'belowBar':'aboveBar', color:m.side==='buy'?css('--text-primary'):css('--warning'), shape:m.side==='buy'?'arrowUp':'arrowDown', text:m.text})).sort((a,b)=>a.time-b.time));
     priceLines.forEach(l => candles.removePriceLine(l)); priceLines = [];
     (d.lines||[]).forEach(l => priceLines.push(candles.createPriceLine({price:l.price, color:l.label==='stop'?css('--critical'):css('--good'), lineWidth:1, lineStyle:2, axisLabelVisible:true, title:l.label})));
     if (d.prev_close) priceLines.push(candles.createPriceLine({price:d.prev_close, color:'#5c5b55', lineWidth:1, lineStyle:3, axisLabelVisible:false, title:'prev close'}));
-    if (fit) chart.timeScale().fitContent();
-    legend(null);
+    if (fit) chart.timeScale().fitContent(); legend(null);
   }catch(e){ $('legend').innerHTML = `<b>${esc(SYMBOL)}</b><span class="neg">${esc(e.message)}</span>`; }
 }
-function renderPnl(s){
-  const pts = [{time: s.session_open_ts, value: 0}];
-  s.pnl_timeline.forEach(p => pts.push({time: Math.floor(new Date(p.at).getTime()/1000), value: p.cum}));
-  const now = Math.floor(Date.now()/1000); if (now > pts[pts.length-1].time) pts.push({time: now, value: pts[pts.length-1].value});
-  const seen = new Set(); const clean = pts.filter(p => !seen.has(p.time) && seen.add(p.time)).sort((a,b)=>a.time-b.time);
-  pnlSeries.setData(clean); pnlChart.timeScale().fitContent();
-  $('pnl-now').innerHTML = `<span class="${s.risk.realized<0?'neg':'pos'}">${signed(s.risk.realized)}</span>`;
+function liveCandle(s){
+  const q = s.alpaca?.quotes?.[SYMBOL]; if (!q || !LAST_BARS || !LAST_BARS.bars.length) return;
+  const t = Math.floor(new Date(q.t).getTime()/1000), px = +q.p, last = LAST_BARS.bars[LAST_BARS.bars.length-1], bucket = t - (t % 300);
+  if (bucket < last.time) return;
+  if (bucket === last.time) { last.high = Math.max(last.high, px); last.low = Math.min(last.low, px); last.close = px; }
+  else LAST_BARS.bars.push({time:bucket, open:px, high:px, low:px, close:px, volume:0});
+  const b = LAST_BARS.bars[LAST_BARS.bars.length-1]; candles.update({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close}); legend(null);
 }
+function pick(sym){ SYMBOL = String(sym).toUpperCase(); post('/api/watch',{symbol:SYMBOL}).catch(()=>{}); HTML.chips = null; loadBars(true); }
 
-/* ---------------- chat ---------------- */
+/* ---------- chat ---------- */
 function md(s){
   const lines = esc(s).split('\n'); let out = [], tbl = null, code = false, buf = [];
   const inline = t => t.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
@@ -411,168 +538,107 @@ function md(s){
     if (code) { buf.push(l); continue; }
     if (/^\s*\|.*\|\s*$/.test(l)) { if (/^\s*\|[\s:|-]+\|\s*$/.test(l)) continue; (tbl = tbl || []).push(l.trim().slice(1,-1).split('|').map(c=>c.trim())); continue; }
     flush();
-    if (/^#{1,4}\s/.test(l)) out.push('<b>'+inline(l.replace(/^#+\s/,''))+'</b>');
+    if (/^#{1,4}\s/.test(l)) out.push('<b style="color:var(--text-primary)">'+inline(l.replace(/^#+\s/,''))+'</b>');
     else if (/^\s*[-*]\s/.test(l)) out.push('• '+inline(l.replace(/^\s*[-*]\s/,'')));
     else out.push(inline(l));
   }
   flush(); if (code) out.push('<pre>'+buf.join('\n')+'</pre>');
   return out.join('<br>').replace(/(<br>){3,}/g,'<br><br>').replace(/<br>(<table>|<pre>)/g,'$1').replace(/(<\/table>|<\/pre>)<br>/g,'$1');
 }
-let CHAT_SIG = '';
-async function loadChat(){
-  try{
-    const r = await fetch('/api/chat?limit=50'); const d = await r.json();
-    const queued = (STATE?.inbox||[]).filter(m => !m.read);
-    const sig = d.messages.length + ':' + (d.messages.at(-1)?.at||'') + ':' + queued.length;
-    if (sig === CHAT_SIG) return; CHAT_SIG = sig;
-    const box = $('chat'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-    box.innerHTML = d.messages.map(m => `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Claude'} · ${tNY(m.at)}
-        ${(m.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(t.replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}</div>${m.text?md(m.text):'<span class="muted">working…</span>'}</div>`).join('') +
-      queued.map(m => `<div class="msg user queued"><div class="meta">You · ${tNY(m.at)} · queued for Claude</div>${esc(m.text)}</div>`).join('');
-    if (document.getElementById('c-main').classList.contains('active')) $('chat-src').textContent = d.path ? 'this session' : 'no transcript found';
-    if (atBottom) box.scrollTop = box.scrollHeight;
-  }catch(e){ $('chat-src').textContent = 'chat unavailable'; }
-}
-
-/* ---------------- wiring ---------------- */
-function renderAll(){
-  renderHeader(STATE); renderAgents(STATE); renderRecs(STATE); renderTrades(STATE); renderChips(STATE); renderPnl(STATE);
-  renderAlpaca(STATE); renderDeskChat(STATE); liveCandle(STATE); notifyDiff(STATE);
-}
-async function refresh(){
-  try{ const r = await fetch('/api/state'); STATE = await r.json(); renderAll(); }catch(e){ toast('Desk server not reachable'); }
-}
-let ES = null;
-function connect(){
-  ES = new EventSource('/api/events');
-  ES.addEventListener('state', ev => { STATE = JSON.parse(ev.data); renderAll(); $('live-pill').innerHTML = '<span class="live-dot"></span>LIVE'; });
-  ES.onerror = () => { $('live-pill').innerHTML = '<span class="dot" style="background:var(--warning)"></span>RECONNECTING'; };
-}
-
-/* ---------------- alpaca ---------------- */
-function renderAlpaca(s){
-  const a = s.alpaca || {};
-  const acct = a.account;
-  if (acct) {
-    const eq = +acct.equity, pl = eq - (+acct.last_equity);
-    $('k-eq').innerHTML = `${money(eq)} <span class="${pl<0?'neg':'pos'}" style="font-size:12px">${signed(pl)}</span>`;
-  } else $('k-eq').innerHTML = `<span class="muted" style="font-size:12px">${a.configured ? 'connecting…' : 'not connected'}</span>`;
-  $('alp-status').innerHTML = a.ok ? `<span class="live-dot"></span>Alpaca paper · ${esc(acct?.account_number||'')} · ${a.updated?tNY(a.updated):''}` :
-     a.error ? `<span class="neg">${esc(a.error)}</span>` : (a.configured ? 'connecting…' : '<a href="#" id="connect-link" style="color:var(--accent)">Connect Alpaca for live data</a>');
-  const pos = a.positions || [];
-  $('positions').innerHTML = `<thead><tr><th>Symbol</th><th class="r">Qty</th><th class="r">Avg</th><th class="r">Last</th><th class="r">Value</th><th class="r">Unrealized</th></tr></thead><tbody>${
-    pos.map(x => `<tr><td><b>${esc(x.symbol)}</b></td><td class="r num">${x.qty}</td><td class="r num">${(+x.avg_entry_price).toFixed(2)}</td><td class="r num">${(+x.current_price).toFixed(2)}</td><td class="r num">${money(+x.market_value)}</td><td class="r num ${+x.unrealized_pl<0?'neg':'pos'}">${signed(+x.unrealized_pl)} <span class="muted">(${(100*x.unrealized_plpc).toFixed(2)}%)</span></td></tr>`).join('')
-    || `<tr><td colspan="6" class="empty">${a.ok ? 'Flat: no open positions.' : 'Connect Alpaca in Settings to see live positions.'}</td></tr>`}</tbody>`;
-  const flat = []; (a.orders||[]).forEach(o => { flat.push(o); (o.legs||[]).forEach(l => flat.push({...l, leg:true})); });
-  $('aorders').innerHTML = `<thead><tr><th>Submitted</th><th>Order</th><th>Status</th><th class="r">Filled</th></tr></thead><tbody>${
-    flat.map(o => `<tr><td class="num">${tNY(o.submitted_at)}</td><td>${o.leg?'<span class="muted">↳ </span>':''}<b>${esc(o.side?.toUpperCase())} ${esc(o.qty)} ${esc(o.symbol)}</b> <span class="muted">${esc(o.type)}${o.stop_price?' stop '+o.stop_price:''}${o.limit_price?' limit '+o.limit_price:''}${o.group_role?' · '+o.group_role:''}</span></td><td>${esc(o.status)}</td><td class="r num">${o.filled_avg_price?`${o.filled_qty} @ ${(+o.filled_avg_price).toFixed(2)}`:'—'}</td></tr>`).join('')
-    || `<tr><td colspan="4" class="empty">${a.ok ? 'No orders today.' : 'Connect Alpaca in Settings.'}</td></tr>`}</tbody>`;
-}
-function liveCandle(s){
-  const q = s.alpaca?.quotes?.[SYMBOL]; if (!q || !LAST_BARS || !LAST_BARS.bars.length) return;
-  const t = Math.floor(new Date(q.t).getTime()/1000), px = +q.p, last = LAST_BARS.bars[LAST_BARS.bars.length-1];
-  const bucket = t - (t % 300);
-  if (bucket < last.time) return;
-  if (bucket === last.time) { last.high = Math.max(last.high, px); last.low = Math.min(last.low, px); last.close = px; }
-  else LAST_BARS.bars.push(last && {time:bucket, open:px, high:px, low:px, close:px, volume:0});
-  const b = LAST_BARS.bars[LAST_BARS.bars.length-1];
-  candles.update({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close}); legend(null);
-}
-
-/* ---------------- desk chat ---------------- */
-let DCHAT_SIG = '';
+const tools = ts => (ts||[]).slice(-6).map(t=>`<span class="tool">${esc(String(t).replace('mcp__alpaca__','alpaca:'))}</span>`).join('');
+let DSIG = '', CSIG = '';
 function renderDeskChat(s){
-  const c = s.desk_chat || {}; const box = $('dchat');
+  const c = s.desk_chat || {}, box = $('dchat');
   const sig = (c.history||[]).length + ':' + c.running + ':' + (c.partial||'').length + ':' + (c.tools||[]).length + ':' + (c.error||'');
-  if (sig === DCHAT_SIG) return; DCHAT_SIG = sig;
-  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  if (sig === DSIG) return; DSIG = sig;
   const hist = (c.history||[]).map(m => m.role === 'system' ? `<div class="muted" style="text-align:center;font-size:11px">— ${esc(m.text)} —</div>` :
-    `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Desk trader'} · ${tNY(m.at)} ${(m.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(String(t).replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}${m.cost_usd?` <span class="muted">$${(+m.cost_usd).toFixed(3)}</span>`:''}</div>${m.error?`<span class="neg">${esc(m.error)}</span><br>`:''}${md(m.text||'')}</div>`).join('');
-  const live = c.running ? `<div class="msg assistant"><div class="meta">Desk trader · now ${(c.tools||[]).slice(-6).map(t=>`<span class="tool">${esc(String(t).replace('mcp__alpaca__','alpaca:'))}</span>`).join('')}</div>${md(c.partial||'')}<span class="typing"></span></div>` : '';
-  box.innerHTML = (hist || (c.available === false ? '<div class="empty">The Claude Code CLI is not installed on this PC.</div>' : '<div class="empty">Ask the desk trader anything: “why did FISV fail?”, “what is READY?”, “buy KNX if it breaks 63.33”. It answers in seconds and can trade the paper account (through the risk check and the shared order lock).</div>')) + live;
-  $('dsend').textContent = c.running ? 'Stop' : 'Send';
-  $('chat-src').textContent = c.running ? 'answering…' : '';
-  if (atBottom || c.running) box.scrollTop = box.scrollHeight;
+    `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Desk trader'} · ${tNY(m.at)} ${tools(m.tools)}</div>${m.error?`<span class="neg">${esc(m.error)}</span><br>`:''}${md(m.text||'')}</div>`).join('');
+  const live = c.running ? `<div class="msg assistant"><div class="meta">Desk trader · now ${tools(c.tools)}</div>${md(c.partial||'')}<span class="typing"></span></div>` : '';
+  box.innerHTML = (hist || `<div class="empty">${c.available===false?'Connect Claude in Settings to chat.':'Ask anything: “what is ready?”, “why did FISV fail?”, “buy KNX if it breaks 63.33”. Answers in seconds; trades go through the risk check.'}</div>`) + live;
+  $('dsend').textContent = c.running ? 'Stop' : 'Send'; box.scrollTop = box.scrollHeight;
+}
+async function loadChat(){
+  if (!$('c-main').classList.contains('active') || $('dock').classList.contains('closed')) return;
+  try{
+    const d = await (await fetch('/api/chat?limit=40')).json(); const queued = (STATE?.inbox||[]).filter(m => !m.read);
+    const sig = d.messages.length + ':' + (d.messages.at(-1)?.at||'') + ':' + queued.length; if (sig === CSIG) return; CSIG = sig;
+    const box = $('chat'); box.innerHTML = d.messages.map(m => `<div class="msg ${m.role}"><div class="meta">${m.role==='user'?'You':'Claude'} · ${tNY(m.at)} ${tools(m.tools)}</div>${m.text?md(m.text):'<span class="muted">working…</span>'}</div>`).join('') +
+      queued.map(m => `<div class="msg user" style="opacity:.7;border-style:dashed"><div class="meta">You · ${tNY(m.at)} · queued</div>${esc(m.text)}</div>`).join('');
+    box.scrollTop = box.scrollHeight;
+  }catch(e){}
 }
 
-/* ---------------- notifications ---------------- */
+/* ---------- notifications ---------- */
 let PREV = null;
-function beep(freq){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(), g = ctx.createGain();
-  o.frequency.value = freq||880; g.gain.value = .06; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop(); ctx.close();}, 180);}catch(e){} }
-function notify(title, body, freq){
-  beep(freq); toast(title + (body ? ' — ' + body : ''));
-  if (window.Notification && Notification.permission === 'granted') try { new Notification(title, {body}); } catch(e){}
-}
+function beep(freq){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(), o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = freq||880; g.gain.value = .06; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop(); ctx.close();}, 180);}catch(e){} }
+function notify(title, body, freq){ beep(freq); toast(title + (body ? ' — ' + body : '')); if (window.Notification && Notification.permission === 'granted') try { new Notification(title, {body}); } catch(e){} }
 function notifyDiff(s){
   if (PREV) {
     const was = Object.fromEntries(PREV.agents.map(a => [a.name, a.status]));
-    s.agents.forEach(a => { if (a.status === 'alert' && was[a.name] !== 'alert') notify('ALERT · ' + a.name.replace('desk-',''), a.headline, 660); });
-    const filled = o => (o.status === 'filled') ? o.id : null;
-    const prevIds = new Set(); (PREV.alpaca?.orders||[]).forEach(o => { [o, ...(o.legs||[])].forEach(x => { if (filled(x)) prevIds.add(x.id); }); });
-    (s.alpaca?.orders||[]).forEach(o => [o, ...(o.legs||[])].forEach(x => { if (filled(x) && !prevIds.has(x.id) && PREV.alpaca?.ok)
-      notify(`Filled · ${x.side?.toUpperCase()} ${x.filled_qty} ${x.symbol}`, `@ ${(+x.filled_avg_price).toFixed(2)}${x.group_role?' ('+x.group_role+')':''}`, x.side==='buy'?988:523); }));
+    s.agents.forEach(a => { if (a.status === 'alert' && was[a.name] !== 'alert') notify('Alert · ' + short(a.name), a.headline, 660); });
+    const ids = new Set(); (PREV.alpaca?.orders||[]).forEach(o => [o, ...(o.legs||[])].forEach(x => x.status==='filled' && ids.add(x.id)));
+    if (PREV.alpaca?.ok) (s.alpaca?.orders||[]).forEach(o => [o, ...(o.legs||[])].forEach(x => { if (x.status==='filled' && !ids.has(x.id)) notify(`Filled · ${x.side?.toUpperCase()} ${x.filled_qty} ${x.symbol}`, `@ ${(+x.filled_avg_price).toFixed(2)}${x.group_role?' ('+x.group_role+')':''}`, x.side==='buy'?988:523); }));
     if (PREV.desk_chat?.running && !s.desk_chat?.running) beep(740);
   }
   PREV = s;
 }
+
+/* ---------- render + wiring ---------- */
+function renderAll(){
+  const s = STATE; renderTicker(s); renderNav(s); renderDeskChat(s); liveCandle(s); notifyDiff(s);
+  ({overview:renderOverview, find:renderFind, plan:renderPlan, trade:renderTrade, review:renderReview, settings:renderSettings})[PAGE](s);
+}
+async function refresh(){ try { STATE = await (await fetch('/api/state')).json(); renderAll(); } catch(e){ toast('Desk server not reachable'); } }
+function connect(){
+  const es = new EventSource('/api/events');
+  es.addEventListener('state', ev => { STATE = JSON.parse(ev.data); renderAll(); $('live').innerHTML = '<i></i>LIVE'; });
+  es.onerror = () => { $('live').innerHTML = '<i style="background:var(--warning);animation:none"></i>RECONNECTING'; };
+}
+document.addEventListener('toggle', e => { const d = e.target; if (!d.matches || !d.matches('details.acc')) return; const k = d.dataset.key;
+  if (d.open === OPEN.has(k)) return; d.open ? OPEN.add(k) : OPEN.delete(k); localStorage.setItem('open', JSON.stringify([...OPEN]));
+  const host = d.closest('[id]'); if (host && host.id in HTML) HTML[host.id] = null;
+  if (k === 'journal' && d.open && JOURNAL == null) loadJournal(); }, true);
 document.addEventListener('click', async e => {
-  const chip = e.target.closest('[data-sym]'); if (chip) { SYMBOL = chip.dataset.sym; post('/api/watch',{symbol:SYMBOL}).catch(()=>{}); renderChips(STATE); loadBars(true); return; }
-  const tab = e.target.closest('[data-tab]'); if (tab) { const grp = tab.parentElement; grp.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t===tab));
-    const card = grp.closest('.card'); card.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === tab.dataset.tab)); if (tab.dataset.tab==='c-main') { CHAT_SIG=''; loadChat(); } return; }
-  const run = e.target.closest('[data-run]'); if (run) { e.stopPropagation(); const a = STATE.agents.find(x=>x.name===run.dataset.run);
-    try { toast((await post('/api/control',{action:a.owned?'stop_agent':'start_agent', agent:a.name})).message); } catch(err){ toast(err.message); } return; }
-  const lg = e.target.closest('[data-log]'); if (lg) { e.stopPropagation(); const r = await fetch('/api/agent_log?agent='+encodeURIComponent(lg.dataset.log)); const d = await r.json();
-    $('d-title').textContent = `${d.agent} · loop log`; $('d-body').textContent = d.log; $('drawer').classList.add('open'); return; }
-  if (e.target.id === 'connect-link') { e.preventDefault(); openSettings(); return; }
-  const pz = e.target.closest('[data-pause]');
-  if (pz) { e.stopPropagation(); const a = STATE.agents.find(x=>x.name===pz.dataset.pause);
-    try { toast((await post('/api/control',{action:a.paused?'resume':'pause', agent:a.name})).message); refresh(); } catch(err){ toast(err.message); } return; }
-  const ag = e.target.closest('[data-agent]');
-  if (ag) { const a = STATE.agents.find(x=>x.name===ag.dataset.agent);
-    $('d-title').textContent = `${a.name} · ${a.skill} · ${a.status}${a.cycle!=null?' · cycle '+a.cycle:''}`;
-    $('d-body').textContent = JSON.stringify({headline:a.headline, updated:a.updated, recommendations:a.recommendations, items:a.items}, null, 2);
-    $('drawer').classList.add('open'); }
+  const t = e.target;
+  const nav = t.closest('[data-page]'); if (nav) return go(nav.dataset.page);
+  const sym = t.closest('[data-sym]'); if (sym) { pick(sym.dataset.sym); return go('overview'); }
+  const g = t.closest('[data-goto]'); if (g) { e.preventDefault(); return go(g.dataset.goto); }
+  const tab = t.closest('[data-tab]'); if (tab) { document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===tab)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === tab.dataset.tab)); CSIG=''; loadChat(); return; }
+  const pz = t.closest('[data-pause]'); if (pz) { e.preventDefault(); const a = A(pz.dataset.pause); return act('/api/control',{action:a.paused?'resume':'pause', agent:a.name}); }
+  const run = t.closest('[data-run]'); if (run) { e.preventDefault(); const a = A(run.dataset.run); return act('/api/control',{action:a.owned?'stop_agent':'start_agent', agent:a.name}); }
+  const lg = t.closest('[data-log]'); if (lg) { e.preventDefault(); const d = await (await fetch('/api/agent_log?agent='+encodeURIComponent(lg.dataset.log))).json(); $('d-title').textContent = d.agent + ' · loop log'; $('d-body').textContent = d.log; $('drawer').classList.add('open'); return; }
+  const cl = t.closest('[data-claude]'); if (cl) return act('/api/claude',{logout: cl.dataset.claude === 'logout'});
+  const rm = t.closest('[data-rmconn]'); if (rm) { await act('/api/settings/connection',{name:rm.dataset.rmconn, remove:true}); return loadConn(); }
+  if (t.id === 'ksave') { await act('/api/settings/alpaca',{key_id:$('kid').value, secret:$('ksec').value}); document.activeElement.blur(); return loadConn(); }
+  if (t.id === 'kforget') { if (confirm('Remove the Alpaca keys from this PC?')) { await act('/api/settings/alpaca',{forget:true}); loadConn(); } return; }
+  if (t.id === 'csave') { await act('/api/settings/connection',{name:$('cname').value, key:$('ckey').value, note:$('cnote').value}); return loadConn(); }
+  if (t.id === 'reposave') return act('/api/settings/repo',{path:$('repo').value});
+  if (t.id === 'knotify') { if (!window.Notification) return toast('Notifications are not supported here'); toast('Notifications: ' + await Notification.requestPermission()); return beep(880); }
+  if (t.id === 'auto2') return toggleAuto();
+  if (t.id === 'conn-refresh') return loadConn(true);
 });
+async function toggleAuto(){ const on = STATE.autotrade.on;
+  if (!on && !confirm('Turn autotrade ON?\n\nClaude will open, adjust and close PAPER trades with no approval. Every entry still needs a risk PASS and the daily limits hold.')) return;
+  act('/api/control',{action: on ? 'autotrade_off' : 'autotrade_on'}); }
+$('auto-toggle').onclick = toggleAuto;
+$('stop-btn').onclick = () => { const stopped = STATE.desk_stopped;
+  if (!stopped && !confirm('Stop the whole desk?\n\nEvery agent ends after its current cycle. Open positions keep their broker stops.')) return;
+  act('/api/control',{action: stopped ? 'clear_stop' : 'stop_all'}); };
+$('nav-toggle').onclick = () => { $('nav').classList.toggle('slim'); localStorage.setItem('slim', $('nav').classList.contains('slim') ? '1' : ''); };
+$('chat-toggle').onclick = () => { $('dock').classList.toggle('closed'); localStorage.setItem('dock', $('dock').classList.contains('closed') ? '0' : '1'); };
 $('d-close').onclick = () => $('drawer').classList.remove('open');
 $('drawer').onclick = e => { if (e.target.id === 'drawer') $('drawer').classList.remove('open'); };
-$('auto-toggle').onclick = async () => {
-  const on = STATE.autotrade.on;
-  if (!on && !confirm('Turn autotrade ON?\n\nClaude will open, adjust and close PAPER trades with no approval. Every entry still needs a trader-risk PASS and the daily limits hold.')) return;
-  try { toast((await post('/api/control',{action: on ? 'autotrade_off' : 'autotrade_on'})).message); refresh(); } catch(e){ toast(e.message); }
-};
-$('stop-btn').onclick = async () => {
-  const stopped = STATE.desk_stopped;
-  if (!stopped && !confirm('Stop the whole desk?\n\nEvery agent ends after its current cycle (trader/desk/STOP). Open positions keep their broker stops.')) return;
-  try { toast((await post('/api/control',{action: stopped ? 'clear_stop' : 'stop_all'})).message); refresh(); } catch(e){ toast(e.message); }
-};
-async function send(){
-  const t = $('say').value.trim(); if (!t) return;
-  try { toast((await post('/api/chat',{text:t})).message); $('say').value=''; await refresh(); CHAT_SIG=''; loadChat(); } catch(e){ toast(e.message); }
-}
-$('send').onclick = send;
-$('say').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-document.addEventListener('keydown', e => { if (e.target.id === 'symin' && e.key === 'Enter') { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z.\-]{1,10}$/.test(v)) { SYMBOL = v; renderChips(STATE); loadBars(true); } } if (e.key==='Escape') $('drawer').classList.remove('open'); });
-
-function openSettings(){ $('repo').value = STATE?.repo || ''; const a = STATE?.alpaca || {}; $('kstat').textContent = a.configured ? `Connected key ${a.key_hint}${a.ok ? ' · live' : a.error ? ' · ' + a.error : ' · connecting…'}` : 'Not connected.'; $('settings').classList.add('open'); }
-$('settings-btn').onclick = openSettings;
-$('reposave').onclick = async () => { try { toast((await post('/api/settings/repo',{path:$('repo').value})).message); } catch(e){ $('kstat').textContent = e.message; } };
-$('kclose').onclick = () => $('settings').classList.remove('open');
-$('ksave').onclick = async () => { try { toast((await post('/api/settings/alpaca',{key_id:$('kid').value, secret:$('ksec').value})).message); $('ksec').value=''; $('settings').classList.remove('open'); } catch(e){ $('kstat').textContent = e.message; } };
-$('kforget').onclick = async () => { if (!confirm('Remove the Alpaca keys from this PC?')) return; try { toast((await post('/api/settings/alpaca',{forget:true})).message); } catch(e){ toast(e.message); } };
-$('knotify').onclick = async () => { if (!window.Notification) return toast('Notifications are not supported here'); const r = await Notification.requestPermission(); toast('Notifications: ' + r); beep(880); };
-async function dsend(){
-  if (STATE?.desk_chat?.running) { try { await post('/api/ask/stop',{}); } catch(e){ toast(e.message); } return; }
-  const t = $('dsay').value.trim(); if (!t) return;
-  try { await post('/api/ask',{text:t}); $('dsay').value=''; } catch(e){ toast(e.message); }
-}
-$('dsend').onclick = dsend;
+async function dsend(){ if (STATE?.desk_chat?.running) return act('/api/ask/stop'); const t = $('dsay').value.trim(); if (!t) return; try { await post('/api/ask',{text:t}); $('dsay').value=''; } catch(e){ toast(e.message); } }
+$('dsend').onclick = dsend; $('dnew').onclick = () => act('/api/ask/new');
 $('dsay').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); dsend(); } });
-$('dnew').onclick = async () => { try { toast((await post('/api/ask/new',{})).message); } catch(e){ toast(e.message); } };
+async function send(){ const t = $('say').value.trim(); if (!t) return; await act('/api/chat',{text:t}); $('say').value=''; CSIG=''; loadChat(); }
+$('send').onclick = send; $('say').addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+document.addEventListener('keydown', e => { if (e.target.id === 'symin' && e.key === 'Enter') { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z.\-]{1,10}$/.test(v)) { e.target.blur(); pick(v); renderOverview(STATE); } } if (e.key==='Escape') $('drawer').classList.remove('open'); });
 
-initCharts();
-refresh().then(() => loadBars(true)); loadChat(); connect();
-setInterval(loadChat, 4000); setInterval(() => loadBars(false), 60000);
-setInterval(() => { $('clock').textContent = NYS.format(new Date()) + ' NY'; }, 1000);
+if (localStorage.getItem('slim')) $('nav').classList.add('slim');
+if (localStorage.getItem('dock') === '0') $('dock').classList.add('closed');
+initCharts(); refresh().then(() => loadBars(true)); connect();
+setInterval(loadChat, 4000); setInterval(() => loadBars(false), 60000); setInterval(() => STATE && renderTicker(STATE), 30000);
 </script>
 </body>
 </html>

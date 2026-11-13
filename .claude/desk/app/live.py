@@ -340,3 +340,73 @@ def agent_log(desk, agent, lines=80):
             return "".join(fh.readlines()[-lines:])
     except OSError:
         return "(no loop.log)"
+
+
+# ------------------------------------------------------------------ connections
+
+_claude = {"at": 0, "data": None}
+
+
+def claude_status(force=False):
+    """Claude Code CLI login (the user's Claude subscription). Cached 60 s. No email or org is returned."""
+    if not force and _claude["data"] is not None and time.time() - _claude["at"] < 60:
+        return _claude["data"]
+    exe = claude_exe()
+    data = {"installed": exe is not None, "logged_in": False}
+    if exe:
+        try:
+            r = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=25,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            j = json.loads(r.stdout)
+            data.update({"logged_in": bool(j.get("loggedIn")), "method": j.get("authMethod"),
+                         "plan": j.get("subscriptionType"), "expires": j.get("loginExpiresAt")})
+        except Exception as e:  # noqa: BLE001
+            data["error"] = str(e)[:200]
+    _claude.update({"at": time.time(), "data": data})
+    return data
+
+
+def claude_login(logout=False):
+    """Opens a terminal window on this PC running the CLI's own login; the app never sees the credentials."""
+    exe = claude_exe()
+    if not exe:
+        raise ValueError("install Claude Code first: npm install -g @anthropic-ai/claude-code")
+    subprocess.Popen(["cmd", "/c", "start", "Claude login", "cmd", "/k", exe, "auth", "logout" if logout else "login"])
+    _claude["at"] = 0
+    return "A terminal window opened: finish there, then press Refresh."
+
+
+def conn_path():
+    return os.path.join(APPDIR, "connections.json")
+
+
+def connections():
+    try:
+        with open(conn_path(), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = {}
+    return [{"name": k, "hint": (v.get("key", "")[:3] + "…" + v.get("key", "")[-2:]) if v.get("key") else "",
+             "note": v.get("note", "")} for k, v in sorted(d.items())]
+
+
+def save_connection(name, key, note="", remove=False):
+    name = (name or "").strip()[:40]
+    if not name:
+        raise ValueError("give the connection a name")
+    try:
+        with open(conn_path(), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = {}
+    if remove:
+        d.pop(name, None)
+    else:
+        if not (key or "").strip():
+            raise ValueError("paste the API key")
+        d[name] = {"key": key.strip(), "note": (note or "")[:120]}
+    os.makedirs(APPDIR, exist_ok=True)
+    with open(conn_path(), "w", encoding="utf-8") as fh:
+        json.dump(d, fh, indent=2)
+    bump()
+    return "Removed %s." % name if remove else "Saved %s on this PC." % name
