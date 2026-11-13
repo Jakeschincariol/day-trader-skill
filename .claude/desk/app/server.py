@@ -458,7 +458,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, build_state())
             if u.path == "/api/bars":
                 sym = (q.get("symbol") or "SPY").upper()[:12]
-                data = bars(sym, q.get("interval", "5m"), q.get("range", "1d"))
+                iv, rg = q.get("interval", "5m"), q.get("range", "1d")
+                if iv not in ("1m", "2m", "5m", "15m", "30m", "60m", "1d", "1wk") or rg not in (
+                        "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"):
+                    raise ValueError("unknown interval or range")
+                data = bars(sym, iv, rg)
                 data["marks"], data["lines"] = chart_overlay(sym)
                 return self._send(200, data)
             if u.path == "/api/chat":
