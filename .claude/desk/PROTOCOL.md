@@ -44,6 +44,10 @@ until the stop time (default 15:55 New York) or trader/desk/STOP exists:
 then write a final report with "status": "done" and hand back a 5-line summary
 ```
 
+**Pause:** if `trader/desk/PAUSE-<your-agent-name>` exists, skip the cycle's
+work, write your report with `"status": "ok"` and headline "paused by the
+user", and keep looping. The desk app's pause button creates that file.
+
 Keep each cycle cheap: pipe long output through `head`, keep raw data in your
 scratch folder, and never paste big JSON into your own context. If a cycle
 fails, write `"status": "error"` with the reason and keep looping.

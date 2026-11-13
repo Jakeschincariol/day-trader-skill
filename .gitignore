@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 # personal trading state: account, orders, broker log
 trader/
+.playwright-mcp/
