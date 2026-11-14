@@ -610,5 +610,75 @@ class Cli(unittest.TestCase):
         self.assertEqual(again, text)
 
 
+class Slippage(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.gross = machine()
+        cls.slip = tm.resolve_slippage("5bps", 364.18)
+        cls.net = machine(slippage=cls.slip)
+
+    def test_parsing(self):
+        self.assertIsNone(tm.resolve_slippage(None, 100))
+        self.assertEqual(tm.resolve_slippage("0.05", 100)["bps"], 5.0)
+        self.assertEqual(tm.resolve_slippage("$0.05", 100)["per_share"], 0.05)
+        self.assertEqual(tm.resolve_slippage("10 bps", 200)["per_share"], 0.2)
+        with self.assertRaises(tm.TMError):
+            tm.resolve_slippage("lots", 100)
+
+    def test_auto_uses_your_fills_or_an_assumption(self):
+        d = tempfile.mkdtemp()
+        try:
+            path = os.path.join(d, "broker.json")
+            a = tm.resolve_slippage("auto", 100, path)
+            self.assertEqual((a["bps"], a["per_share"]), (tm.DEFAULT_BPS, 0.05))
+            self.assertIn("assumed", a["source"])
+            rows = [{"status": "filled", "kind": "entry", "slippage": {"bps": b}} for b in (2, 4, 6, 8, 10)]
+            rows.append({"status": "filled", "kind": "target", "slippage": {"bps": -50}})   # a limit: left out
+            with open(path, "w") as fh:
+                json.dump({"orders": rows}, fh)
+            a = tm.resolve_slippage("auto", 100, path)
+            self.assertEqual((a["bps"], a["per_share"]), (6.0, 0.06))
+            self.assertIn("5 measured fills", a["source"])
+            with open(path, "w") as fh:
+                json.dump({"orders": [dict(r, slippage={"bps": -3}) for r in rows[:5]]}, fh)
+            self.assertEqual(tm.resolve_slippage("auto", 100, path)["bps"], 0.0)       # never assumes improvement
+        finally:
+            shutil.rmtree(d)
+
+    def test_the_draws_and_odds_do_not_change(self):
+        g, n = self.gross["mc"], self.net["mc"]
+        for k in ("p_target", "p_stop", "p_neither", "median_close", "bands", "sample_paths", "hist"):
+            self.assertEqual(g[k], n[k], k)
+        self.assertNotIn("avg_R_gross", g)
+
+    def test_costs_lower_the_average_r(self):
+        n = self.net["mc"]
+        self.assertEqual(n["avg_R_gross"], 0.034)
+        self.assertLess(n["avg_R"], n["avg_R_gross"])
+        self.assertLess(n["p_green"], self.gross["mc"]["p_green"])
+        s = self.slip["per_share"]
+        self.assertAlmostEqual(n["r_win"], (370.04 - 364.18 - s) / 5.86, places=3)
+        self.assertGreaterEqual(n["r_loss"], round(1 + 2 * s / 5.86, 4))       # gaps only make it worse
+        self.assertGreater(n["gapped_stops"], 0)
+        h = self.net["history"]
+        self.assertEqual(h["avg_R_gross"], -0.062)
+        self.assertLess(h["avg_R"], h["avg_R_gross"])
+        self.assertEqual((h["target"], h["stop"], h["close"]), (13, 15, 5))
+
+    def test_the_verdict_and_report_say_after_slippage(self):
+        self.assertTrue(self.net["verdict"].startswith("Close to break-even after slippage: a win nets +0.97R"))
+        _, _, even = tm.lean(self.net["mc"])
+        self.assertGreater(even, 0.5)
+        text = "\n".join(tm.report(self.net))
+        self.assertIn("after slippage, +0.034 with perfect fills", text)
+        self.assertIn("5.0 bps", text)
+        self.assertIn("Average R -0.", text)
+        self.assertIn("No slippage counted", "\n".join(tm.report(self.gross)))
+
+    def test_slippage_as_big_as_the_risk_is_flagged(self):
+        doc = machine(replays=200, slippage=tm.resolve_slippage("6", 364.18))
+        self.assertTrue(any("as big as the whole risk" in w for w in doc["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

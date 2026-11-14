@@ -303,5 +303,62 @@ class Flow(unittest.TestCase):
         self.assertNotIn("Traceback", err)
 
 
+class FillQuality(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.state = os.path.join(self.d, "broker.json")
+        self.pf = os.path.join(self.d, "portfolio.json")
+        self.cfg = os.path.join(self.d, "config.json")
+        with open(self.cfg, "w") as fh:
+            json.dump({"budget": 5000}, fh)
+
+    def tearDown(self):
+        shutil.rmtree(self.d)
+
+    def fill(self, *extra):
+        return run(["fill", "--date", TODAY, "--now", NOW, "--portfolio", self.pf, "--config", self.cfg,
+                    "--state", self.state, "--plan", PLAN_PATH] + list(extra))
+
+    def test_the_sign_is_cost(self):
+        self.assertEqual(ticket.slippage("buy", 364.18, 364.31, 8, 5.86),
+                         {"per_share": 0.13, "bps": 3.57, "dollars": 1.04, "r": 0.0222})
+        self.assertEqual(ticket.slippage("sell", 358.32, 358.10, 8)["per_share"], 0.22)
+        self.assertEqual(ticket.slippage("sell", 370.04, 370.10, 8)["dollars"], -0.48)   # price improvement
+
+    def test_a_round_trip_against_the_plan(self):
+        code, text, _ = self.fill("--symbol", "TSLA", "--side", "buy", "--qty", "8", "--price", "364.31")
+        self.assertEqual(code, 0)
+        self.assertIn("worse than the expected 364.18 by 0.13 a share (+3.6 bps, +0.022R, $1.04 in all)", text)
+        code, text, _ = self.fill("--symbol", "TSLA", "--side", "sell", "--qty", "8", "--price", "358.10",
+                                  "--kind", "stop")
+        self.assertIn("expected 358.32", text)
+        with open(self.state) as fh:
+            rows = json.load(fh)["orders"]
+        self.assertEqual([(r["kind"], r["expected"]) for r in rows], [("entry", 364.18), ("stop", 358.32)])
+        q = ticket.fill_quality({"orders": rows})
+        self.assertEqual((q["market"]["n"], q["by_kind"]["stop"]["per_share"]), (2, 0.22))
+        code, text, _ = run(["slippage", "--state", self.state, "--now", NOW])
+        self.assertEqual(code, 0)
+        self.assertIn("Market-type fills (entries, stops, flattens): 2", text)
+        self.assertIn("too few to trust", text)
+
+    def test_an_exit_without_a_kind_is_not_measured(self):
+        self.fill("--symbol", "TSLA", "--side", "buy", "--qty", "8", "--price", "364.18")
+        code, text, _ = self.fill("--symbol", "TSLA", "--side", "sell", "--qty", "8", "--price", "366")
+        self.assertEqual(code, 0)
+        self.assertIn("not measured", text)
+        code, _, err = self.fill("--symbol", "TSLA", "--side", "sell", "--qty", "1", "--price", "1",
+                                 "--kind", "entry")
+        self.assertEqual(code, 1)
+        self.assertIn("not an entry", err)
+
+    def test_another_days_plan_is_not_used(self):
+        code, text, _ = run(["fill", "--date", "2026-10-20", "--symbol", "TSLA", "--side", "buy", "--qty", "1",
+                             "--price", "364", "--portfolio", self.pf, "--config", self.cfg,
+                             "--state", self.state, "--plan", PLAN_PATH])
+        self.assertIn("not measured", text)
+        self.assertEqual(run(["slippage", "--state", self.state, "--now", NOW, "--all"])[0], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

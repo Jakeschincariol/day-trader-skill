@@ -20,6 +20,10 @@ work around the one moment that matters, your yes:
   flatten   builds a sell ticket that closes a symbol's open position by
             flat_by. It still goes through trader-risk and your yes.
   log       prints today's decisions.
+  slippage  fill quality: each fill against the price you expected (the
+            plan's entry, stop or target, a limit, or --expected), in cents
+            a share, basis points and R, with averages by kind. Positive =
+            it cost you. The Time Machine's --slippage auto reads it.
 
     python3 ticket.py show                    # every order, READY or not
     python3 ticket.py show --index 1 --json   # one ticket as JSON
@@ -27,7 +31,9 @@ work around the one moment that matters, your yes:
     python3 ticket.py result --index 1 --status placed --broker-id 61e6...
     python3 ticket.py fill --symbol TSLA --side buy --qty 8 --price 364.20
     python3 ticket.py flatten --symbol TSLA --qty 8
+    python3 ticket.py fill --symbol TSLA --side sell --qty 8 --price 358.10 --kind stop
     python3 ticket.py log
+    python3 ticket.py slippage --all
 
 Everything is written to trader/state/broker.json (append only). Dates are
 New York dates; --now "2026-10-19 10:15" pins the clock.
@@ -439,14 +445,128 @@ def apply_fill(portfolio_path, cfg, symbol, side, qty, price, date):
     return pf
 
 
-def log_fill(state_path, now, today, symbol, side, qty, price):
-    """A fill in the log, so trader-risk can count day trades (a buy and a sell the same day)."""
+def slippage(side, expected, price, qty, risk=None):
+    """How much worse than expected a fill was. Positive = it cost you (a buy above,
+    or a sell below, the expected price); negative = price improvement."""
+    expected, price, qty = float(expected), float(price), float(qty)
+    per = (price - expected) if side == "buy" else (expected - price)
+    out = {"per_share": round(per, 4), "bps": round(10000.0 * per / expected, 2),
+           "dollars": round(per * qty, 2)}
+    if risk:
+        out["r"] = round(per / float(risk), 4)
+    return out
+
+
+def plan_for(plan_path, symbol, date):
+    """trader/plan.json when it is for this symbol and this day, else None."""
+    plan = read_json(plan_path, "plan", required=False) if plan_path else None
+    if not isinstance(plan, dict) or str(plan.get("symbol", "")).upper() != symbol.upper():
+        return None
+    if plan.get("date") and str(plan["date"]) != date:
+        return None
+    return plan
+
+
+def plan_risk(plan):
+    plan = plan or {}
+    r = _f(plan.get("risk_per_share"))
+    if r:
+        return r
+    e, s = _f(plan.get("entry")), _f(plan.get("stop"))
+    return abs(e - s) if e and s and e != s else None
+
+
+def expectation(side, kind, expected, plan, order=None):
+    """(expected price, kind, risk per share) for a fill. The expected price is, in order:
+    --expected; a limit order's limit; the plan's entry (a buy), stop or target (a sell
+    that says --kind stop / target). A flatten has no plan price: pass --expected
+    (the bid when you sent it)."""
+    order = order or {}
+    plan = plan or order.get("plan") or {}
+    if not kind:
+        kind = "entry" if side == "buy" else None
+    if expected is None:
+        if str(order.get("type", "")) == "limit" and _f(order.get("limit_price")):
+            expected = _f(order["limit_price"])
+        elif kind in ("entry", "stop", "target"):
+            expected = _f(plan.get(kind))
+    else:
+        expected = _f(expected)
+        if expected is None or expected <= 0:
+            raise TicketError("--expected wants a positive price, like --expected 364.18")
+    return expected, kind, plan_risk(plan)
+
+
+def plan_context(plan):
+    """What the journal needs from an entry's plan: its stop, target, risk a share and setup."""
+    plan = plan or {}
+    out = {}
+    for k in ("stop", "target"):
+        if _f(plan.get(k)):
+            out[k] = _f(plan[k])
+    if plan_risk(plan):
+        out["risk_per_share"] = round(plan_risk(plan), 4)
+    if plan.get("setup"):
+        out["setup"] = str(plan["setup"])
+    return out
+
+
+def log_fill(state_path, now, today, symbol, side, qty, price, expected=None, kind=None, risk=None,
+             context=None):
+    """A fill in the log, so trader-risk can count day trades (a buy and a sell the same day).
+    With an expected price it also records the fill's slippage; an entry also keeps its plan's
+    stop, target, risk a share and setup (context) for the journal. Returns the record."""
     state = load_state(state_path)
-    state.setdefault("orders", []).append({
+    rec = {
         "at": ny_iso(now), "date": today, "status": "filled", "symbol": symbol.upper(), "side": side,
         "qty": _str_num(float(qty)), "price": float(price),
-        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), symbol.upper(), _p(price))})
+        "plain": "%s %s %s at %s" % (side.upper(), _str_num(float(qty)), symbol.upper(), _p(price))}
+    if kind:
+        rec["kind"] = kind
+    if side == "buy" and context:
+        rec.update(context)
+    if expected:
+        rec["expected"] = float(expected)
+        rec["slippage"] = slippage(side, expected, price, qty, risk)
+    state.setdefault("orders", []).append(rec)
     write_json(state_path, state)
+    return rec
+
+
+def slip_words(rec):
+    s = rec.get("slippage")
+    if not s:
+        return ""
+    word = "worse" if s["per_share"] > 0 else "better" if s["per_share"] < 0 else "exactly"
+    r = (", %+.3fR" % s["r"]) if s.get("r") is not None else ""
+    if word == "exactly":
+        return "filled exactly at the expected %s" % _p(rec["expected"])
+    return "%s than the expected %s by %s a share (%+.1f bps%s, %s in all)" % (
+        word, _p(rec["expected"]), "%.4g" % abs(s["per_share"]), s["bps"], r, _money(abs(s["dollars"])))
+
+
+def fill_quality(state, days=None):
+    """Every measured fill (one with an expected price), and averages by kind.
+    A take-profit is a limit order, so it cannot fill worse than its price; it is listed
+    but left out of "market" (the average the Time Machine uses for --slippage auto)."""
+    rows = [r for r in state.get("orders", []) if r.get("status") == "filled" and r.get("slippage")
+            and (days is None or rec_day(r) in days)]
+
+    def avg(rs):
+        if not rs:
+            return None
+        return {"n": len(rs),
+                "bps": round(sum(r["slippage"]["bps"] for r in rs) / len(rs), 2),
+                "per_share": round(sum(r["slippage"]["per_share"] for r in rs) / len(rs), 4),
+                "dollars": round(sum(r["slippage"]["dollars"] for r in rs), 2),
+                "worst_bps": max(r["slippage"]["bps"] for r in rs)}
+    by = {}
+    for k in ("entry", "stop", "target", "flatten", "other"):
+        a = avg([r for r in rows if (r.get("kind") or "other") == k])
+        if a:
+            by[k] = a
+    return {"fills": rows, "by_kind": by, "all": avg(rows),
+            "market": avg([r for r in rows if r.get("kind") != "target"])}
 
 
 # ---------------------------------------------------------------- commands
@@ -559,8 +679,19 @@ def cmd_result(a):
     print("Recorded order %d as %s." % (a.index, a.status))
     if a.status == "placed" and a.filled_qty and a.filled_price:
         apply_fill(a.portfolio, cfg, rec["symbol"], rec["side"], a.filled_qty, a.filled_price, today)
-        log_fill(a.state, now, today, rec["symbol"], rec["side"], a.filled_qty, a.filled_price)
+        kind = "entry" if rec.get("kind") == "entry" else ("flatten" if rec["side"] == "sell" else None)
+        exp, kind, risk = expectation(rec["side"], kind, a.expected, None, order)
+        plan = order.get("plan") or plan_for(a.plan, rec["symbol"], today)
+        if risk is None:
+            risk = plan_risk(plan)
+        frec = log_fill(a.state, now, today, rec["symbol"], rec["side"], a.filled_qty, a.filled_price,
+                        exp, kind, risk, plan_context(plan))
         print("Added the fill to %s." % a.portfolio)
+        if frec.get("slippage"):
+            print("Fill quality: %s." % slip_words(frec))
+        else:
+            print("Fill quality not measured: no expected price. Next time pass --expected P "
+                  "(the bid or ask when you sent it).")
     elif a.status == "placed":
         print("When it fills, record it: ticket.py fill --symbol %s --side %s --qty Q --price P"
               % (rec["symbol"], rec["side"]))
@@ -575,11 +706,59 @@ def cmd_fill(a):
     date = a.date or to_eastern(now).date().isoformat()
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise TicketError("--date wants a date like 2026-10-19")
+    plan = plan_for(a.plan, a.symbol, date)
+    exp, kind, risk = expectation(a.side, a.kind, a.expected, plan)
+    if a.side == "sell" and kind == "entry":
+        raise TicketError("a sell is not an entry here (long only): use --kind stop, target, flatten or other")
     pf = apply_fill(a.portfolio, cfg, a.symbol, a.side, a.qty, a.price, date)
-    log_fill(a.state, now, date, a.symbol, a.side, a.qty, a.price)
+    rec = log_fill(a.state, now, date, a.symbol, a.side, a.qty, a.price, exp, kind, risk, plan_context(plan))
     print("Recorded %s %s %s at %s on %s in %s. Cash now %s." % (a.side, a.qty, a.symbol.upper(),
                                                                 _money(a.price), date, a.portfolio,
                                                                 _money(pf["cash"])))
+    if rec.get("slippage"):
+        print("Fill quality: %s." % slip_words(rec))
+    elif a.side == "sell" and not a.kind:
+        print("Fill quality not measured: say which exit it was (--kind stop or target, so the plan's price "
+              "is the expected one) or pass --expected P.")
+    else:
+        print("Fill quality not measured: no expected price (pass --expected P).")
+    return 0
+
+
+def cmd_slippage(a):
+    """Fill quality: expected price vs the fill, for every measured fill."""
+    state = load_state(a.state)
+    now, today = _clock(a)
+    q = fill_quality(state, None if a.all else {today})
+    if a.json:
+        print(json.dumps(q, indent=2))
+        return 0 if q["fills"] else 1
+    if not q["fills"]:
+        print("No measured fills%s. A fill is measured when it has an expected price: the plan's entry, "
+              "stop or target, a limit, or --expected." % ("" if a.all else " today (try --all)"))
+        return 1
+    print("Fill quality%s: positive = worse than expected (it cost you), negative = better." %
+          ("" if a.all else " today"))
+    for r in q["fills"]:
+        s = r["slippage"]
+        print("  %s  %-7s %-26s expected %-9s %+8.4f a share  %+7.1f bps  %s%s" % (
+            r.get("at", "")[:16].replace("T", " "), r.get("kind") or "other", r.get("plain"),
+            _p(r["expected"]), s["per_share"], s["bps"],
+            ("%+.3fR  " % s["r"]) if s.get("r") is not None else "",
+            ("-" if s["dollars"] > 0 else "+") + _money(abs(s["dollars"]))))
+    print("")
+    for k, v in q["by_kind"].items():
+        print("  %-8s %d fill%s, average %+.1f bps (%+.4f a share), worst %+.1f bps, %s %s in all%s" % (
+            k, v["n"], "" if v["n"] == 1 else "s", v["bps"], v["per_share"], v["worst_bps"],
+            "cost" if v["dollars"] > 0 else "saved", _money(abs(v["dollars"])),
+            " (limit orders: never worse than their price)" if k == "target" else ""))
+    m = q["market"]
+    if m:
+        print("")
+        print("Market-type fills (entries, stops, flattens): %d, average %+.1f bps a side. "
+              "trader-timemachine run --slippage auto uses this." % (m["n"], m["bps"]))
+        if m["n"] < 5:
+            print("That is only %d fill%s: too few to trust; the average will move." % (m["n"], "" if m["n"] == 1 else "s"))
     return 0
 
 
@@ -681,17 +860,28 @@ def main(argv=None):
     p.add_argument("--note")
     p.add_argument("--filled-qty")
     p.add_argument("--filled-price")
+    p.add_argument("--expected", help="the price you expected (default: the limit, or the plan's entry)")
+    p.add_argument("--plan", default="trader/plan.json")
     p.add_argument("--portfolio", default="trader/portfolio.json")
     p = sub.add_parser("fill", help="record a fill in trader/portfolio.json")
     p.add_argument("--symbol", required=True)
     p.add_argument("--side", required=True, choices=["buy", "sell"])
     p.add_argument("--qty", required=True)
     p.add_argument("--price", required=True)
+    p.add_argument("--kind", choices=["entry", "stop", "target", "flatten", "other"],
+                   help="which leg filled; stop / target take the expected price from the plan")
+    p.add_argument("--expected", help="the price you expected (default: from the plan and --kind)")
+    p.add_argument("--plan", default="trader/plan.json")
     p.add_argument("--date", help="YYYY-MM-DD (default: today in New York)")
     p.add_argument("--now")
     p.add_argument("--portfolio", default="trader/portfolio.json")
     p.add_argument("--config", default="trader/config.json")
     p.add_argument("--state", default="trader/state/broker.json")
+    p = sub.add_parser("slippage", help="fill quality: expected price vs the fill")
+    p.add_argument("--state", default="trader/state/broker.json")
+    p.add_argument("--all", action="store_true", help="every day, not just today")
+    p.add_argument("--json", action="store_true")
+    clock(p)
     p = sub.add_parser("flatten", help="a sell ticket that closes a symbol's position by flat_by")
     p.add_argument("--symbol", required=True)
     p.add_argument("--qty", help="shares you hold, from get_open_position (default: trader/portfolio.json)")
@@ -710,7 +900,7 @@ def main(argv=None):
         return 1
     try:
         return {"show": cmd_show, "approve": cmd_approve, "decline": cmd_decline, "result": cmd_result,
-                "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log}[a.cmd](a)
+                "fill": cmd_fill, "flatten": cmd_flatten, "log": cmd_log, "slippage": cmd_slippage}[a.cmd](a)
     except TicketError as e:
         print("ticket.py: %s" % e, file=sys.stderr)
         return 1

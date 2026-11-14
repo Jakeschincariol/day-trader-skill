@@ -33,6 +33,7 @@ good-looking replay does not change that.
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run                    # trader/plan.json, 10,000 replays, seed 19
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --write            # also save trader/timemachine.json
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:55      # end each replay at your flat-by time
+python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --slippage auto    # count fill costs from your own fills
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --json
 python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --symbol TSLA --date 2026-10-19 \
     --entry 364.18 --stop 358.32 --target 370.04 --entry-time "10:15 AM"
@@ -49,6 +50,7 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
 | --- | --- |
 | `trader/plan.json` | the plan from trader-exit: symbol, date, entry, entry_time / entry_bar, stop, stop_rule, target, target_r, opening range |
 | Yahoo chart API | one request: 60 days of 5-minute bars (`range=60d&interval=5m`), free and unofficial, can lag |
+| `trader/state/broker.json` | with `--slippage auto`: trader-broker's measured fills (`--broker-state` to point elsewhere) |
 | `trader/timemachine.json` | with `--write`: `{plan, mc, history}` plus the verdict. `mc` holds the odds, percentiles, the fan-chart bands, 160 sample paths and a 24-bin histogram of the close |
 
 ## How it works
@@ -85,6 +87,20 @@ bars), `--offline FILE` (a saved Yahoo chart JSON, `.json` or `.json.gz`),
    average R when its sign goes against the lean. Those can only point the
    other way because of the replays that hit neither.
 
+**Slippage.** Without `--slippage` every replay fills perfectly, which is
+too rosy. With it, each side costs that much: `--slippage 0.03` (dollars a
+share), `--slippage 5bps` (basis points of the entry), or `--slippage auto`,
+the average of the user's own measured fills from trader-broker
+(`ticket.py slippage`; entries, stops and flattens, 5 or more of them, and
+an average better than zero counts as zero). Until there are 5, auto assumes
+5 bps and says so. With slippage on, the entry fills that much worse. A stop
+fills at the stop, or at the bar's open when the bar opens through it (a
+gap), then that much worse. The close at `--until` fills that much worse.
+The target is a limit and fills at its price. The random draws do not change, so
+target first, stop first and neither stay the same. R, green, the history's
+average R and the verdict's break-even become net of costs, and the report
+prints the average R both ways.
+
 **The seed.** The draws come from Python's `random.Random(seed)`, seed 19 by
 default. Same plan, same data, same seed: the same numbers, on any machine.
 Say the seed with every result so the user can repeat it.
@@ -100,17 +116,65 @@ grid). A live in-progress bar is never used.
 
 1. Make sure `trader/plan.json` is today's plan from `/trader-exit`. If there
    is none, run that first, or pass the plan as flags.
-2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
-   flat-by time, so "neither" means still open at the time you would get out.
+2. Run `timemachine.py run --write --slippage auto`. Add `--until 15:55`
+   when the plan has a flat-by time, so "neither" means still open at the
+   time you would get out. Leave slippage off only when the user asks for
+   perfect fills.
 3. Tell the user, in this order: the four odds, the median and the 5 to 95
-   range of the price at the close, the average R, the history line, then the
-   verdict line and any line under it exactly as printed. Say the seed.
+   range of the price at the close, the average R (after slippage and with
+   perfect fills), the slippage used and where it came from, the history line,
+   then the verdict line and any line under it exactly as printed. Say the seed.
 4. If the verdict is a coin flip or close to break-even, say so plainly. Do
    not dress it up. If the history and the replays disagree, say that too.
 5. Say once that this is built from the last 60 days and is not a prediction.
    Earnings, news and halts can do things those 60 days never did. Check
    `/trader-news` for the stock before going on.
 6. If the user still wants the trade, hand off to `/trader-budget` to size it.
+
+## The multi-ticker backtest
+
+One stock's history is about 30 trades in 60 days: too few to tell an edge
+from luck. `backtest.py` runs the same opening-range breakout (long only) on
+many tickers and tests filters with an in-sample / out-of-sample split.
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" run --symbols TSLA,NVDA,AMD,AAPL,META --slippage auto
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" run --watchlist trader/watchlist.json --slippage 5bps \
+    --filter "rvol>=2" --filter vwap --filter market --filter "time<=10:30" --by time --by rvol
+python3 "${CLAUDE_SKILL_DIR}/backtest.py" run --symbols TSLA,NVDA --stop-rule or_low --target-r 2 --write
+```
+
+Rule flags: `--or-minutes 15`, `--stop-rule or_mid|or_low|pct` (`--stop-pct`),
+`--target-r 1`, `--last-entry 15:30`, `--until 15:55`. A stop that the next
+bar opens through fills at that bar's open. `--slippage` takes `5bps` or `auto`
+(not dollars: the tickers have different prices). Up to 40 tickers, one Yahoo
+request each, half a second apart. `--offline DIR` reads `<SYM>-60d5m.json(.gz)`.
+
+**Filters**, on what each trade looked like when it fired: `rvol>=2`
+(volume from the open to the entry vs the last 20 sessions), `gap>=0.5`
+(open vs the previous close, %), `or_pct<=2` (range width, %), `price>=10`,
+`time<=10:30`, `vwap` (entry above the session VWAP), `market` (`--market`,
+SPY by default, above its own VWAP at that bar). A trade whose value is
+unknown is left out and counted.
+
+**How it judges.** The days are split in time order, the first half in
+sample and the second half out of sample (`--split 0.5`). It scores the
+baseline, each filter alone and all of them together in both halves: trades,
+win rate, average R with its 95 % range, all after slippage. The baseline is
+labeled positive, losing or mixed after costs. A filter "held up" only when
+it beat the baseline's average R in both halves, with 30 or more trades in
+each, and its average R is above zero after costs in both; it also says
+whether the out-of-sample 95 % range clears zero. A filter that beat a losing
+baseline but still loses is labeled "less bad than the baseline in both
+halves, but still loses after costs": never present that as an edge. Better
+in sample only is labeled "likely noise". When several filters are tried, it
+says some will look good by chance.
+
+Tell the user the verdict per filter as printed, and the trade counts. Never
+recommend a filter that did not hold up, and never call a filter proven on
+fewer than 30 out-of-sample trades. 60 days is one market mood: a filter that
+held up is a candidate to keep watching in the journal (`/trader-broker`,
+`journal.py`), not a sure thing.
 
 ## Example: the reel
 

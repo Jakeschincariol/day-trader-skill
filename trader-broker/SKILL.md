@@ -36,9 +36,10 @@ Two yeses from the user, one PASS from the rules. No yes, no order.
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" show                     # every ticket, READY or not
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" approve --index 1 --reply "yes"
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" result --index 1 --status placed --broker-id ID --filled-qty 8 --filled-price 364.20
-python3 "${CLAUDE_SKILL_DIR}/ticket.py" fill --symbol TSLA --side sell --qty 8 --price 370.04
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" fill --symbol TSLA --side sell --qty 8 --price 370.04 --kind target
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" flatten --symbol TSLA --qty 8
 python3 "${CLAUDE_SKILL_DIR}/ticket.py" log
+python3 "${CLAUDE_SKILL_DIR}/ticket.py" slippage --all          # fill quality: expected vs filled
 ```
 
 `ticket.py` never talks to a broker. It renders tickets, checks that a reply
@@ -51,9 +52,10 @@ is a real yes for that order, builds the flatten ticket, and keeps the log in
 | --- | --- |
 | `trader/orders.json` | the proposed orders (trader-budget writes it; `flatten` replaces it) |
 | `trader/state/risk.json` | trader-risk's verdicts; only a PASS from today is READY |
-| `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss |
+| `trader/state/broker.json` | every yes, no, placed, failed and filled, with each entry's max loss and each fill's slippage |
 | `trader/portfolio.json` | cash and shares, updated by `fill` and by `result --filled-qty` |
-| `trader/plan.json` | the flat-by time for `flatten` |
+| `trader/plan.json` | the flat-by time for `flatten`; the expected entry, stop and target for fill quality |
+| `trader/state/journal.json` | the journal's tags and notes (`journal.py note`) |
 
 ## Setup A: Alpaca (official MCP server, Claude Desktop)
 
@@ -157,8 +159,9 @@ that draft orders to Needs approval too.
 
 - trader-alerts watches the stop, the target and the flat-by time
   (`alerts.py add --from-plan`). The bracket's own orders do the stopping.
-- When the stop-loss or the take-profit fills, record it:
-  `ticket.py fill --symbol TSLA --side sell --qty 8 --price 358.32`.
+- When the stop-loss or the take-profit fills, record it and say which one:
+  `ticket.py fill --symbol TSLA --side sell --qty 8 --price 358.10 --kind stop`
+  (or `--kind target`). The kind tells it which plan price was expected.
 - By `flat_by` (15:55 New York), anything still open gets closed:
   1. Ask Alpaca how many shares are held: `get_open_position` (read only).
   2. `ticket.py flatten --symbol TSLA --qty 8` writes a market sell for those
@@ -170,6 +173,60 @@ that draft orders to Needs approval too.
      Alpaca rejects a new sell until they are canceled: `get_orders` (status
      open, nested true) shows them; `cancel_order_by_id` each one (Needs
      approval). Then `place_stock_order` with the ticket, then `result`.
+
+## Fill quality (slippage)
+
+Every fill is compared with the price you expected, so the cost of getting
+in and out is measured instead of guessed:
+
+| fill | expected price |
+| --- | --- |
+| entry (`result --filled-price`, or `fill --side buy`) | a limit order's limit, else the plan's entry |
+| `fill --kind stop` | the plan's stop |
+| `fill --kind target` | the plan's target (a limit: it cannot fill worse) |
+| flatten, or anything else | `--expected P`: the bid (for a sell) or ask when you sent it |
+
+`--expected P` always wins. The plan is `trader/plan.json`, used only when it
+is for the same symbol and day. A fill with no expected price is still
+recorded, just not measured, and the tool says so.
+
+Slippage is signed so that **positive means it cost you**: a buy above, or a
+sell below, the expected price. It is kept in `trader/state/broker.json` on
+the fill as dollars a share, basis points, dollars in all and R (against the
+plan's risk a share). `ticket.py slippage` (today) or `slippage --all` lists
+each measured fill and averages them by kind (entry, stop, target, flatten).
+After a fill, tell the user the one "Fill quality" line it prints.
+
+The average over market-type fills (entries, stops, flattens; take-profit
+limits are left out) is what `/trader-timemachine run --slippage auto` uses,
+once there are 5 or more of them. Fewer than 5 is called out as too few to trust.
+
+## The trade journal
+
+`journal.py` turns the fills into round-trip trades and scores each one in R,
+so the user can see what really works for them:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/journal.py" show                        # every closed trade, then the totals
+python3 "${CLAUDE_SKILL_DIR}/journal.py" show --by hour --by exit    # also: setup, symbol, weekday, tag
+python3 "${CLAUDE_SKILL_DIR}/journal.py" show --from 2026-10-01 --csv trader/journal.csv
+python3 "${CLAUDE_SKILL_DIR}/journal.py" note --symbol TSLA --date 2026-10-19 --tag news --text "CEO on TV"
+```
+
+- Fills are matched first in, first out, per symbol. Each buy is one trade,
+  closed when sells cover all its shares (a share-weighted exit price).
+- R = (exit - entry) / the planned risk a share. Every entry fill keeps its
+  plan's stop, target, risk a share and setup, so this works by itself. A
+  trade with no known risk is listed in dollars without an R.
+- The totals give the win rate with its 95 % range and the average R with
+  its 95 % range, total R, fill costs, and how many losses went past -1R.
+  Under 30 trades it says the sample is too small. Say that to the user too:
+  with 20 trades, a 50 % win rate could really be anywhere from 30 % to 70 %.
+- Tags (`note`) are for what the numbers cannot see: news, a choppy market,
+  a chased entry. `show --by tag` then shows which of them cost money.
+
+Judge by the average R, not the win rate. A higher win rate bought with a
+smaller target is not an improvement.
 
 ## Example: the reel
 

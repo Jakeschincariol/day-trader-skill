@@ -50,6 +50,16 @@ that breaks even at the plan's target R: 1 / (1 + R), so 50 % at 1R and 33 % at
 Below it: a note when more than 40 % of the replays hit neither (the price at
 --until decides those), and the average R when its sign goes against the lean.
 
+Slippage (--slippage, off by default): a cost each side, in dollars a share
+(0.03), basis points of the entry (5bps), or auto = the average of your own
+measured market-type fills in trader-broker's log (5 or more; until then an
+assumed 5 bps). With it on: the entry fills that much worse, a stop fills at
+the stop or at the bar's open when the bar opens through it (a gap), then that
+much worse, the close at --until that much worse; the target is a limit and
+fills at its price. It never changes the random draws, so the odds of target
+first and stop first stay the same; R, green and the verdict's break-even
+become net of costs, and the report shows the average R both ways.
+
 5-minute bars only: Yahoo keeps 60 days of 5-min bars but only about 7 days of
 1-min bars, too few sessions for a fair pool. The run refuses with a plain
 message when there are fewer than 20 full sessions or the entry bar is not in
@@ -94,6 +104,8 @@ HIST_BINS = 24
 COIN_FLIP = 0.05     # verdict thresholds, see the docstring
 STRONG = 0.15
 MANY_NEITHER = 0.40
+MIN_MEASURED = 5     # --slippage auto needs this many measured fills before it trusts them
+DEFAULT_BPS = 5.0    # ...and assumes this much a side until then
 EPOCH = datetime.datetime(1970, 1, 1)
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET, from https://www.nyse.com/markets/hours-calendars (read 2026-10-13)
@@ -346,11 +358,29 @@ def pct(a, q):
     return a[min(len(a) - 1, int(q * len(a)))]
 
 
-def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy"):
-    """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py."""
+def net_exit_r(long, outcome, entry, target, fill, close, risk, s):
+    """R after slippage s (dollars a share, each side): the entry fills s worse, a stop fills at
+    `fill` (the stop, or the bar's open when it gaps through) then s worse, a market exit at the
+    close s worse. The target is a limit: it fills at its price, never worse."""
+    e = entry + s if long else entry - s
+    if outcome == "target":
+        x = target
+    elif outcome == "stop":
+        x = fill - s if long else fill + s
+    else:
+        x = close - s if long else close + s
+    return ((x - e) if long else (e - x)) / risk
+
+
+def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=2, side="buy", slip=None):
+    """Monte Carlo replays of bars k+1..last. Same draws and order as the reel's sim.py.
+    slip (dollars a share, each side) turns on fill costs: see net_exit_r. It never changes
+    the draws, so the paths and the odds of target / stop first are the same with or without it."""
     long = side == "buy"
     risk = (entry - stop) if long else (stop - entry)
     r_target = round(((target - entry) if long else (entry - target)) / risk, 4)
+    net = slip is not None
+    fills = []
 
     def slot(rng, i):
         return i if window == 0 else min(SESSION_BARS - 1, max(1, i + rng.randint(-window, window)))
@@ -361,6 +391,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
     for n in range(replays):
         p = entry
         outcome = None
+        fill = stop
         keep = n < SAMPLE_PATHS
         path = [entry]
         for i in range(k + 1, last + 1):
@@ -370,11 +401,15 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
                 if long:
                     if lo <= stop:
                         outcome = "stop"        # both inside one bar: count the loss (conservative)
+                        if net:
+                            fill = min(stop, p * o)     # a bar that opens through the stop fills at the open
                     elif hi >= target:
                         outcome = "target"
                 else:
                     if hi >= stop:
                         outcome = "stop"
+                        if net:
+                            fill = max(stop, p * o)
                     elif lo <= target:
                         outcome = "target"
             p = cl
@@ -382,6 +417,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
                 path.append(round(p, 2))
         outcomes.append(outcome or "close")
         closes.append(p)
+        fills.append(fill)
         if keep:
             paths.append(path)
     cnt = {x: outcomes.count(x) for x in ("target", "stop", "close")}
@@ -389,6 +425,18 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
                 if o == "target" or (o == "close" and (p > entry if long else p < entry)))
     Rs = [r_target if o == "target" else -1.0 if o == "stop" else ((p - entry) if long else (entry - p)) / risk
           for o, p in zip(outcomes, closes)]
+    extra = {}
+    if net:
+        gross_avg = round(statistics.mean(Rs), 3)
+        Rs = [net_exit_r(long, o, entry, target, f, p, risk, slip) for o, p, f in zip(outcomes, closes, fills)]
+        green = sum(1 for r in Rs if r > 0)
+        stop_rs = [r for o, r in zip(outcomes, Rs) if o == "stop"]
+        extra = {"avg_R_gross": gross_avg,
+                 "r_win": round(net_exit_r(long, "target", entry, target, stop, entry, risk, slip), 4),
+                 "r_loss": round(-statistics.mean(stop_rs), 4) if stop_rs else
+                 round(-net_exit_r(long, "stop", entry, target, stop, entry, risk, slip), 4),
+                 "gapped_stops": sum(1 for o, f in zip(outcomes, fills)
+                                     if o == "stop" and abs(f - stop) > 1e-9)}
     srt = sorted(closes)
     # percentile bands per bar for the fan chart: a second run of 2,000 paths, same seed
     rng = random.Random(seed)
@@ -413,7 +461,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
         b = int((c - lo_) / W) if W > 0 else 0
         if 0 <= b < HIST_BINS:
             bins[b] += 1
-    return {
+    return dict({
         "replays": replays, "seed": seed, "window": window, "bars_left": last - k,
         "p_target": round(cnt["target"] / replays, 4), "p_stop": round(cnt["stop"] / replays, 4),
         "p_neither": round(cnt["close"] / replays, 4), "p_green": round(green / replays, 4),
@@ -421,7 +469,7 @@ def simulate(pool, entry, stop, target, k, last, replays=10000, seed=19, window=
         "p95_close": round(pct(srt, 0.95), 2), "avg_R": round(statistics.mean(Rs), 3),
         "r_at_target": r_target, "band_paths": BAND_PATHS, "bands": bands, "sample_paths": paths,
         "hist": {"lo": round(lo_, 2), "hi": round(hi_, 2), "bins": bins},
-    }
+    }, **extra)
 
 
 # ---------------------------------------------------------------- stop rules and the history replay
@@ -448,11 +496,13 @@ def rule_stop(rule, oh, ol, entry, long):
     return cents_away(entry * (1 - frac) if long else entry * (1 + frac), long)
 
 
-def history_replay(sessions, rule, last, side="buy"):
+def history_replay(sessions, rule, last, side="buy", slip_frac=None):
     """The plan's rule on every past full session: entry = the first bar after the
     opening range to close beyond it (up to the --until bar), then stop first, then
-    target, bar by bar, else the close at --until."""
+    target, bar by bar, else the close at --until. slip_frac (slippage as a fraction of
+    the price, each side) makes R net of fill costs, scaled to each day's entry."""
     long = side == "buy"
+    net = slip_frac is not None
     n = rule["or_minutes"] // 5
     trades = []
     for d, D in sessions:
@@ -467,9 +517,11 @@ def history_replay(sessions, rule, last, side="buy"):
             continue
         t = round(e + rule["target_r"] * risk, 2) if long else round(e - rule["target_r"] * risk, 2)
         oc = None
+        fill = s
         for b in D[kk + 1:last + 1]:
             if (b["l"] <= s) if long else (b["h"] >= s):
                 oc = "stop"
+                fill = min(s, b["o"]) if long else max(s, b["o"])
                 break
             if (b["h"] >= t) if long else (b["l"] <= t):
                 oc = "target"
@@ -477,9 +529,13 @@ def history_replay(sessions, rule, last, side="buy"):
         cl = D[last]["c"]
         R = ((t - e) if long else (e - t)) / risk if oc == "target" else -1.0 if oc == "stop" else \
             ((cl - e) if long else (e - cl)) / risk
-        trades.append({"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "stop": s, "target": t,
-                       "outcome": oc or "close", "R": round(R, 2)})
-    return {
+        tr = {"date": d, "time": clock12(OPEN_MIN + 5 * (kk + 1)), "entry": e, "stop": s, "target": t,
+              "outcome": oc or "close", "R": round(R, 2)}
+        if net:
+            tr["R_gross"] = tr["R"]
+            tr["R"] = round(net_exit_r(long, oc or "close", e, t, fill, cl, risk, slip_frac * e), 2)
+        trades.append(tr)
+    out = {
         "sessions": len(sessions), "triggered": len(trades),
         "target": sum(1 for x in trades if x["outcome"] == "target"),
         "stop": sum(1 for x in trades if x["outcome"] == "stop"),
@@ -488,6 +544,9 @@ def history_replay(sessions, rule, last, side="buy"):
         "avg_R": round(statistics.mean(x["R"] for x in trades), 3) if trades else None,
         "rule": rule, "trades": trades,
     }
+    if net:
+        out["avg_R_gross"] = round(statistics.mean(x["R_gross"] for x in trades), 3) if trades else None
+    return out
 
 
 # ---------------------------------------------------------------- the plan
@@ -634,8 +693,14 @@ def lean(mc):
     pt, ps = mc["p_target"], mc["p_stop"]
     if pt + ps <= 0:
         return None
-    r = mc.get("r_at_target") or 1.0
-    share, even = pt / (pt + ps), 1.0 / (1.0 + r)
+    share = pt / (pt + ps)
+    if mc.get("r_loss") is not None:
+        # after slippage: a win pays r_win, a stop costs r_loss on average
+        w, l = mc["r_win"], mc["r_loss"]
+        even = 1.0 if w <= 0 else l / (w + l)
+    else:
+        r = mc.get("r_at_target") or 1.0
+        even = 1.0 / (1.0 + r)
     return share - even, share, even
 
 
@@ -648,7 +713,8 @@ def verdict(mc):
             _until12(mc), _until12(mc))
     d, share, even = lv
     r = mc.get("r_at_target") or 1.0
-    one_r = abs(r - 1.0) < 0.005
+    net = mc.get("r_loss") is not None
+    one_r = abs(r - 1.0) < 0.005 and not net
     if abs(d) < COIN_FLIP:
         head = "Close to a coin flip" if one_r else "Close to break-even"
     elif abs(d) < STRONG:
@@ -658,6 +724,10 @@ def verdict(mc):
     odds = "target first %.1f %% vs stop first %.1f %%" % (100 * pt, 100 * ps)
     if one_r:
         return "%s: %s." % (head, odds)
+    if net:
+        return ("%s after slippage: a win nets %+.2fR and a stop costs %.2fR on average, so the target has to "
+                "come first in %.0f %% of the replays that hit one side; it did in %.0f %% (%s)."
+                % (head, mc["r_win"], mc["r_loss"], 100 * even, 100 * share, odds))
     return ("%s: at %gR the target has to come first in %.0f %% of the replays that hit one side; "
             "it did in %.0f %% (%s)." % (head, round(r, 2), 100 * even, 100 * share, odds))
 
@@ -676,8 +746,59 @@ def verdict_notes(mc):
     return notes
 
 
-def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo"):
-    """Chart JSON text + a normalized plan -> the timemachine.json document."""
+def measured_slippage(state):
+    """(average bps a side, n) over the measured market-type fills in trader-broker's log
+    (entries, stops, flattens: every fill with a "slippage" record except take-profit limits)."""
+    rows = [r for r in (state or {}).get("orders", []) if r.get("status") == "filled"
+            and isinstance(r.get("slippage"), dict) and r.get("kind") != "target"]
+    if not rows:
+        return None, 0
+    return sum(float(r["slippage"]["bps"]) for r in rows) / len(rows), len(rows)
+
+
+def resolve_slippage(text, entry, broker_state="trader/state/broker.json"):
+    """--slippage -> {"per_share", "bps", "source"} or None (off).
+    0.05 or $0.05 = dollars a share each side; 5bps = basis points of the entry each side;
+    auto = the average of your own measured fills in trader-broker's log (at least
+    MIN_MEASURED of them; an average better than zero counts as zero), else DEFAULT_BPS."""
+    if text is None:
+        return None
+    t = str(text).strip().lower().replace(" ", "")
+    if t == "auto":
+        state = None
+        if broker_state and os.path.exists(broker_state):
+            try:
+                with open(broker_state, encoding="utf-8") as fh:
+                    state = json.load(fh)
+            except (OSError, ValueError):
+                state = None
+        bps, n = measured_slippage(state)
+        if n >= MIN_MEASURED:
+            bps = max(0.0, bps)
+            source = "the average of your %d measured fills (trader-broker ticket.py slippage)" % n
+        else:
+            source = ("an assumed %g bps: only %d measured fill%s in %s, %d needed (record fills with an "
+                      "expected price to measure your own)" % (DEFAULT_BPS, n, "" if n == 1 else "s",
+                                                              broker_state, MIN_MEASURED))
+            bps = DEFAULT_BPS
+        return {"bps": round(bps, 2), "per_share": round(entry * bps / 10000.0, 4), "source": source, "mode": "auto"}
+    m = re.match(r"^(\d+(?:\.\d+)?)bps?$", t)
+    if m:
+        bps = float(m.group(1))
+        return {"bps": bps, "per_share": round(entry * bps / 10000.0, 4), "source": "--slippage %s" % text,
+                "mode": "bps"}
+    m = re.match(r"^\$?(\d+(?:\.\d+)?)$", t)
+    if m:
+        ps = float(m.group(1))
+        return {"bps": round(10000.0 * ps / entry, 2), "per_share": ps, "source": "--slippage %s" % text,
+                "mode": "dollars"}
+    raise TMError("--slippage wants auto, dollars a share like 0.03, or basis points like 5bps, not %r" % text)
+
+
+def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=None, source="yahoo",
+                 slippage=None):
+    """Chart JSON text + a normalized plan -> the timemachine.json document.
+    slippage: resolve_slippage()'s dict, or None for perfect fills."""
     if not 1 <= replays <= 1000000:
         raise TMError("--replays must be between 1 and 1,000,000")
     if not 0 <= window <= 10:
@@ -721,7 +842,12 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         raise TMError("only %d full session(s) of %s before %s in the data; the time machine needs at least %d"
                       % (len(sessions), sym, plan["date"], MIN_SESSIONS))
     pool = build_pool(sessions)
-    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"])
+    slip = slippage["per_share"] if slippage else None
+    if slippage and slip >= plan["risk_per_share"]:
+        warn.append("the slippage, %.2f a share each side, is as big as the whole risk of %.2f a share"
+                    % (slip, plan["risk_per_share"]))
+    mc = simulate(pool, plan["entry"], plan["stop"], plan["target"], k, last, replays, seed, window, plan["side"],
+                  slip)
     mc = dict(mc, until=clock24(until_min), pool_sessions=len(sessions), pool_from=sessions[0][0],
               pool_to=sessions[-1][0],
               band_times=[clock24(OPEN_MIN + 5 * (j + 1)) for j in range(k, last + 1)])
@@ -729,13 +855,14 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     plan_out = {kk: v for kk, v in plan.items() if v is not None}
     if rule:
         plan_out["stop_rule"] = rule["stop_rule"]
-        history = history_replay(sessions, rule, last, plan["side"])
+        history = history_replay(sessions, rule, last, plan["side"],
+                                 slip / plan["entry"] if slippage else None)
     else:
         history = {"sessions": len(sessions), "triggered": 0, "rule": None, "trades": [],
                    "note": "skipped: the history replay knows the opening-range breakout (orb) only, "
                            "this plan's setup is %r" % plan["setup"]}
     last_bar = bars[-1]
-    return {
+    doc = {
         "created_by": "trader-timemachine",
         "created_at": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": source,
@@ -751,6 +878,9 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
         "note": ("A simulation built from %s's own last %d full sessions. It is not a prediction: earnings, "
                  "news and halts can do things those sessions never did. Same seed, same numbers." % (sym, len(sessions))),
     }
+    if slippage:
+        doc["slippage"] = slippage
+    return doc
 
 
 # ---------------------------------------------------------------- output
@@ -782,10 +912,24 @@ def report(doc):
         "",
         "  Price at %s: median %.2f, 90 %% of replays between %.2f and %.2f."
         % (until, m["median_close"], m["p5_close"], m["p95_close"]),
-        "  Average R: %+.3f (R = the %.2f risk: %sR at the target, -1R at the stop)."
-        % (m["avg_R"], p["risk_per_share"], ("+%g" % m["r_at_target"]), ),
-        "",
     ]
+    sl = doc.get("slippage")
+    if sl:
+        lines += [
+            "  Average R: %+.3f after slippage, %+.3f with perfect fills (R = the %.2f risk)."
+            % (m["avg_R"], m["avg_R_gross"], p["risk_per_share"]),
+            "  Slippage: %.4g a share each side (%.1f bps), from %s. The entry and every market exit fill "
+            "that much worse; a stop that the bar opens through fills at the open (%d replays gapped); "
+            "the target is a limit and fills at its price. A win nets %+.2fR, a stop costs %.2fR on average."
+            % (sl["per_share"], sl["bps"], sl["source"], m["gapped_stops"], m["r_win"], m["r_loss"]),
+        ]
+    else:
+        lines += [
+            "  Average R: %+.3f (R = the %.2f risk: %sR at the target, -1R at the stop)."
+            % (m["avg_R"], p["risk_per_share"], ("+%g" % m["r_at_target"]), ),
+            "  No slippage counted: these are perfect fills. Add --slippage auto (your own fills) for real costs.",
+        ]
+    lines.append("")
     if h.get("rule"):
         ru = h["rule"]
         stop_words = {"or_mid": "opening-range midpoint", "or_low": "opening-range low",
@@ -793,9 +937,11 @@ def report(doc):
                                                            "%.2f %% from the entry" % ru.get("stop_pct", 0))
         if h["triggered"]:
             lines.append("History: the same rule (%d-min opening range, stop at the %s, %gR target) on each of "
-                         "those %d real sessions fired %d times: %d target, %d stop, %d neither. Average R %+.3f."
+                         "those %d real sessions fired %d times: %d target, %d stop, %d neither. Average R %+.3f%s."
                          % (ru["or_minutes"], stop_words, ru["target_r"], h["sessions"], h["triggered"],
-                            h["target"], h["stop"], h["close"], h["avg_R"]))
+                            h["target"], h["stop"], h["close"], h["avg_R"],
+                            (" after slippage (%+.3f with perfect fills)" % h["avg_R_gross"])
+                            if h.get("avg_R_gross") is not None else ""))
         else:
             lines.append("History: the same rule never fired in those %d sessions." % h["sessions"])
     else:
@@ -874,7 +1020,8 @@ def compute(a):
         text, source = read_offline(a.offline, plan["symbol"]), "offline"
     else:
         text, source = fetch_chart(plan["symbol"]), "yahoo"
-    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source)
+    slip = resolve_slippage(a.slippage, plan["entry"], a.broker_state)
+    return time_machine(text, plan, now, a.replays, a.seed, a.window, a.until, source, slip)
 
 
 def cmd_run(a):
@@ -929,6 +1076,10 @@ def main(argv=None):
         p.add_argument("--seed", type=int, default=19)
         p.add_argument("--window", type=int, default=2, help="draw from the same time of day +- this many bars")
         p.add_argument("--until", help="end each replay at this time (default 16:00, the close)")
+        p.add_argument("--slippage", metavar="auto|0.03|5bps",
+                       help="fill costs each side: auto (your measured fills), dollars a share, or basis points")
+        p.add_argument("--broker-state", default="trader/state/broker.json",
+                       help="trader-broker's log, read by --slippage auto")
         p.add_argument("--offline", metavar="FILE", help="a saved Yahoo chart JSON (.json or .json.gz), no network")
         p.add_argument("--now", help='pretend it is this time ("2026-10-19 10:15" New York, or ISO with Z)')
 
