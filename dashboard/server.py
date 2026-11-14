@@ -3737,6 +3737,67 @@ def company_figures(sym):
     return fa
 
 
+# ---------------------------------------------------------------- "dig deeper" chart: long OHLCV history + earnings dates
+
+def deep_chart(symbol, tf="w"):
+    """Daily (2 years) or weekly (10 years) candles plus past and next earnings report dates.
+    The indicators (EMA, SMA, momentum waves, MACD) are computed in the browser from these bars."""
+    sym = symbol.upper()
+    q = "range=10y&interval=1wk" if tf == "w" else "range=2y&interval=1d"
+    res = _chart(sym, q, 3600)
+    rows = _rows(res)
+    if tf == "w" and len(rows) >= 2 and rows[-1][0] - rows[-2][0] < 6 * 86400:
+        # Yahoo adds a live row inside the current week: fold it into that week's candle
+        a, b = rows[-2], rows[-1]
+        rows = rows[:-2] + [(a[0], a[1], max(a[2], b[2]), min(a[3], b[3]), b[4], max(a[5], b[5]))]
+    meta = res.get("meta") or {}
+    earn = []
+    try:
+        fa = company_figures(sym)
+        periods = [e for e in ((fa or {}).get("earnings") or []) if e.get("date")]
+    except Exception:
+        periods = []
+    nxt = None
+    try:
+        nxt = next_earnings(sym, wait=True)
+    except Exception:
+        nxt = None
+    if periods:
+        # the figures carry the quarter's end date; the report comes some weeks later. The company's own delay is taken
+        # from its next announced report date; the day is then the strongest opening gap on heavy volume near that point
+        try:
+            daily = _rows(_chart(sym, "range=10y&interval=1d", 3600))
+        except Exception:
+            daily = []
+        ends = []
+        for e in periods:
+            try:
+                ends.append((calendar.timegm(time.strptime(e["date"], "%Y-%m-%d")), e))
+            except ValueError:
+                pass
+        lag = None
+        if nxt and ends:
+            last = max(t for t, _ in ends)
+            gap = calendar.timegm(time.strptime(nxt["date"], "%Y-%m-%d")) - last
+            q = 91.3 * 86400
+            lag = gap - math.floor((gap - 5 * 86400) / q) * q
+            if not 10 * 86400 <= lag <= 60 * 86400:
+                lag = None
+        score = lambda i: daily[i][5] * (1 + 20 * abs(daily[i][1] / daily[i - 1][4] - 1))
+        now = time.time()
+        for end, e in ends:
+            lo, hi = (end + lag - 3 * 86400, end + lag + 12 * 86400) if lag else (end + 10 * 86400, end + 50 * 86400)
+            idx = [i for i, d in enumerate(daily) if i and lo <= d[0] <= hi]
+            if not idx or (hi > now and len(idx) < 3):
+                continue
+            day = daily[max(idx, key=score)]
+            earn.append({"date": _day(day[0]), "ts": day[0], "period": e["date"], "label": e.get("label") or "", "eps": e.get("eps"), "epsYoY": e.get("epsYoY")})
+    return {"symbol": sym, "tf": "w" if tf == "w" else "d", "currency": meta.get("currency"), "name": meta.get("longName") or meta.get("shortName"),
+            "t": [r_[0] for r_ in rows], "o": [r_[1] for r_ in rows], "h": [r_[2] for r_ in rows], "l": [r_[3] for r_ in rows],
+            "c": [r_[4] for r_ in rows], "v": [r_[5] for r_ in rows],
+            "earnings": earn, "next": nxt}
+
+
 # ---------------------------------------------------------------- key person risk: how much a stock depends on one leader
 
 KP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4)  # separate from POOL: key_person itself uses POOL (no nested waits)
@@ -4402,6 +4463,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
         if path == "/api/ltentry":
             return self.send_json(lt_entry(q.get("symbol", "SPY")))
+        if path == "/api/deep":
+            return self.send_json(deep_chart(q.get("symbol", "SPY"), q.get("tf", "w")))
         if path == "/api/keyperson":
             if q.get("symbols"):
                 ss = syms(q.get("symbols"))[:40]

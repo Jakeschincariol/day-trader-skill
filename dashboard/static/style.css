@@ -870,3 +870,22 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
 .kp-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .kp-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 14px; }
 .kp-list li b { color: var(--bad-text); }
+
+/* ---------- dig deeper chart */
+.deep-box { display: flex; flex-direction: column; gap: 4px; }
+.dc-pane { position: relative; }
+.dc-main { height: 420px; }
+.dc-wave, .dc-macd { height: 140px; border-top: 1px solid var(--border); }
+.dc-pane .lw-tag { position: absolute; left: 8px; top: 4px; z-index: 3; font-size: 11px; color: var(--text-muted); pointer-events: none; }
+.dc-pane .lw-legend { position: absolute; left: 8px; top: 6px; z-index: 3; display: flex; flex-wrap: wrap; gap: 4px 12px; font: 11.5px var(--mono); color: var(--text-secondary); pointer-events: none; }
+.dc-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+.dc-list li { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; color: var(--text-secondary); }
+.dc-list li b { display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.dc-list .dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.dc-list .dot.up { background: var(--good); } .dc-list .dot.down { background: var(--bad); } .dc-list .dot.flat { background: var(--warning); }
+.dc-legend { margin-top: 8px; }
+.btn.on { border-color: var(--accent); color: var(--text-primary); }
+@media (max-width: 760px) {
+  .dc-main { height: 320px; }
+  .dc-wave, .dc-macd { height: 110px; }
+}

@@ -637,6 +637,7 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${rf("chart")}
               <label class="check" style="font-size:13px"><input type="checkbox" id="fcOn" ${isLT() ? "" : "checked"}> Forecast</label>
               ${isLT() ? `<label class="check" style="font-size:13px"><input type="checkbox" id="proOn" ${store.get("traderView", false) ? "checked" : ""}> Trader view</label>` : ""}
+              <button class="btn sm" id="deepBtn" type="button" aria-expanded="false" aria-controls="deepCard"><i data-lucide="microscope"></i> Dig deeper</button>
               <div class="seg" id="rng"><button data-b="1D">1D</button><button data-b="7D">7D</button><button data-b="63">3M</button><button data-b="126" class="on">6M</button><button data-b="252">1Y</button><button data-b="504">2Y</button></div></div></div>
           <div class="chart-box" id="chart"></div>
           <div class="legend" id="legend"></div>
@@ -661,6 +662,13 @@
             <ul class="reasons">${a.reasons.map((x) => `<li class="${x.ok ? "" : "no"}">${esc(x.text)}</li>`).join("")}</ul></div>
         </div>
       </div>
+      <div class="card" style="margin-top:16px" id="deepCard" hidden><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="microscope"></i>Dig deeper: ${esc(a.symbol)}</h2>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg" id="deepTf" role="group" aria-label="Candle size"><button type="button" data-tf="w">Weekly</button><button type="button" data-tf="d">Daily</button></div>
+        <button class="btn sm" id="deepClose" type="button" aria-label="Close the deeper chart"><i data-lucide="x"></i></button></span></div>
+        <div class="dc-read" id="deepRead"></div>
+        <div class="deep-box" id="deepBox"></div>
+        <div class="legend dc-legend"><span><i style="background:#ec835a"></i>EMA 21 (fast average)</span><span><i style="background:#f0efec"></i>SMA 50 (slow average)</span><span><i class="dash"></i>Highest price of the period</span><span><b style="color:#199e70">E</b> results day (estimated from the price reaction)</span><span><b style="color:#3fcf3f">●</b> / <b style="color:#ff7a7a">●</b> momentum turned up from oversold / down from overbought</span></div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Momentum waves (WaveTrend 10/21) swing between about -100 and +100: below -53 is oversold, above +53 overbought. MACD (12/26/9) shows whether buyers (line above its signal) or sellers are in control; the bars show how strong. These are standard trader tools for timing, not a view on the business. Not advice.</p></div>
       ${a.type === "EQUITY" ? `<div class="card" style="margin-top:16px" id="kpCard"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="user-round"></i>Key person risk</h2><span class="muted" style="font-size:12.5px">how much ${esc(a.symbol)} depends on one leader</span></div><div id="kpBox">${skeleton(4)}</div></div>` : ""}
       <div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="line-chart"></i>If you invest every month in ${esc(a.symbol)}</h2><span class="muted" style="font-size:12.5px">set your own amount</span></div><div id="stockFc">${skeleton(5)}</div></div>
       <div class="card" id="hourlyCard" style="margin-top:16px" hidden></div>
@@ -758,6 +766,36 @@
           (lp && lp.score != null ? `<span class="muted">Long-term score <b>${lp.score}</b>${lp.zone ? " · " + esc(window.LT.zoneLabel(lp.zone)) : ""}</span>` : "") + `<span class="go">Details ↓</span>`;
         if (window.lucide) window.lucide.createIcons();
       });
+    }
+
+    // ---- "dig deeper" chart: weekly or daily candles with averages, earnings, momentum waves and MACD
+    {
+      let deep = null, tf = store.get("deepTf", "w");
+      const card = $("#deepCard"), btn = $("#deepBtn");
+      const drawDeep = async () => {
+        $$("#deepTf button").forEach((b) => b.classList.toggle("on", b.dataset.tf === tf));
+        if (deep) { deep.destroy(); deep = null; }
+        $("#deepBox").innerHTML = skeleton(10); $("#deepRead").innerHTML = "";
+        let d;
+        try { d = await api(`/api/deep?symbol=${encodeURIComponent(a.symbol)}&tf=${tf}`); }
+        catch (e) { if ($("#deepBox")) $("#deepBox").innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+        if (!$("#deepBox") || card.hidden) return;
+        if (!d.c || d.c.length < 60) { $("#deepBox").innerHTML = `<p class="muted">Not enough history for these indicators.</p>`; return; }
+        $("#deepBox").innerHTML = "";
+        deep = window.DeepChart.DeepChart($("#deepBox"), d);
+        $("#deepRead").innerHTML = `<ul class="dc-list">${deep.reading.map((r) => `<li><b><span class="dot ${r.tone}"></span>${esc(r.k)}</b><span>${esc(r.text)}</span></li>`).join("")}</ul>`;
+      };
+      const open = (on, scroll) => {
+        card.hidden = !on; btn.setAttribute("aria-expanded", String(on)); btn.classList.toggle("on", on); store.set("deepOpen", on);
+        if (on) { drawDeep(); if (scroll) card.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        else if (deep) { deep.destroy(); deep = null; }
+      };
+      btn.addEventListener("click", () => open(card.hidden, true));
+      $("#deepClose").addEventListener("click", () => open(false));
+      $("#deepTf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b || b.dataset.tf === tf) return; tf = b.dataset.tf; store.set("deepTf", tf); drawDeep(); });
+      if (!window.DeepChart) btn.hidden = true;
+      else if (store.get("deepOpen", false)) open(true, false);
+      const prevC = current; current = () => { prevC && prevC(); if (deep) deep.destroy(); };
     }
 
     // ---- key person risk (information only: it does not change the buy advice)

@@ -1264,3 +1264,33 @@ class KeyPersonRisk(unittest.TestCase):
         out = srv.ceo_news(["NVDA"])
         self.assertEqual([x["title"] for x in out], ["Huang to step down as CEO, board names successor"])
         self.assertEqual(out[0]["ceo"], "Mr. Jensen Huang")
+
+
+class DeepChart(unittest.TestCase):
+    def setUp(self):
+        self.saved = (srv._chart, srv.company_figures, srv.next_earnings)
+
+    def tearDown(self):
+        srv._chart, srv.company_figures, srv.next_earnings = self.saved
+
+    def test_weekly_live_row_is_folded_and_report_day_found(self):
+        day = 86400
+        t0 = 1735689600  # 2025-01-01
+        daily_ts = [t0 + i * day for i in range(200)]
+        vols = [1000] * 200
+        vols[60] = 9000  # the reaction day: heavy volume and a gap
+        opens = [100.0] * 200
+        opens[60] = 110.0
+        daily = {"timestamp": daily_ts, "indicators": {"quote": [{"open": opens, "high": [111.0] * 200, "low": [99.0] * 200, "close": [100.0] * 200, "volume": vols}]}, "meta": {}}
+        weekly_ts = [t0 + i * 7 * day for i in range(10)] + [t0 + 9 * 7 * day + 3 * day]
+        weekly = {"timestamp": weekly_ts, "indicators": {"quote": [{"open": [1.0] * 11, "high": [2.0] * 10 + [5.0], "low": [0.5] * 11, "close": [1.5] * 10 + [1.8], "volume": [10] * 11}]},
+                  "meta": {"currency": "USD"}}
+        srv._chart = lambda sym, q, ttl: weekly if "1wk" in q else daily
+        end = time.strftime("%Y-%m-%d", time.gmtime(t0 + 30 * day))  # quarter end; report ~30 days later
+        srv.company_figures = lambda sym: {"earnings": [{"date": end, "label": "Q1", "eps": 1.0}]}
+        srv.next_earnings = lambda sym, wait=True: None
+        d = srv.deep_chart("ABC", "w")
+        self.assertEqual(len(d["t"]), 10)
+        self.assertEqual(d["h"][-1], 5.0)
+        self.assertEqual(d["c"][-1], 1.8)
+        self.assertEqual(d["earnings"][0]["date"], time.strftime("%Y-%m-%d", time.gmtime(daily_ts[60])))

@@ -80,6 +80,16 @@ Four reviewers (long-term investing, trading and risk, visual design, mobile use
 - **Fixes**: positions already below their stop are flagged in the risk panel; the stock *Max* return compares from the same start date as the S&P 500; weak stocks say *Avoid*; swing backtests include 0.4% costs and buy-and-hold; Copy works on the iPhone; sparkline colours follow the day's change; one €1,200 monthly default.
 - **Clearer pages**: portfolio value first on the Dashboard; positions first on Portfolio; on stock pages (long-term mode) a verdict strip under the price, a full-width calm chart (price and 200-day average; tick *Trader view* for candles, volume and RSI), and Statistics / Earnings folded; plainer labels (*Good time to add*, *Keep buying as planned*, *Pricey: buy small*, *Gain so far*); compact market banner on the iPhone.
 
+## Dig deeper (stock page)
+
+The **Dig deeper** button on the price chart opens a trader's chart below it, weekly (10 years) or daily (2 years):
+candles with a fast average (EMA 21, orange) and a slow one (SMA 50, white), a dashed line at the highest price of the period,
+**E** markers on results days, **momentum waves** (WaveTrend 10/21, oversold below -53, overbought above +53, with green and red
+dots where momentum turns in those zones) and **MACD** (12/26/9 with histogram), all on the same time axis. On top, a plain-English
+reading of the last bar: trend, momentum, MACD, distance from the high and the next results date. Results days come from the
+company's quarter-end dates, its own usual reporting delay (from the next announced date) and the strongest price gap on heavy
+volume around that point, so they are estimates. Standard public indicators; not advice. It stays open for the next stock until closed.
+
 ## Key person risk (stock page)
 
 How much a stock depends on one leader, usually the CEO, from 0 to 100 (0-29 low, 30-54 medium, 55+ high). Points per warning sign:
