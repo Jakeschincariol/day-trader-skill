@@ -1,0 +1,19 @@
+{
+  "note": "Approximate index weights for look-through checks. They drift every month; refresh them now and then.",
+  "asOf": "2026-10",
+  "indexes": {
+    "S&P 500": {
+      "funds": ["VUSA.L", "CSPX.L", "VUAA.L", "SPY", "VOO", "IVV", "SXR8.DE", "VUSA.AS"],
+      "weights": {"NVDA": 7.5, "MSFT": 6.5, "AAPL": 6.5, "AMZN": 4.0, "META": 3.0, "AVGO": 2.6, "GOOGL": 4.0, "TSLA": 2.0, "BRK-B": 1.6, "JPM": 1.5, "LLY": 1.3, "V": 1.0}
+    },
+    "Nasdaq 100": {
+      "funds": ["EQQQ.L", "QQQ", "QQQM", "CNDX.L", "EQQQ.DE"],
+      "weights": {"NVDA": 9.5, "MSFT": 8.5, "AAPL": 8.0, "AMZN": 5.5, "AVGO": 5.0, "META": 3.8, "GOOGL": 5.5, "TSLA": 3.0, "NFLX": 2.0, "COST": 2.2, "PLTR": 1.8, "AMD": 1.5}
+    },
+    "World": {
+      "funds": ["VWRL.L", "VWCE.DE", "SWDA.L", "IWDA.AS", "VT", "ACWI", "SSAC.L"],
+      "weights": {"NVDA": 4.6, "MSFT": 4.0, "AAPL": 4.0, "AMZN": 2.5, "META": 1.8, "AVGO": 1.6, "GOOGL": 2.5, "TSLA": 1.2, "TSM": 1.0, "ASML": 0.4},
+      "usShare": 63
+    }
+  }
+}
