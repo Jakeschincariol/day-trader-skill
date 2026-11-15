@@ -40,6 +40,7 @@ import socket
 import calendar
 import datetime
 import email.utils
+from html import escape as html_escape
 import http.cookiejar
 import concurrent.futures
 import json
@@ -4624,8 +4625,22 @@ class Handler(BaseHTTPRequestHandler):
         full = os.path.realpath(os.path.join(STATIC, path.lstrip("/")))
         if not full.startswith(os.path.realpath(STATIC) + os.sep) or not os.path.isfile(full):
             full = os.path.join(STATIC, "index.html")
-        with open(full, "rb") as f:
-            body = f.read()
+        try:
+            with open(full, "rb") as f:
+                body = f.read()
+        except OSError:
+            msg = ("<!doctype html><meta charset=utf-8><title>TraderDash: files missing</title>"
+                   "<body style='font:16px sans-serif;background:#0d0d0d;color:#f0efec;padding:24px;max-width:720px'>"
+                   "<h1>The dashboard's page files are missing</h1><p>This copy has no <code>%s</code>. The download or unzip was incomplete, "
+                   "or OneDrive has not finished syncing the folder.</p><p>Fix: unzip the download again into a short folder outside OneDrive, "
+                   "for example <code>C:\\TraderDash</code>, then start <code>dashboard\\server.py</code> from there. "
+                   "Your Trading 212 key file (<code>.t212.json</code>) can be copied from the old <code>dashboard</code> folder.</p></body>") % html_escape(full)
+            body = msg.encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
         self.send_response(200)
         self.send_header("Content-Type", MIME.get(os.path.splitext(full)[1], "application/octet-stream"))
         self.send_header("Content-Length", str(len(body)))
@@ -4672,6 +4687,11 @@ def main(argv=None):
     p.add_argument("--new-key", action="store_true", help="with --phone: make a new secret key (logs out phones)")
     p.add_argument("--host", default=None, help=argparse.SUPPRESS)
     a = p.parse_args(argv)
+    missing = [f for f in ("index.html", "app.js", "style.css") if not os.path.isfile(os.path.join(STATIC, f))]
+    if missing:
+        print("WARNING: the dashboard's page files are missing from %s: %s\n"
+              "The download or unzip was incomplete, or OneDrive has not finished syncing. Unzip again into a short folder\n"
+              "outside OneDrive (for example C:\\TraderDash) and start dashboard\\server.py from there." % (STATIC, ", ".join(missing)), file=sys.stderr)
     load_creds()
     fmp_load()
     threading.Thread(target=fdb_refresh, daemon=True).start()
