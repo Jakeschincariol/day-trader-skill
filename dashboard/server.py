@@ -4552,28 +4552,54 @@ class Handler(BaseHTTPRequestHandler):
             purge(lambda k: k[0] == "revolut")
             return self.send_json({"linked": False})
         if path == "/api/t212/connect":
-            key, secret = (body.get("key") or "").strip(), (body.get("secret") or "").strip() or None
+            clean = lambda x: re.sub(r"\s+", "", x or "")  # pasted keys often carry a space or line break
+            key, secret = clean(body.get("key")), clean(body.get("secret")) or None
             env = "demo" if body.get("env") == "demo" else "live"
             if not key:
                 return self.send_json({"error": "API key is required"}, 400)
             old = dict(T212)
-            T212.update(key=key, secret=secret, env=env)
-            try:
+            other = "live" if env == "demo" else "demo"
+            # try what was entered first, then the usual mix-ups: Live/Demo, key and secret swapped
+            tries = [(key, secret, env), (key, secret, other)]
+            if secret:
+                tries += [(secret, key, env), (secret, key, other)]
+            codes, linked = [], None
+            for k_, s_, e_ in tries:
+                T212.update(key=k_, secret=s_, env=e_)
                 with _cache_lock:
-                    for k in [k for k in _cache if k[0] == "t212"]:
-                        del _cache[k]
-                t212_portfolio()
-            except urllib.error.HTTPError as e:
+                    for ck in [ck for ck in _cache if ck[0] == "t212"]:
+                        del _cache[ck]
+                try:
+                    t212_portfolio()
+                    linked = (k_, s_, e_)
+                    break
+                except urllib.error.HTTPError as e:
+                    codes.append(e.code)
+                    if e.code not in (401, 403):
+                        break
+                except Exception as e:
+                    T212.update(old)
+                    return self.send_json({"error": "Could not reach Trading 212: %s" % str(e)[:150]}, 400)
+            if not linked:
                 T212.update(old)
-                return self.send_json({"error": "Trading 212 said %s. Check the key, secret and Live/Demo choice." % e.code}, 400)
-            except Exception as e:
-                T212.update(old)
-                return self.send_json({"error": "Could not reach Trading 212: %s" % str(e)[:150]}, 400)
+                code = codes[0] if codes else "an error"
+                tips = ["Trading 212 refused the key (%s) on both Live and Demo%s." % (code, ", also with key and secret swapped" if secret else "")]
+                if not secret:
+                    tips.append("New Trading 212 keys come with an API secret: paste it in the API secret box too.")
+                tips.append("In Trading 212 (Settings, API), check the key is still active and, if you set an IP restriction, that it allows this PC's internet address; or make a new key without IP restriction.")
+                tips.append("The key needs these permissions: Account data, Portfolio, History (orders, dividends, transactions).")
+                return self.send_json({"error": " ".join(tips)}, 400)
+            key, secret, found = linked
+            note = []
+            if found != env:
+                note.append("it is a %s key, so the %s account is linked" % (found.capitalize(), found.capitalize()))
+            if secret and (key, secret) != (clean(body.get("key")), clean(body.get("secret"))):
+                note.append("the key and secret were in each other's boxes, so they were swapped")
             if body.get("remember"):
                 fd = os.open(CRED_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, "w") as f:
-                    json.dump({"key": key, "secret": secret, "env": env}, f)
-            return self.send_json({"linked": True, "env": env})
+                    json.dump({"key": key, "secret": secret, "env": found}, f)
+            return self.send_json({"linked": True, "env": found, "note": "; ".join(note)})
         if path == "/api/portfolio/history":
             if body.get("fresh"):
                 purge(lambda k: k[0] == "t212" or (k[0] == "chart" and "period1=" in str(k[2]) and "interval=1d" in str(k[2])))

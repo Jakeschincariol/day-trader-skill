@@ -1225,8 +1225,8 @@
       const fd = new FormData(e.target);
       const btn = $("button[type=submit]", e.target); btn.disabled = true; btn.textContent = "Connecting…"; $("#t212e").textContent = "";
       try {
-        await post("/api/t212/connect", { key: fd.get("key"), secret: fd.get("secret"), env: fd.get("env"), remember: !!fd.get("remember") });
-        toast("Trading 212 linked"); state.t212Status = null; pages.portfolio("", new URLSearchParams());
+        const r = await post("/api/t212/connect", { key: fd.get("key"), secret: fd.get("secret"), env: fd.get("env"), remember: !!fd.get("remember") });
+        toast("Trading 212 linked" + (r && r.note ? ": " + r.note : "")); state.t212Status = null; pages.portfolio("", new URLSearchParams());
       } catch (err) { $("#t212e").textContent = err.message; btn.disabled = false; btn.textContent = "Connect"; }
     });
   }

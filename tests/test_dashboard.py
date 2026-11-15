@@ -1294,3 +1294,40 @@ class DeepChart(unittest.TestCase):
         self.assertEqual(d["h"][-1], 5.0)
         self.assertEqual(d["c"][-1], 1.8)
         self.assertEqual(d["earnings"][0]["date"], time.strftime("%Y-%m-%d", time.gmtime(daily_ts[60])))
+
+
+class T212Connect(unittest.TestCase):
+    def setUp(self):
+        self.saved = (srv.t212_portfolio, dict(srv.T212))
+
+    def tearDown(self):
+        srv.t212_portfolio = self.saved[0]
+        srv.T212.clear(); srv.T212.update(self.saved[1])
+
+    def _post(self, body, ok):
+        def fake():
+            if (srv.T212["key"], srv.T212["secret"], srv.T212["env"]) != ok:
+                raise urllib.error.HTTPError("u", 401, "unauthorized", {}, None)
+            return {"positions": []}
+        srv.t212_portfolio = fake
+        httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+            c.request("POST", "/api/t212/connect", body=json.dumps(body), headers={"Content-Type": "application/json"})
+            r = c.getresponse()
+            return r.status, json.loads(r.read())
+        finally:
+            httpd.shutdown(); httpd.server_close()
+
+    def test_finds_demo_and_swapped_pair(self):
+        code, d = self._post({"key": "KEY 1", "secret": "SEC1", "env": "live"}, ("SEC1", "KEY1", "demo"))
+        self.assertEqual(code, 200)
+        self.assertEqual(d["env"], "demo")
+        self.assertIn("swapped", d["note"])
+        self.assertNotIn("KEY1", json.dumps(d))
+
+    def test_refused_everywhere_explains(self):
+        code, d = self._post({"key": "KEY1", "secret": "SEC1", "env": "live"}, ("nope", "x", "live"))
+        self.assertEqual(code, 400)
+        self.assertIn("IP restriction", d["error"])
