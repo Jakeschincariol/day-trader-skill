@@ -93,7 +93,7 @@ it for entries. Standard public indicators; not advice.
 
 ## Dig deeper (stock page)
 
-The **Dig deeper** button on the price chart opens a trader's chart below it, weekly (10 years) or daily (2 years):
+The **Dig deeper** button on the price chart opens a trader's chart below it, weekly (10 years), daily (2 years) or hourly (6 months, for picking the exact day):
 candles with a fast average (EMA 21, orange) and a slow one (SMA 50, white), a dashed line at the highest price of the period,
 **E** markers on results days, **momentum waves** (WaveTrend 10/21, oversold below -53, overbought above +53, with green and red
 dots where momentum turns in those zones) and **MACD** (12/26/9 with histogram), all on the same time axis. On top, a plain-English

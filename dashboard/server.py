@@ -3965,8 +3965,9 @@ def deep_chart(symbol, tf="w"):
     """Daily (2 years) or weekly (10 years) candles plus past and next earnings report dates.
     The indicators (EMA, SMA, momentum waves, MACD) are computed in the browser from these bars."""
     sym = symbol.upper()
-    q = "range=10y&interval=1wk" if tf == "w" else "range=2y&interval=1d"
-    res = _chart(sym, q, 3600)
+    tf = tf if tf in ("h", "d", "w") else "w"
+    q = {"w": "range=10y&interval=1wk", "d": "range=2y&interval=1d", "h": "range=6mo&interval=1h"}[tf]
+    res = _chart(sym, q, 300 if tf == "h" else 3600)
     rows = _rows(res)
     if tf == "w" and len(rows) >= 2 and rows[-1][0] - rows[-2][0] < 6 * 86400:
         # Yahoo adds a live row inside the current week: fold it into that week's candle
@@ -4014,7 +4015,7 @@ def deep_chart(symbol, tf="w"):
                 continue
             day = daily[max(idx, key=score)]
             earn.append({"date": _day(day[0]), "ts": day[0], "period": e["date"], "label": e.get("label") or "", "eps": e.get("eps"), "epsYoY": e.get("epsYoY")})
-    return {"symbol": sym, "tf": "w" if tf == "w" else "d", "currency": meta.get("currency"), "name": meta.get("longName") or meta.get("shortName"),
+    return {"symbol": sym, "tf": tf, "currency": meta.get("currency"), "name": meta.get("longName") or meta.get("shortName"),
             "t": [r_[0] for r_ in rows], "o": [r_[1] for r_ in rows], "h": [r_[2] for r_ in rows], "l": [r_[3] for r_ in rows],
             "c": [r_[4] for r_ in rows], "v": [r_[5] for r_ in rows],
             "earnings": earn, "next": nxt}

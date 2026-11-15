@@ -664,7 +664,7 @@
         </div>
       </div>
       <div class="card" style="margin-top:16px" id="deepCard" hidden><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="microscope"></i>Dig deeper: ${esc(a.symbol)}</h2>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg" id="deepTf" role="group" aria-label="Candle size"><button type="button" data-tf="w">Weekly</button><button type="button" data-tf="d">Daily</button></div>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg" id="deepTf" role="group" aria-label="Candle size"><button type="button" data-tf="w">Weekly</button><button type="button" data-tf="d">Daily</button><button type="button" data-tf="h">Hourly</button></div>
         <button class="btn sm" id="deepClose" type="button" aria-label="Close the deeper chart"><i data-lucide="x"></i></button></span></div>
         <div class="dc-read" id="deepRead"></div>
         <div class="deep-box" id="deepBox"></div>

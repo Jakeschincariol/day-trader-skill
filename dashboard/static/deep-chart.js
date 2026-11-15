@@ -91,7 +91,7 @@
     }
     const hiIdx = d.h.reduce((b, x, j) => (x > d.h[b] ? j : b), 0);
     const off = 100 * (px / d.h[hiIdx] - 1);
-    lines.push({ tone: off > -10 ? "up" : off > -25 ? "flat" : "down", k: "From the high", text: `${Math.abs(off).toFixed(1)}% below the high of ${fmt(d.h[hiIdx], 2)} (${new Date(d.t[hiIdx] * 1000).toLocaleDateString(undefined, { month: "short", year: "numeric" })}).` });
+    lines.push({ tone: off > -10 ? "up" : off > -25 ? "flat" : "down", k: "From the high", text: `${Math.abs(off).toFixed(1)}% below the high of ${fmt(d.h[hiIdx], 2)} (${new Date(d.t[hiIdx] * 1000).toLocaleDateString(undefined, d.tf === "h" ? { day: "numeric", month: "short" } : { month: "short", year: "numeric" })}).` });
     if (d.next) lines.push({ tone: d.next.days <= 7 ? "flat" : "up", k: "Next results", text: `${d.next.date} (in ${d.next.days} day${d.next.days === 1 ? "" : "s"})${d.next.days <= 7 ? ": expect a big move around that day." : "."}` });
     return lines;
   }
@@ -103,7 +103,8 @@
     const C = { up: css("--good"), down: css("--bad"), grid: css("--grid"), axis: css("--axis"), muted: css("--text-muted"),
       fast: "#ec835a", slow: "#f0efec", wave: "#3987e5", wave2: css("--series-7") || "#9085e9", mLine: "#3987e5", mSig: "#ec835a", warn: css("--warning") };
     const n = d.c.length;
-    const unit = d.tf === "w" ? "week" : "day";
+    const unit = d.tf === "w" ? "week" : d.tf === "h" ? "hour" : "day";
+    const hourly = d.tf === "h";
     const ind = { fast: ema(d.c, 21), slow: sma(d.c, 50), wt: waveTrend(d.h, d.l, d.c), md: macd(d.c) };
     ind.sig = waveSignals(ind.wt.wt1, ind.wt.wt2);
     const narrow = box.clientWidth < 520;
@@ -111,13 +112,14 @@
       <div class="dc-pane dc-wave"><span class="lw-tag">Momentum waves</span></div>
       <div class="dc-pane dc-macd"><span class="lw-tag">MACD 12 · 26 · 9</span></div>`;
     const day = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
-    const T = d.t.map(day);
+    const off = new Date().getTimezoneOffset() * 60; // hourly bars in the viewer's local time
+    const T = hourly ? d.t.map((ts) => ts - off) : d.t.map(day);
     const base = {
       autoSize: true,
       layout: { background: { type: "solid", color: "transparent" }, textColor: C.muted, fontFamily: css("--mono") || "monospace", fontSize: 11, attributionLogo: false },
       grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
       rightPriceScale: { borderColor: C.axis, minimumWidth: narrow ? 56 : 84 },
-      timeScale: { borderColor: C.axis, rightOffset: 3 },
+      timeScale: { borderColor: C.axis, rightOffset: 3, timeVisible: hourly, secondsVisible: false },
       crosshair: { mode: 0, vertLine: { color: "rgba(240,239,236,.35)", labelBackgroundColor: "#2c2c2a" }, horzLine: { color: "rgba(240,239,236,.35)", labelBackgroundColor: "#2c2c2a" } },
     };
     const sub = (el, fmtFn) => LW.createChart(el, Object.assign({}, base, { timeScale: Object.assign({}, base.timeScale, { visible: false }), localization: { priceFormatter: fmtFn } }));
@@ -139,7 +141,8 @@
       const ts = e.ts || Date.parse(e.date) / 1000;
       let j = -1;
       for (let k = 0; k < n; k++) { if (d.t[k] <= ts + 43200) j = k; else break; }
-      if (j >= 0 && (d.tf === "w" ? ts - d.t[j] < 8 * 86400 : ts - d.t[j] < 2 * 86400)) marks.push({ time: T[j], position: "belowBar", color: "#199e70", shape: "circle", text: "E" });
+      if (hourly) { j = d.t.findIndex((x) => x >= ts - 43200 && x < ts + 86400 + 43200); }
+      if (j >= 0 && (d.tf === "w" ? ts - d.t[j] < 8 * 86400 : hourly ? true : ts - d.t[j] < 2 * 86400)) marks.push({ time: T[j], position: "belowBar", color: "#199e70", shape: "circle", text: "E" });
     });
     marks.sort((a, b) => (a.time < b.time ? -1 : 1));
     if (marks.length) candles.setMarkers(marks);
@@ -166,7 +169,7 @@
     const showLeg = (i) => {
       if (i == null || i < 0 || i >= n) i = n - 1;
       const ch = i ? (d.c[i] / d.c[i - 1] - 1) * 100 : 0;
-      leg.innerHTML = `<span>${new Date(d.t[i] * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>` +
+      leg.innerHTML = `<span>${hourly ? new Date(d.t[i] * 1000).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : new Date(d.t[i] * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>` +
         `<span>C <b style="color:${ch >= 0 ? "var(--good-text)" : "var(--bad-text)"}">${fmt(d.c[i], 2)} (${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%)</b></span>` +
         `<span style="color:${C.fast}">EMA 21 <b>${fmt(ind.fast[i], 2)}</b></span><span>SMA 50 <b>${fmt(ind.slow[i], 2)}</b></span>` +
         (ind.wt.wt1[i] != null ? `<span>Waves <b>${ind.wt.wt1[i].toFixed(0)}</b></span>` : "");
@@ -178,7 +181,7 @@
       else subs.forEach((c) => { try { c.clearCrosshairPosition(); } catch (e) { /* ignore */ } });
     });
     showLeg(n - 1);
-    const show = Math.min(n, opts.bars || (d.tf === "w" ? 156 : 252));
+    const show = Math.min(n, opts.bars || (d.tf === "w" ? 156 : hourly ? 210 : 252));
     main.timeScale().setVisibleLogicalRange({ from: n - show - 0.5, to: n + 2 });
     return { reading: reading(d, ind, unit), destroy() { try { main.remove(); wave.remove(); mac.remove(); } catch (e) { /* ignore */ } } };
   }

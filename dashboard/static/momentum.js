@@ -152,7 +152,7 @@
       startHourly();
     });
     // opening a stock from here opens its Dig deeper chart too
-    $("#moRows").addEventListener("click", (e) => { if (e.target.closest("a[data-deep]")) { td.store.set("deepOpen", true); td.store.set("deepTf", tf === "w" ? "w" : "d"); } });
+    $("#moRows").addEventListener("click", (e) => { if (e.target.closest("a[data-deep]")) { td.store.set("deepOpen", true); td.store.set("deepTf", tf); } });
     const RFo = td.RF();
     RFo.mom = () => load(true);
     await load();
