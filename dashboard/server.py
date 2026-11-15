@@ -3803,6 +3803,162 @@ def company_figures(sym):
     return fa
 
 
+# ---------------------------------------------------------------- momentum waves scanner (WaveTrend 10/21 + MACD 12/26/9)
+
+MOM_TF = {  # Yahoo query, bars ahead used to judge past signals, unit name
+    "h": ("range=3mo&interval=1h", 35, "hour"),
+    "d": ("range=5y&interval=1d", 20, "day"),
+    "w": ("range=10y&interval=1wk", 13, "week"),
+}
+
+
+def _ema_n(xs, n):
+    """EMA that skips missing values and seeds with the first n values' average (same as the browser chart)."""
+    out, k, prev, acc = [None] * len(xs), 2.0 / (n + 1), None, []
+    for i, x in enumerate(xs):
+        if x is None:
+            continue
+        if prev is None:
+            acc.append(x)
+            if len(acc) == n:
+                prev = sum(acc) / n
+                out[i] = prev
+            continue
+        prev = x * k + prev * (1 - k)
+        out[i] = prev
+    return out
+
+
+def _sma_n(xs, n):
+    out, win = [None] * len(xs), []
+    for i, x in enumerate(xs):
+        if x is None:
+            continue
+        win.append(x)
+        if len(win) > n:
+            win.pop(0)
+        if len(win) == n:
+            out[i] = sum(win) / n
+    return out
+
+
+def wave_trend(h, l, c, n1=10, n2=21):
+    ap = [(a + b + x) / 3 for a, b, x in zip(h, l, c)]
+    esa = _ema_n(ap, n1)
+    dev = _ema_n([None if e is None else abs(x - e) for x, e in zip(ap, esa)], n1)
+    ci = [None if e is None or not d else (x - e) / (0.015 * d) for x, e, d in zip(ap, esa, dev)]
+    wt1 = _ema_n(ci, n2)
+    return wt1, _sma_n(wt1, 4)
+
+
+def wave_signals(wt1, wt2, lvl=53):
+    out = []
+    for i in range(1, len(wt1)):
+        a, b, pa, pb = wt1[i], wt2[i], wt1[i - 1], wt2[i - 1]
+        if None in (a, b, pa, pb):
+            continue
+        if pa <= pb and a > b and a < -lvl:
+            out.append((i, "buy"))
+        elif pa >= pb and a < b and a > lvl:
+            out.append((i, "sell"))
+    return out
+
+
+def _wave_state(c, h, l, ahead):
+    """Last-bar momentum picture plus how past green and red dots worked out on this stock."""
+    n = len(c)
+    wt1, wt2 = wave_trend(h, l, c)
+    sig = wave_signals(wt1, wt2)
+    e12, e26 = _ema_n(c, 12), _ema_n(c, 26)
+    md = [None if a is None or b is None else a - b for a, b in zip(e12, e26)]
+    ms = _ema_n(md, 9)
+    fast, slow = _ema_n(c, 21), _sma_n(c, 50)
+    i = n - 1
+    w1, w2 = wt1[i], wt2[i]
+    if w1 is None or w2 is None:
+        return None
+    last = sig[-1] if sig else None
+    ago = (i - last[0]) if last else None
+    up = w1 > w2
+    rising = wt1[i - 1] is not None and w1 > wt1[i - 1]
+    # the setup, in the order a long-term buyer cares about
+    if last and last[1] == "buy" and ago <= 5 and up:
+        setup = "fresh-buy"
+    elif w1 <= -53 and not up:
+        setup = "oversold-wait"
+    elif up and w1 < 0 and (wt1[i - 1] or 0) <= (wt2[i - 1] or 0) + 2:
+        setup = "turning-up"
+    elif up and w1 < 0:
+        setup = "rising-low"
+    elif last and last[1] == "sell" and ago <= 5:
+        setup = "fresh-sell"
+    elif w1 >= 53:
+        setup = "overbought"
+    elif not up and w1 > 0:
+        setup = "cooling"
+    else:
+        setup = "neutral"
+    trend = None
+    if fast[i] is not None and slow[i] is not None:
+        trend = "up" if c[i] > fast[i] and c[i] > slow[i] else "down" if c[i] < fast[i] and c[i] < slow[i] else "mixed"
+
+    def track(kind):
+        res = []
+        for j, k in sig:
+            if k == kind and j + ahead < n:
+                res.append(100 * (c[j + ahead] / c[j] - 1))
+        if not res:
+            return None
+        res.sort()
+        good = [x for x in res if (x > 0 if kind == "buy" else x < 0)]
+        return {"count": len(res), "worked": round(100 * len(good) / len(res)), "median": round(res[len(res) // 2], 1)}
+    return {
+        "wt1": round(w1, 1), "wt2": round(w2, 1), "up": up, "rising": rising, "setup": setup, "trend": trend,
+        "lastSignal": {"kind": last[1], "ago": ago, "level": round(wt1[last[0]], 1)} if last else None,
+        "macd": None if md[i] is None or ms[i] is None else {"above": md[i] > ms[i], "belowZero": md[i] < 0,
+                                                             "stronger": md[i - 1] is not None and ms[i - 1] is not None and abs(md[i] - ms[i]) > abs(md[i - 1] - ms[i - 1])},
+        "buyHistory": track("buy"), "sellHistory": track("sell"),
+        "spark": [None if x is None else round(x, 1) for x in wt1[-60:]],
+    }
+
+
+def momentum_one(sym, tf="d"):
+    q, ahead, unit = MOM_TF.get(tf, MOM_TF["d"])
+
+    def load():
+        res = _chart(sym, q, 300 if tf == "h" else 3600)
+        rows = _rows(res)
+        if len(rows) < 80:
+            return {"symbol": sym, "error": "not enough history"}
+        c, h, l = [r_[4] for r_ in rows], [r_[2] for r_ in rows], [r_[3] for r_ in rows]
+        st = _wave_state(c, h, l, ahead)
+        if not st:
+            return {"symbol": sym, "error": "not enough history"}
+        meta = res.get("meta") or {}
+        prev = meta.get("chartPreviousClose") if tf == "d" else None
+        st.update(symbol=sym, unit=unit, ahead=ahead, price=round(c[-1], 4), currency=meta.get("currency"),
+                  name=meta.get("longName") or meta.get("shortName"), at=rows[-1][0],
+                  changePct=round(100 * (c[-1] / c[-2] - 1), 2) if len(c) > 1 and c[-2] else None)
+        return st
+    try:
+        return cached(("momentum", sym, tf), 300 if tf == "h" else 1800, load)
+    except Exception as e:
+        return {"symbol": sym, "error": str(e)[:80]}
+
+
+def momentum_scan(symbols, tf="d"):
+    """One timeframe for every symbol, plus the weekly picture as a confirmation when scanning daily or hourly bars."""
+    syms = [x for x in dict.fromkeys(symbols) if x][:60]
+    main = list(POOL.map(lambda x: momentum_one(x, tf), syms))
+    if tf in ("d", "h"):
+        wk = dict(zip(syms, POOL.map(lambda x: momentum_one(x, "w"), syms)))
+        for r_ in main:
+            w = wk.get(r_["symbol"]) or {}
+            if not w.get("error"):
+                r_["weekly"] = {"setup": w["setup"], "up": w["up"], "wt1": w["wt1"], "trend": w["trend"]}
+    return {"tf": tf, "rows": main, "at": int(time.time())}
+
+
 # ---------------------------------------------------------------- "dig deeper" chart: long OHLCV history + earnings dates
 
 def deep_chart(symbol, tf="w"):
@@ -4416,6 +4572,9 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "lt" and k[1] in ss)
             elif path == "/api/ltentry":
                 purge(lambda k: k[0] in ("entry", "lt") and k[1] in one)
+            elif path == "/api/momentum":
+                ss = syms(q.get("symbols"))
+                purge(lambda k: (k[0] == "momentum" and k[1] in ss) or (k[0] == "chart" and k[1] in ss and "interval=1h" in str(k[2])))
             elif path == "/api/t212/dividends":
                 _divs["at"] = 0
             elif path == "/api/regime":
@@ -4538,6 +4697,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
         if path == "/api/ltentry":
             return self.send_json(lt_entry(q.get("symbol", "SPY")))
+        if path == "/api/momentum":
+            return self.send_json(momentum_scan(syms(q.get("symbols")), q.get("tf", "d") if q.get("tf") in ("h", "d", "w") else "d"))
         if path == "/api/deep":
             return self.send_json(deep_chart(q.get("symbol", "SPY"), q.get("tf", "w")))
         if path == "/api/keyperson":

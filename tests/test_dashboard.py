@@ -1367,3 +1367,35 @@ class RenamedTickers(unittest.TestCase):
         calls.clear()
         srv.live_symbol("OLD2", "not-an-isin", "Zed")
         self.assertFalse(any("not-an-isin" in c for c in calls))
+
+
+class MomentumWaves(unittest.TestCase):
+    def test_wave_trend_and_signals_on_a_cycle(self):
+        import math as m_
+        c = [100 + 10 * m_.sin(i / 8) for i in range(300)]
+        h, l = [x + 1 for x in c], [x - 1 for x in c]
+        wt1, wt2 = srv.wave_trend(h, l, c)
+        self.assertTrue(all(x is not None and abs(x) < 150 for x in wt1[80:]))
+        sig = srv.wave_signals(wt1, wt2)
+        self.assertTrue(sig)
+        for i, kind in sig:
+            self.assertTrue(wt1[i] < -53 if kind == "buy" else wt1[i] > 53)
+        st = srv._wave_state(c, h, l, 20)
+        self.assertIn(st["setup"], ("fresh-buy", "turning-up", "oversold-wait", "rising-low", "neutral", "cooling", "overbought", "fresh-sell"))
+        self.assertGreaterEqual(st["buyHistory"]["count"], 2)
+        self.assertEqual(len(st["spark"]), 60)
+
+    def test_ema_matches_the_browser_seed(self):
+        self.assertEqual(srv._ema_n([1, 2, 3, 4, 5], 3)[2:], [2.0, 3.0, 4.0])
+        self.assertEqual(srv._ema_n([None, 1, 2, 3], 3)[3], 2.0)
+        self.assertEqual(srv._sma_n([1, None, 3, 5], 2)[3], 4.0)
+
+    def test_scan_adds_weekly_and_reports_errors(self):
+        saved = srv.momentum_one
+        try:
+            srv.momentum_one = lambda s, tf="d": {"symbol": s, "error": "x"} if s == "BAD" else {"symbol": s, "setup": "fresh-buy" if tf == "d" else "rising-low", "up": True, "wt1": -40, "trend": "up"}
+            out = srv.momentum_scan(["AAA", "BAD", "AAA"], "d")
+            self.assertEqual([r["symbol"] for r in out["rows"]], ["AAA", "BAD"])
+            self.assertEqual(out["rows"][0]["weekly"]["setup"], "rising-low")
+        finally:
+            srv.momentum_one = saved

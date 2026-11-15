@@ -80,6 +80,17 @@ Four reviewers (long-term investing, trading and risk, visual design, mobile use
 - **Fixes**: positions already below their stop are flagged in the risk panel; the stock *Max* return compares from the same start date as the S&P 500; weak stocks say *Avoid*; swing backtests include 0.4% costs and buy-and-hold; Copy works on the iPhone; sparkline colours follow the day's change; one €1,200 monthly default.
 - **Clearer pages**: portfolio value first on the Dashboard; positions first on Portfolio; on stock pages (long-term mode) a verdict strip under the price, a full-width calm chart (price and 200-day average; tick *Trader view* for candles, volume and RSI), and Statistics / Earnings folded; plainer labels (*Good time to add*, *Keep buying as planned*, *Pricey: buy small*, *Gain so far*); compact market banner on the iPhone.
 
+## Momentum (menu: Find stocks → Momentum)
+
+Momentum waves (WaveTrend 10/21) and MACD (12/26/9) for your holdings and watchlist (or both), plus any ticker you add, on hourly,
+daily or weekly candles. Each stock gets a status (Green dot, Turning up, Rising, Oversold, Neutral, Cooling, Overbought, Red dot),
+when the last dot happened, the weekly picture as a confirmation, the MACD, a plain tip for a long-term buyer, and how past green dots
+worked out on that stock (how often it was higher 20 days, 13 weeks or 35 hours later, and the typical move; fewer than 5 past dots
+is flagged as too few to judge). Filters: buy moments, oversold (wait), overbought. Clicking a stock opens its page with **Dig deeper**
+already open. **Hourly check** (optional): every hour, while the dashboard is open in a browser tab, it looks for new daily or hourly
+green dots on your stocks and watchlist and shows a message (and a browser notification if you allow it). A guide explains how to use
+it for entries. Standard public indicators; not advice.
+
 ## Dig deeper (stock page)
 
 The **Dig deeper** button on the price chart opens a trader's chart below it, weekly (10 years) or daily (2 years):
