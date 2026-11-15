@@ -614,7 +614,8 @@
     try { a = await api("/api/analysis?symbol=" + encodeURIComponent(sym)); if (rid !== routeId) return; }
     catch (e) { if (rid !== routeId) return; view.innerHTML = `<div class="card empty"><h2>Couldn't load ${esc(sym)}</h2><p class="error">${esc(e.message)}</p><p>Try the search box: some tickers need an exchange suffix (e.g. VUSA.L for London, SAP.DE for Xetra).</p></div>`; return; }
     const t212 = state.t212 && !state.t212.error ? state.t212 : null;
-    const held = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
+    if (a.renamedFrom) { history.replaceState(null, "", "#/stock/" + encodeURIComponent(a.symbol)); toast(`${a.renamedFrom} now trades as ${a.symbol}`); }
+    const held = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol || p.oldSymbol === a.symbol);
     const p = a.plan;
     const ownVal = held ? (held.valueAcct || held.value || (held.qty || 0) * (a.price || 0)) : 0;
     const ownCcy = held && (held.valueAcct || held.value) ? ((state.t212 && state.t212.currency) || (state.revolut && state.revolut.currency) || a.currency) : a.currency;

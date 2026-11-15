@@ -1313,7 +1313,7 @@ def t212_try(*paths):
 SUFFIX = {"l": ".L", "d": ".DE", "p": ".PA", "a": ".AS", "m": ".MI", "e": ".MC", "s": ".SW", "b": ".BR"}
 
 
-def t212_to_yahoo(t):
+def _t212_base(t):
     m = re.match(r"^([A-Za-z0-9.]+?)_(US)_EQ$", t)
     if m:
         return m.group(1).replace(".", "-")
@@ -1321,6 +1321,67 @@ def t212_to_yahoo(t):
     if m:
         return m.group(1) + SUFFIX.get(m.group(2), "")
     return t.split("_")[0]
+
+
+def t212_to_yahoo(t):
+    base = _t212_base(t)
+    return RENAMED.get(base, base)
+
+
+# Brokers can keep a company's old ticker after a rename or a SPAC merger (IIVI -> COHR, CHAC -> XNDU): find the one that trades today
+RENAMED = {}
+KNOWN_RENAMES = {"IIVI": "COHR", "CHAC": "XNDU"}
+_RES_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+
+
+def _trades_now(sym):
+    """Yahoo has recent daily prices for this symbol."""
+    try:
+        res = _chart(sym, "range=1mo&interval=1d", 3600)
+    except Exception:
+        return False
+    last = (res.get("meta") or {}).get("regularMarketTime") or 0
+    return len(res.get("timestamp") or []) >= 3 and time.time() - last < 12 * 86400
+
+
+def live_symbol(sym, isin=None, name=None):
+    """The ticker Yahoo uses today for this holding: itself if it trades, else found by ISIN, old ticker or company name."""
+    def load():
+        if _trades_now(sym):
+            return sym
+        word = next((w for w in re.findall(r"[A-Za-z]{3,}", name or "") if w.lower() not in ("the", "inc", "corp", "plc", "ltd", "class")), None)
+        us = "." not in sym
+
+        def pick(q, need_word):
+            try:
+                d = yahoo("/v1/finance/search?q=%s&quotesCount=5&newsCount=0" % urllib.parse.quote(q))
+            except Exception:
+                return None
+            for qt in d.get("quotes") or []:
+                cand = qt.get("symbol")
+                if not cand or cand == sym or qt.get("quoteType") not in ("EQUITY", "ETF") or (us and "." in cand):
+                    continue
+                label = "%s %s %s" % (qt.get("longname") or "", qt.get("shortname") or "", qt.get("prevName") or "")
+                if need_word and not (word and re.search(r"\b%s\b" % re.escape(word), label, re.I)) and (qt.get("prevName") or "").upper() != sym:
+                    continue
+                if _trades_now(cand):
+                    return cand
+            return None
+        found = pick(isin, False) if isin and re.match(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$", isin) else None
+        if not found:
+            alt = KNOWN_RENAMES.get(sym)
+            found = alt if alt and _trades_now(alt) else None
+        found = found or pick(sym, True) or (pick(name, True) if name else None)
+        if found:
+            return found
+        return sym
+    try:
+        out = cached(("livesym", sym, isin or ""), 86400, load)
+    except Exception:
+        return sym
+    if out != sym:
+        RENAMED[sym] = out
+    return out
 
 
 def num(*xs):
@@ -1351,11 +1412,15 @@ def t212_portfolio():
             ppl = num(p.get("ppl"), wi.get("unrealizedProfitLoss"))
             value = num(wi.get("currentValue"))
             positions.append({
-                "t212": ticker, "symbol": t212_to_yahoo(ticker), "name": inst.get("name"),
+                "t212": ticker, "symbol": _t212_base(ticker), "isin": inst.get("isin"), "name": inst.get("name"),
                 "qty": qty, "avgPrice": avg, "price": cur, "ppl": ppl, "fxPpl": num(p.get("fxPpl")),
                 "value": value, "currency": inst.get("currency") or inst.get("currencyCode"),
                 "opened": p.get("initialFillDate") or p.get("createdAt"),
             })
+        # old tickers (renamed companies, merged SPACs) are swapped for the ones that trade today
+        for p_, live in zip(positions, _RES_POOL.map(lambda x: live_symbol(x["symbol"], x.get("isin"), x.get("name")), positions)):
+            if live != p_["symbol"]:
+                p_["oldSymbol"], p_["symbol"] = p_["symbol"], live
         cash_out = {
             "free": num(cash.get("free"), (cash.get("cash") or {}).get("availableToTrade")),
             "total": num(cash.get("total"), cash.get("totalValue")),
@@ -4427,7 +4492,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/quotes":
             return self.send_json(analyse_many(syms(q.get("symbols"))))
         if path == "/api/analysis":
-            return self.send_json(analyse(q.get("symbol", "SPY").upper(), with_series=True))
+            sym = q.get("symbol", "SPY").upper()
+            try:
+                return self.send_json(analyse(sym, with_series=True))
+            except Exception:
+                live = live_symbol(sym)  # an old ticker (renamed company, merged SPAC): show the one that trades today
+                if live == sym:
+                    raise
+                out = analyse(live, with_series=True)
+                out["renamedFrom"] = sym
+                return self.send_json(out)
         if path == "/api/screener":
             lst = q.get("list", "all")
             items = []

@@ -1331,3 +1331,39 @@ class T212Connect(unittest.TestCase):
         code, d = self._post({"key": "KEY1", "secret": "SEC1", "env": "live"}, ("nope", "x", "live"))
         self.assertEqual(code, 400)
         self.assertIn("IP restriction", d["error"])
+
+
+class RenamedTickers(unittest.TestCase):
+    def setUp(self):
+        self.saved = (srv._trades_now, srv.yahoo)
+        with srv._cache_lock:
+            for k in [k for k in srv._cache if k[0] == "livesym"]:
+                del srv._cache[k]
+        srv.RENAMED.clear()
+
+    def tearDown(self):
+        srv._trades_now, srv.yahoo = self.saved
+        srv.RENAMED.clear()
+
+    def test_old_tickers_map_to_the_live_ones(self):
+        live = {"COHR", "XNDU", "NVDA", "002557.SZ"}
+        srv._trades_now = lambda s: s in live
+        srv.yahoo = lambda path: {"quotes": [{"symbol": "002557.SZ", "quoteType": "EQUITY", "shortname": "CHACHA FOOD"}]} if "q=CHAC" in path else {"quotes": []}
+        self.assertEqual(srv.live_symbol("NVDA"), "NVDA")
+        self.assertEqual(srv.live_symbol("IIVI"), "COHR")
+        self.assertEqual(srv.live_symbol("CHAC", None, "Crane Harbor"), "XNDU")  # never the unrelated foreign listing
+        self.assertEqual(srv.t212_to_yahoo("IIVI_US_EQ"), "COHR")
+        self.assertEqual(srv.live_symbol("ZZZQ"), "ZZZQ")
+
+    def test_isin_search_is_used_and_validated(self):
+        srv._trades_now = lambda s: s in {"NEWCO"}
+        calls = []
+
+        def fake(path):
+            calls.append(path)
+            return {"quotes": [{"symbol": "NEWCO", "quoteType": "EQUITY", "shortname": "New Co"}]} if "US0000000001" in path else {"quotes": []}
+        srv.yahoo = fake
+        self.assertEqual(srv.live_symbol("OLDCO", "US0000000001", "Old Co"), "NEWCO")
+        calls.clear()
+        srv.live_symbol("OLD2", "not-an-isin", "Zed")
+        self.assertFalse(any("not-an-isin" in c for c in calls))
