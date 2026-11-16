@@ -1,0 +1,22 @@
+# Merge into ~/.codex/config.toml (or a trusted project's .codex/config.toml).
+# Requires a Codex client supporting MCP default_tools_approval_mode.
+# Set keys privately in the environment of the process that launches Codex.
+# This file contains no keys and must never be replaced with real credentials.
+[mcp_servers.alpaca]
+command = "uvx"
+args = ["alpaca-mcp-server"]
+env_vars = ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"]
+default_tools_approval_mode = "prompt"
+disabled_tools = [
+  "place_option_order",
+  "place_crypto_order",
+  "close_all_positions",
+  "cancel_all_orders",
+  "exercise_options_position",
+  "do_not_exercise_options_position",
+  "update_account_config",
+]
+
+[mcp_servers.alpaca.env]
+ALPACA_PAPER_TRADE = "true"
+ALPACA_TOOLSETS = "account,trading,stock-data"

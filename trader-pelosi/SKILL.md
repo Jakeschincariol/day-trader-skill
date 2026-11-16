@@ -11,7 +11,6 @@ description: >-
   Pelosi buying", "track Nancy Pelosi", "Congress trades", "politician stock
   trades", "did any congressman buy X", "alert me when Pelosi files", or
   "run the Pelosi skill".
-argument-hint: "[member name] [--read]"
 ---
 
 # trader-pelosi
@@ -29,8 +28,14 @@ information here: only public filings, read quickly. Say that every time.
 Tool in this folder (standard library Python; `pdftotext` from poppler is
 optional, to read the PDFs locally):
 
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
+
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" --help
+python3 "${SKILL_DIR}/ptr.py" --help
 ```
 
 ## What it reads and writes
@@ -60,9 +65,9 @@ python3 "${CLAUDE_SKILL_DIR}/ptr.py" --help
 ## Step 1: what has been filed
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" index --member pelosi
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" index --since 2026-10-01        # every member
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" index --member "Josh Gottheimer" --year 2025
+python3 "${SKILL_DIR}/ptr.py" index --member pelosi
+python3 "${SKILL_DIR}/ptr.py" index --since 2026-10-01        # every member
+python3 "${SKILL_DIR}/ptr.py" index --member "Josh Gottheimer" --year 2025
 ```
 
 `--member` takes a last name, "First Last" or "Last, First", and repeats.
@@ -71,7 +76,7 @@ python3 "${CLAUDE_SKILL_DIR}/ptr.py" index --member "Josh Gottheimer" --year 202
 ## Step 2: watch for new ones
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" new --member pelosi --read
+python3 "${SKILL_DIR}/ptr.py" new --member pelosi --read
 ```
 
 Shows only PTRs not seen at the last check (the first run shows the last 45
@@ -79,13 +84,14 @@ days), downloads and reads them with `--read`, and records them in the state
 file. Exit code 1 means nothing new. In January it also checks last year's
 index. The Clerk rebuilds the index file about once a day (the copy read on
 2026-10-13 was stamped 09:00 that morning), so checking every hour on weekdays
-is plenty: run it with `/loop 1h` or a scheduled task.
+is plenty. Run it on request, or use a scheduler the user explicitly
+configures for read-only checks. A single run does not keep monitoring.
 
 ## Step 3: read a report
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" fetch 20035143
-python3 "${CLAUDE_SKILL_DIR}/ptr.py" parse ptr.txt --filed 2026-08-21 --json
+python3 "${SKILL_DIR}/ptr.py" fetch 20035143
+python3 "${SKILL_DIR}/ptr.py" parse ptr.txt --filed 2026-08-21 --json
 ```
 
 `fetch` saves the PDF and, if `pdftotext` is installed, prints the rows. If it
@@ -110,10 +116,10 @@ estate LLC). Then: "This is a public disclosure filed 28 days after the trade.
 It says what Paul Pelosi bought in July, not what anyone will buy next."
 
 If the user wants to act on it, it goes the long way: a disclosure is weeks
-old, so it is a reason to look at a chart, not a setup. `/trader-scanner`
-and `/trader-entry` decide if there is a trade today; then shares only (the
-config has `allow_options: false`), sized by `/trader-budget`, checked by
-`/trader-risk`, placed by `/trader-broker` only after their yes.
+old, so it is a reason to look at a chart, not a setup. `$trader-scanner`
+and `$trader-entry` decide if there is a trade today; then shares only (the
+config has `allow_options: false`), sized by `$trader-budget`, checked by
+`$trader-risk`, placed by `$trader-broker` only after their yes.
 
 ## The Senate: the manual route
 
@@ -146,11 +152,11 @@ does not click it or automate it. The route:
 - Education and tooling, not financial advice. Nothing in this pack is a
   recommendation to buy or sell anything.
 - Paper trading by default (`"paper": true` in `trader/config.json`).
-- Nothing places an order except `/trader-broker`, and only after
-  `/trader-risk` passes AND the user types an explicit yes for that order in
-  the chat, AND the brokerage tool is set to "Needs approval" in Claude
-  (Customize > Connectors > tool permissions) so Claude's own "Allow once /
-  Deny" card appears too. Never "Always allow" an order tool.
+- Nothing places an order except `$trader-broker`, and only after
+  `$trader-risk` passes AND the user types an explicit yes for that order in
+  the chat, AND the user separately approves the exact broker tool call in Codex.
+  Use `default_tools_approval_mode = "prompt"` for the broker MCP server.
+  If separate tool approval cannot be enforced, stop at the ticket.
 - No options, margin, shorting or leverage unless the config allows it and
   the user confirms.
 - Congressional trades are PUBLIC disclosures filed up to 45 days after the

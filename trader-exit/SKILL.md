@@ -11,8 +11,7 @@ description: >-
   Budget Manager and Price Alerts. Long side only. Use when the user says
   "where's my stop", "set my stop and target", "plan the exit", "when do I get
   out", "stop loss", "what's my R", "risk reward", or right after
-  /trader-entry triggers, before /trader-timemachine.
-argument-hint: "[--stop or-mid|or-low|price:X|pct:X|atr:K] [--target 2R|1R|price:X]"
+  $trader-entry triggers, before $trader-timemachine.
 ---
 
 # trader-exit
@@ -24,14 +23,18 @@ anything in the middle of a fast move. A stop is a plan, not a guarantee: a
 gap or a fast market can fill past it. Day trading loses most people money,
 and a neat plan does not change that.
 
-`${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan                          # trader/entry.json: midpoint stop, 2R target
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop or-mid --target 1R --write
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop atr:1.5           # needs the session's bars (Yahoo or --offline)
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol TSLA --entry 364.18 --or-high 362.18 --or-low 354.47
-python3 "${CLAUDE_SKILL_DIR}/exit.py" show                          # the current trader/plan.json
+python3 "${SKILL_DIR}/exit.py" plan                          # trader/entry.json: midpoint stop, 2R target
+python3 "${SKILL_DIR}/exit.py" plan --stop or-mid --target 1R --write
+python3 "${SKILL_DIR}/exit.py" plan --stop atr:1.5           # needs the session's bars (Yahoo or --offline)
+python3 "${SKILL_DIR}/exit.py" plan --symbol TSLA --entry 364.18 --or-high 362.18 --or-low 354.47
+python3 "${SKILL_DIR}/exit.py" show                          # the current trader/plan.json
 ```
 
 Other flags: `--flat-by 15:55`, `--json`, `--now "2026-10-19 10:15"` (New
@@ -72,7 +75,7 @@ A level setup has no opening range to lean on, so it needs a stop you name.
 
 ## Steps
 
-1. Run it right after `/trader-entry` triggers. Before that, `--entry PRICE`
+1. Run it right after `$trader-entry` triggers. Before that, `--entry PRICE`
    plans ahead at the level you expect.
 2. Use the default stop for an opening-range breakout unless the user names
    another. A level setup needs one: ask.
@@ -81,10 +84,11 @@ A level setup has no opening range to lean on, so it needs a stop you name.
 4. If it refuses, say the reason and the fix (a wider stop, a farther
    target). Never loosen anything on your own.
 5. Say once that the stop is a plan, not a guarantee.
-6. Hand off to `/trader-timemachine` to replay the plan, then `/trader-budget`
-   to size it to the max loss per trade. Offer `/trader-alerts` for the stop,
-   the target and the flat-by time. Claude can keep `entry.py watch` running
-   in the background or on a `/loop` until a setup triggers, then come here.
+6. Hand off to `$trader-timemachine` to replay the plan, then `$trader-budget`
+   to size it to the max loss per trade. Offer `$trader-alerts` for the stop,
+   the target and the flat-by time. In an active session, a bounded
+   `entry.py watch` process can wait for a trigger before returning here.
+   Do not promise monitoring after the turn ends.
 
 ## Example: the reel
 
@@ -126,7 +130,8 @@ make a plan pass, and never calls a stop a guarantee.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+  user approved the exact broker tool call in Codex. Configure the broker MCP server with
+  `default_tools_approval_mode = "prompt"`; never bypass or auto-approve order calls.
+  If the client cannot require a separate tool approval, stop at the ticket and use the broker UI.
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- Broker keys live in environment variables forwarded by Codex MCP config, never in the chat.

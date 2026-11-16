@@ -9,8 +9,7 @@ description: >-
   analyst, deal, halt, regulatory, macro...) and never repeats one. Use when
   the user says "any news on TSLA", "why is this moving", "what's the news on
   my watchlist", "morning briefing", "pre-market news", "monitor the news",
-  "did anything break", "check the 8-Ks", or after /trader-scanner finds setups.
-argument-hint: "[tickers]"
+  "did anything break", "check the 8-Ks", or after $trader-scanner finds setups.
 ---
 
 # trader-news
@@ -23,10 +22,16 @@ headline and a move sit side by side.
 
 Tool in this folder (standard library Python, no keys):
 
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
+
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/news.py"                         # watchlist + plan + portfolio
-python3 "${CLAUDE_SKILL_DIR}/news.py" --tickers TSLA NVDA --hours 12
-python3 "${CLAUDE_SKILL_DIR}/news.py" --no-sec --json
+python3 "${SKILL_DIR}/news.py"                         # watchlist + plan + portfolio
+python3 "${SKILL_DIR}/news.py" --tickers TSLA NVDA --hours 12
+python3 "${SKILL_DIR}/news.py" --no-sec --json
 ```
 
 ## What it reads and writes
@@ -61,7 +66,7 @@ python3 "${CLAUDE_SKILL_DIR}/news.py" --no-sec --json
 
 ## Steps
 
-1. Run the check: `python3 "${CLAUDE_SKILL_DIR}/news.py"`. Exit code 1 means
+1. Run the check: `python3 "${SKILL_DIR}/news.py"`. Exit code 1 means
    nothing new. `--all` shows items already seen, `--json` gives everything
    machine readable, `--dry-run` leaves the state alone.
 2. Read the items that matter: every `!` filing, anything tagged earnings,
@@ -69,12 +74,13 @@ python3 "${CLAUDE_SKILL_DIR}/news.py" --no-sec --json
 3. Write a short brief, per ticker: what happened, the source and link, the
    move, and one line on why it matters to the setup (for example "earnings
    are this week: an overnight gap can jump past any stop").
-4. If a story changes the picture, say so before `/trader-entry` and
-   `/trader-exit`: an earnings date inside the trade, a halt, an offering.
+4. If a story changes the picture, say so before `$trader-entry` and
+   `$trader-exit`: an earnings date inside the trade, a halt, an offering.
    Never act on a headline alone.
 
-During the session: `/loop 15m /trader-news`, or a scheduled task each
-morning before the open.
+Run this check on request during the session. For recurring read-only checks,
+use a scheduler the user explicitly configures. A single check does not keep
+monitoring after the turn ends.
 
 ## Example: the reel
 
@@ -100,5 +106,5 @@ ticker has no news, say so rather than padding the brief.
 ## Safety
 
 Education and tooling, not financial advice. This skill only reads and
-reports. Nothing places an order except `/trader-broker`, after
-`/trader-risk` passes and the user types an explicit yes for that order.
+reports. Nothing places an order except `$trader-broker`, after
+`$trader-risk` passes and the user types an explicit yes for that order.

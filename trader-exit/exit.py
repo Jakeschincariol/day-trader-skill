@@ -540,7 +540,7 @@ def gather(a):
                 "or_high": a.or_high, "or_low": a.or_low, "or_minutes": a.or_minutes, "source": "flags"}
     else:
         path = a.from_path or "trader/entry.json"
-        doc = read_json(path, "entry (run /trader-entry first, or give --symbol and --entry)")
+        doc = read_json(path, "entry (run $trader-entry first, or give --symbol and --entry)")
         if str(doc.get("side") or "buy").lower() not in ("buy", "long"):
             raise PlanError("%s is a %s: v2 plans longs only" % (path, doc.get("side")))
         if doc.get("status") != "triggered" and a.entry is None:
@@ -668,7 +668,7 @@ def cmd_plan(a):
         print("Note: " + w)
     if a.write:
         print("Wrote %s." % a.write)
-    print("Next: /trader-timemachine replays it, then /trader-budget sizes it to your max loss. Nothing was placed.")
+    print("Next: $trader-timemachine replays it, then $trader-budget sizes it to your max loss. Nothing was placed.")
     return 0
 
 

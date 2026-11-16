@@ -532,7 +532,7 @@ class Cli(unittest.TestCase):
         self.assertIn("target first   29.4 %", text)
         self.assertIn("Close to a coin flip: target first 29.4 % vs stop first 25.5 %.", text)
         self.assertIn("Wrote %s." % self.out, text)
-        self.assertIn("/trader-budget", text)
+        self.assertIn("$trader-budget", text)
         with open(self.out) as fh:
             doc = json.load(fh)
         self.assertEqual(sorted(k for k in ("plan", "mc", "history") if k in doc), ["history", "mc", "plan"])

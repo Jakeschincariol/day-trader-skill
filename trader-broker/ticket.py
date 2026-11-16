@@ -5,7 +5,7 @@ This tool never talks to a broker and never places anything. It does its
 work around the one moment that matters, your yes:
 
   show      renders each proposed order as a plain-English ticket plus the
-            exact JSON Claude will send to Alpaca's place_stock_order tool.
+            exact JSON Codex will send to Alpaca's place_stock_order tool.
             A bracket order shows its stop-loss, take-profit and the max loss
             at the stop. An order is READY only if trader-risk passed THIS
             exact order today (matched by fingerprint) and nobody has decided
@@ -14,7 +14,7 @@ work around the one moment that matters, your yes:
             word. It refuses "yes to all", "sure", "ok", a yes that names a
             different stock or amount, and any order that is not READY.
   decline   records a no.
-  result    records what happened after the Allow once / Deny card:
+  result    records what happened after separate Codex tool approval:
             placed (with the broker's order id), denied, or failed.
   fill      records a fill in trader/portfolio.json (cash and shares).
   flatten   builds a sell ticket that closes a symbol's open position by
@@ -363,10 +363,10 @@ def render(order, idx, total, cfg, risk, state, today):
     for w in (rv or {}).get("warnings", []):
         lines.append("  note: " + w)
     if broker == "ibkr":
-        lines.append("  Claude drafts this with the Interactive Brokers connector. IBKR sends it to your")
+        lines.append("  With a verified Codex-compatible IBKR connection, draft this for your")
         lines.append("  IBKR account, and it only goes to the market after you approve it there.")
     else:
-        lines.append("  Claude will call place_stock_order with exactly:")
+        lines.append("  Codex will call place_stock_order with exactly:")
         for l in json.dumps(tool_input(order), indent=2).splitlines():
             lines.append("    " + l)
         if is_bracket(order):
@@ -375,7 +375,7 @@ def render(order, idx, total, cfg, risk, state, today):
     if ready:
         lines.append("  Reply \"yes\" to place this one order, or \"no\" to skip it.")
         if broker != "ibkr":
-            lines.append("  Claude's own card then asks again: Allow once places it, Deny stops it.")
+            lines.append("  Approve the exact broker tool call separately in Codex, or stop at this ticket.")
     return "\n".join(lines), ready
 
 
@@ -517,11 +517,11 @@ def cmd_approve(a):
     write_json(a.state, state)
     print("Recorded your yes for order %d: %s." % (a.index, plain(order)))
     if str(cfg.get("broker", "alpaca")).lower() == "ibkr":
-        print("Now draft it with the Interactive Brokers connector; approve it in your IBKR account.")
+        print("Use a verified Codex-compatible IBKR connection, or enter it manually; approve in IBKR.")
     else:
         print("Now call place_stock_order with exactly:")
         print(json.dumps(tool_input(order), indent=2))
-        print("Claude's card shows Allow once / Deny. Then: ticket.py result --index %d --status "
+        print("Require separate Codex tool approval. Then: ticket.py result --index %d --status "
               "placed|denied|failed" % a.index)
     return 0
 
@@ -624,7 +624,7 @@ def cmd_flatten(a):
     print("  2. ticket.py show, then the user's yes for this one order.")
     print("  3. If the bracket's stop-loss and take-profit are still open, Alpaca holds these shares for them")
     print("     and rejects a new sell. Cancel them first: get_orders (status open, nested true), then")
-    print("     cancel_order_by_id for each open leg (Needs approval). Then place_stock_order with the ticket.")
+    print("     cancel_order_by_id for each open leg (separate Codex tool approval required). Then place_stock_order with the ticket.")
     return 0
 
 
@@ -673,7 +673,7 @@ def main(argv=None):
     common(p)
     p.add_argument("--index", type=int, required=True)
     p.add_argument("--reply")
-    p = sub.add_parser("result", help="record what happened after the Allow once / Deny card")
+    p = sub.add_parser("result", help="record what happened after separate Codex tool approval")
     common(p)
     p.add_argument("--index", type=int, required=True)
     p.add_argument("--status", required=True, choices=["placed", "denied", "failed"])

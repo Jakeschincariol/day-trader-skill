@@ -930,7 +930,7 @@ def cmd_daily(a):
         print("  ... and %d more in the watchlist (--show N for more)." % (len(hits) - a.show))
     if not a.no_write:
         print("Wrote %s (mode daily, %d hit%s)." % (a.out, len(hits), "" if len(hits) == 1 else "s"))
-    print(NOTE + " Next: pick one chart, then /trader-news TICKER.")
+    print(NOTE + " Next: pick one chart, then $trader-news TICKER.")
     return 0 if hits else 1
 
 
@@ -1019,7 +1019,7 @@ def cmd_orb(a):
         print("No chart closed above its opening-range high by %s." % clock_label(cutoff))
     if not a.no_write:
         print("Wrote %s (mode orb, %d hit%s)." % (a.out, len(hits), "" if len(hits) == 1 else "s"))
-    print(NOTE + " Next: pick one chart, then /trader-news TICKER and /trader-entry TICKER.")
+    print(NOTE + " Next: pick one chart, then $trader-news TICKER and $trader-entry TICKER.")
     return 0 if hits else 1
 
 

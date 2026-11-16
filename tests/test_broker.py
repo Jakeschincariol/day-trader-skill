@@ -93,14 +93,23 @@ class TicketShape(unittest.TestCase):
         self.assertEqual(ticket.max_loss(no_plan), (None, 358.32))
 
 
-class DesktopConfig(unittest.TestCase):
-    def test_example_is_paper_with_placeholder_keys(self):
-        with open(os.path.join(ROOT, "trader-broker", "claude_desktop_config.example.json")) as fh:
-            server = json.load(fh)["mcpServers"]["alpaca"]
+class CodexConfig(unittest.TestCase):
+    def test_example_requires_approval_and_forwards_keys_for_paper_only(self):
+        try:
+            import tomllib
+        except ImportError:
+            self.skipTest("TOML parsing requires Python 3.11+; tools still support Python 3.8")
+        with open(os.path.join(ROOT, "trader-broker", "config.example.toml"), "rb") as fh:
+            server = tomllib.load(fh)["mcp_servers"]["alpaca"]
         self.assertEqual((server["command"], server["args"]), ("uvx", ["alpaca-mcp-server"]))
         self.assertEqual(server["env"]["ALPACA_PAPER_TRADE"], "true")
-        for k in ("ALPACA_API_KEY", "ALPACA_SECRET_KEY"):
-            self.assertIn("NEVER_IN_CHAT", server["env"][k])
+        self.assertEqual(server["default_tools_approval_mode"], "prompt")
+        self.assertEqual(server["env_vars"], ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"])
+        for key in server["env_vars"]:
+            self.assertNotIn(key, server["env"])
+        for tool in ("place_option_order", "place_crypto_order", "close_all_positions",
+                     "cancel_all_orders", "update_account_config"):
+            self.assertIn(tool, server["disabled_tools"])
 
 
 class Flow(unittest.TestCase):
@@ -152,7 +161,7 @@ class Flow(unittest.TestCase):
         self.assertIn('"stop_loss_stop_price": "358.32"', text)
         self.assertNotIn('"plan"', text)
         self.assertNotIn('"why"', text)
-        self.assertIn("Allow once", text)
+        self.assertIn("Approve the exact broker tool call separately in Codex", text)
 
         code, text, _ = run(self.args("approve", "--index", "1", "--reply", "sure"))
         self.assertEqual(code, 1)

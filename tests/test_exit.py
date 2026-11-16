@@ -169,7 +169,7 @@ class Cli(unittest.TestCase):
         self.assertIn("Reward:risk   1.0", text)
         self.assertIn("Flat by       15:55", text)
         self.assertIn("not a guarantee", text)
-        self.assertIn("/trader-timemachine", text)
+        self.assertIn("$trader-timemachine", text)
         self.assertNotIn("pro" + "fit", text.lower())   # never on screen
         code, text, _ = self.plan("--write")                       # the defaults: or-mid, 2R
         self.assertEqual(self.read_plan()["target"], 375.90)
@@ -280,7 +280,7 @@ class SkillDoc(unittest.TestCase):
         self.assertGreater(len(text.splitlines()), 60)
         self.assertEqual(text[text.index("## Safety"):], risk[risk.index("## Safety"):])
         low = " ".join(text.lower().split())
-        for must in ("before the entry", "a stop is a plan, not a guarantee", "day trading loses most people money", "/trader-timemachine", "/trader-budget", "longs only", "$358.32", "$370.04", "$5.86", "375.90", "too tight to survive the spread"):
+        for must in ("before the entry", "a stop is a plan, not a guarantee", "day trading loses most people money", "$trader-timemachine", "$trader-budget", "longs only", "$358.32", "$370.04", "$5.86", "375.90", "too tight to survive the spread"):
             self.assertIn(must, low)
         for never in ("\u2014", "tick " + "by tick", "real " + "time", "pro" + "fit"):
             self.assertNotIn(never, low)

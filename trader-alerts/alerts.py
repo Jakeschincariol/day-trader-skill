@@ -641,7 +641,8 @@ def cmd_add(a):
         _write(a.rules, doc)
         for r in new:
             print("Added %s: %s" % (r["id"], json.dumps(r)))
-        print("Run alerts.py check every few minutes while the trade is open (a scheduled task or /loop). "
+        print("Run alerts.py check every few minutes while the trade is open "
+              "(manual checks or a user-configured read-only scheduler). "
               "Free quotes are delayed; the broker's bracket orders are what actually stop you out.")
         return 0
     if a.opening_bell:

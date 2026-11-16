@@ -625,7 +625,7 @@ def describe(res):
             out.append("Nothing was placed.")
         else:
             out.append("This is the moment to get in, if you take the trade. Nothing was placed.")
-        out.append("Next: set the stop and target BEFORE you buy: /trader-exit "
+        out.append("Next: set the stop and target BEFORE you buy: $trader-exit "
                    "(exit.py plan --from trader/entry.json).")
     else:
         out.append("%s  %s." % (label, res["reason"]))
@@ -862,7 +862,7 @@ def cmd_watchlist(a):
     cfg = read_config(a.config)
     opts = _opts(a, cfg)
     if not os.path.exists(a.watchlist):
-        raise EntryError("no watchlist at %s: run /trader-scanner first (it writes the hits there)" % a.watchlist)
+        raise EntryError("no watchlist at %s: run $trader-scanner first (it writes the hits there)" % a.watchlist)
     try:
         with open(a.watchlist, encoding="utf-8") as fh:
             doc = json.load(fh)
@@ -906,7 +906,7 @@ def cmd_watchlist(a):
                 ("$%.2f" % last["close"]) if last else "-",
                 ("%+.2f%%" % last["vs_level_pct"]) if last.get("vs_level_pct") is not None else "-"))
         n = sum(1 for _, r, _ in rows if r and r["status"] == "triggered")
-        print("%d of %d triggered. Pick one, then: entry.py check <TICKER> --write, and /trader-exit." % (n, len(rows)))
+        print("%d of %d triggered. Pick one, then: entry.py check <TICKER> --write, and $trader-exit." % (n, len(rows)))
         print("Free Yahoo bars, unofficial and can lag. Nothing was placed.")
     return 0 if any(r and r["status"] == "triggered" for _, r, _ in rows) else 1
 

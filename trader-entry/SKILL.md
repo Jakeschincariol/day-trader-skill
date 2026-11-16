@@ -7,12 +7,11 @@ description: >-
   that CLOSES above the range high, or above a level you give it (like a
   20-day high from the scanner), with an optional volume check. Says waiting
   and how far, triggered with the time and the price, expired, or not open
-  yet, and writes trader/entry.json for /trader-exit. Long side only. It never
+  yet, and writes trader/entry.json for $trader-exit. Long side only. It never
   places an order. Use when the user says "tell me when to get in", "watch
   TSLA", "has it broken out", "did it break the opening range", "entry
-  signal", "time my entry", "check my watchlist", or after /trader-scanner
-  and /trader-news, before /trader-exit.
-argument-hint: "[TICKER] [--setup orb|level] [--interval 5m|1m]"
+  signal", "time my entry", "check my watchlist", or after $trader-scanner
+  and $trader-news, before $trader-exit.
 ---
 
 # trader-entry
@@ -24,15 +23,19 @@ CLOSES above it is. Then it says the time and the price, writes them down for
 the Exit Planner, and stops. It never buys anything. Day trading loses most
 people money, and a clean signal does not change that.
 
-`${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA                  # 15-minute opening range, 5-minute bars
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --write          # also save trader/entry.json
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --setup level --level 371.20
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --interval 1m --min-volume-x 1.5
-python3 "${CLAUDE_SKILL_DIR}/entry.py" watch TSLA --until 15:30    # one line per closed bar, stops on the trigger
-python3 "${CLAUDE_SKILL_DIR}/entry.py" watchlist                   # every hit in trader/watchlist.json
+python3 "${SKILL_DIR}/entry.py" check TSLA                  # 15-minute opening range, 5-minute bars
+python3 "${SKILL_DIR}/entry.py" check TSLA --write          # also save trader/entry.json
+python3 "${SKILL_DIR}/entry.py" check TSLA --setup level --level 371.20
+python3 "${SKILL_DIR}/entry.py" check TSLA --interval 1m --min-volume-x 1.5
+python3 "${SKILL_DIR}/entry.py" watch TSLA --until 15:30    # one line per closed bar, stops on the trigger
+python3 "${SKILL_DIR}/entry.py" watchlist                   # every hit in trader/watchlist.json
 ```
 
 Other flags: `--or-minutes N` (default 15), `--json`, `--offline FILE` (a
@@ -55,7 +58,7 @@ day bar by bar without waiting.
 - **Opening range (orb).** The high and low of the first 15 minutes: the
   9:30, 9:35 and 9:40 five-minute bars, or fifteen 1-minute bars. The level
   to beat is the range high.
-- **Level.** A price you give, like a 20-day high from `/trader-scanner`.
+- **Level.** A price you give, like a 20-day high from `$trader-scanner`.
 - **The trigger** is the first completed bar after the range that CLOSES
   above the level. A wick above is not a trigger. A close exactly at the
   level is not above it.
@@ -76,19 +79,20 @@ day bar by bar without waiting.
 ## Steps
 
 1. Get the symbol from the user, or run `entry.py watchlist` after
-   `/trader-scanner`. Check `/trader-news` for it first.
+   `$trader-scanner`. Check `$trader-news` for it first.
 2. Run `entry.py check SYMBOL`. Tell the user the status in one line:
    waiting and how far, triggered at what time and price, or expired.
-3. To wait for it, Claude can run `entry.py watch SYMBOL --until 15:30` in
-   the background, or `entry.py check SYMBOL --write` on a `/loop` every 5
-   minutes. `watch` wakes just after each bar closes, prints one line per
+3. To wait for it in an active session, run
+   `entry.py watch SYMBOL --until 15:30` as a bounded shell process, or run
+   `entry.py check SYMBOL --write` again on request. Do not promise that a
+   process survives the turn or a disconnected session. `watch` wakes just after each bar closes, prints one line per
    bar, and exits 0 on the trigger (it writes `trader/entry.json`) or 1 when
    the setup expires. Keep the computer awake while it watches: a sleeping
    laptop pauses it, and it catches up, late, when it wakes.
 4. When it triggers, say the time and the price, and that nothing was placed.
    If the trigger is more than a bar old, say that too: a late entry is a
    different trade.
-5. Hand off to `/trader-exit` to set the stop and the target BEFORE anything
+5. Hand off to `$trader-exit` to set the stop and the target BEFORE anything
    is bought.
 
 ## Example: the reel
@@ -108,7 +112,7 @@ TSLA  Mon 2026-10-19 10:15 ET  opening-range breakout (15-minute range) on 5-min
 Opening range 9:30-9:45: high $362.18, low $354.47 (3 of 3 bars).
 TRIGGERED 10:15 AM at $364.18: the 10:10 bar (bar 8) closed above the range high $362.18 (+0.55%).
 This is the moment to get in, if you take the trade. Nothing was placed.
-Next: set the stop and target BEFORE you buy: /trader-exit (exit.py plan --from trader/entry.json).
+Next: set the stop and target BEFORE you buy: $trader-exit (exit.py plan --from trader/entry.json).
 ```
 
 With `--min-volume-x 1` the 10:10 bar is too thin (0.60x the range's volume)
@@ -128,8 +132,8 @@ and the trigger moves to 10:35 AM at 365.75 (the 10:30 bar, 7.98x).
 ## What it never does
 
 It never places an order, never sizes a position, never sets the stop (that
-is `/trader-exit`), never moves the level after the fact, and never counts a
-bar that has not closed. It never runs `/trader-broker` from a background
+is `$trader-exit`), never moves the level after the fact, and never counts a
+bar that has not closed. It never runs `$trader-broker` from a background
 watch: nobody is there to say yes.
 
 ## Safety
@@ -138,7 +142,8 @@ watch: nobody is there to say yes.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+  user approved the exact broker tool call in Codex. Configure the broker MCP server with
+  `default_tools_approval_mode = "prompt"`; never bypass or auto-approve order calls.
+  If the client cannot require a separate tool approval, stop at the ticket and use the broker UI.
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- Broker keys live in environment variables forwarded by Codex MCP config, never in the chat.

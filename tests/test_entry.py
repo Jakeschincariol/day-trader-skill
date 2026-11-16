@@ -499,7 +499,7 @@ class Cli(unittest.TestCase):
         code, text, _ = run(["check", "TSLA", "--offline", TSLA, "--now", "2026-10-19 10:15", "--write"])
         self.assertEqual(code, 0)
         self.assertIn("TRIGGERED 10:15 AM at $364.18", text)
-        self.assertIn("/trader-exit", text)
+        self.assertIn("$trader-exit", text)
         with open(os.path.join("trader", "entry.json")) as fh:
             e = json.load(fh)
         want = {"created_by": "trader-entry", "symbol": "TSLA", "setup": "orb", "side": "buy", "date": "2026-10-19",
@@ -582,7 +582,7 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(text)[0]["result"]["status"], "waiting")
         code, _, err = run(["watchlist", "--watchlist", "missing.json"])
-        self.assertIn("run /trader-scanner first", err)
+        self.assertIn("run $trader-scanner first", err)
 
 
 class SkillDoc(unittest.TestCase):
@@ -595,7 +595,7 @@ class SkillDoc(unittest.TestCase):
         self.assertGreater(len(text.splitlines()), 60)
         self.assertEqual(text[text.index("## Safety"):], risk[risk.index("## Safety"):])
         low = " ".join(text.lower().split())
-        for must in ("bar by bar", "can lag", "day trading loses most people money", "/trader-exit", "longs only", "in the background", "/loop", "nothing was placed", "10:15 am", "$364.18", "bar 8"):
+        for must in ("bar by bar", "can lag", "day trading loses most people money", "$trader-exit", "longs only", "bounded shell process", "disconnected session", "nothing was placed", "10:15 am", "$364.18", "bar 8"):
             self.assertIn(must, low)
         for never in ("\u2014", "tick " + "by tick", "real " + "time", "pro" + "fit"):
             self.assertNotIn(never, low)

@@ -8,12 +8,11 @@ description: >-
   days, and re-runs the same rule on every past session. Prints the odds of
   target first, stop first, or neither by the close, where the price sits at
   the close, the average R, the history, and one honest verdict, then hands
-  off to /trader-budget. Use when the user says "run the time machine",
+  off to $trader-budget. Use when the user says "run the time machine",
   "replay this trade", "what are the odds", "simulate this trade", "monte
   carlo", "backtest this setup", "how often does this hit the target", "is
-  this a coin flip", or after /trader-exit writes a plan, before
-  /trader-budget.
-argument-hint: "[path to plan.json, or TICKER]"
+  this a coin flip", or after $trader-exit writes a plan, before
+  $trader-budget.
 ---
 
 # trader-timemachine
@@ -27,16 +26,20 @@ rule on every past session. It is a simulation built from the stock's own
 recent bars, not a prediction. Day trading loses most people money, and a
 good-looking replay does not change that.
 
-`${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run                    # trader/plan.json, 10,000 replays, seed 19
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --write            # also save trader/timemachine.json
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --until 15:55      # end each replay at your flat-by time
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --json
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" run --symbol TSLA --date 2026-10-19 \
+python3 "${SKILL_DIR}/timemachine.py" run                    # trader/plan.json, 10,000 replays, seed 19
+python3 "${SKILL_DIR}/timemachine.py" run --write            # also save trader/timemachine.json
+python3 "${SKILL_DIR}/timemachine.py" run --until 15:55      # end each replay at your flat-by time
+python3 "${SKILL_DIR}/timemachine.py" run --json
+python3 "${SKILL_DIR}/timemachine.py" run --symbol TSLA --date 2026-10-19 \
     --entry 364.18 --stop 358.32 --target 370.04 --entry-time "10:15 AM"
-python3 "${CLAUDE_SKILL_DIR}/timemachine.py" chart --from           # ASCII fan chart of the saved run
+python3 "${SKILL_DIR}/timemachine.py" chart --from           # ASCII fan chart of the saved run
 ```
 
 Other flags: `--replays N`, `--seed N` (default 19), `--window N` (default 2
@@ -98,7 +101,7 @@ grid). A live in-progress bar is never used.
 
 ## Steps
 
-1. Make sure `trader/plan.json` is today's plan from `/trader-exit`. If there
+1. Make sure `trader/plan.json` is today's plan from `$trader-exit`. If there
    is none, run that first, or pass the plan as flags.
 2. Run `timemachine.py run --write`. Add `--until 15:55` when the plan has a
    flat-by time, so "neither" means still open at the time you would get out.
@@ -109,8 +112,8 @@ grid). A live in-progress bar is never used.
    not dress it up. If the history and the replays disagree, say that too.
 5. Say once that this is built from the last 60 days and is not a prediction.
    Earnings, news and halts can do things those 60 days never did. Check
-   `/trader-news` for the stock before going on.
-6. If the user still wants the trade, hand off to `/trader-budget` to size it.
+   `$trader-news` for the stock before going on.
+6. If the user still wants the trade, hand off to `$trader-budget` to size it.
 
 ## Example: the reel
 
@@ -135,7 +138,7 @@ Close to a coin flip: target first 29.4 % vs stop first 25.5 %.
 At 1R the target has to come first in half of the replays that hit one
 side. It did in 53.6 %. The replays came out close to a coin flip, and the
 real history was slightly worse than even. That is the honest answer for this setup, and it is what
-the user should hear before `/trader-budget` sizes 8 shares.
+the user should hear before `$trader-budget` sizes 8 shares.
 
 ## Rules
 
@@ -162,7 +165,8 @@ into the pool.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+  user approved the exact broker tool call in Codex. Configure the broker MCP server with
+  `default_tools_approval_mode = "prompt"`; never bypass or auto-approve order calls.
+  If the client cannot require a separate tool approval, stop at the ticket and use the broker UI.
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- Broker keys live in environment variables forwarded by Codex MCP config, never in the chat.

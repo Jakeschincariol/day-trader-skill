@@ -11,7 +11,6 @@ description: >-
   changed this quarter", "is revenue growing", "check the 10-Q", "compare
   margins", "sum up the call", "does it report this week", or before trading
   a stock around its earnings.
-argument-hint: "[tickers]"
 ---
 
 # trader-analyst
@@ -24,8 +23,14 @@ trade: what did the last report say, and is the next one inside this trade?
 
 Tool in this folder (standard library Python, no keys):
 
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
+
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/facts.py" --help
+python3 "${SKILL_DIR}/facts.py" --help
 ```
 
 It needs the SEC User-Agent (`sec_user_agent` in `trader/config.json`, or
@@ -46,7 +51,7 @@ email. It refuses to call SEC without one.
 - Earnings calls: the tool does not fetch transcripts. If the user pastes one
   (or the company's IR page has it), read it and sum up what management said
   changed: guidance, margins, demand, anything they declined to answer.
-- The next report date is not in SEC data. Look for it in `/trader-news`
+- The next report date is not in SEC data. Look for it in `$trader-news`
   headlines or on the company's investor relations page, and say where it
   came from.
 
@@ -74,8 +79,8 @@ email. It refuses to call SEC without one.
    `trader/watchlist.json`):
 
    ```bash
-   python3 "${CLAUDE_SKILL_DIR}/facts.py" TSLA
-   python3 "${CLAUDE_SKILL_DIR}/facts.py" TSLA NVDA AMD --metrics trader/metrics.json
+   python3 "${SKILL_DIR}/facts.py" TSLA
+   python3 "${SKILL_DIR}/facts.py" TSLA NVDA AMD --metrics trader/metrics.json
    ```
 
    `--quarters 8` shows two years, `--json` everything machine-readable,
@@ -87,7 +92,7 @@ email. It refuses to call SEC without one.
    lags), and the links. Plain words, real numbers, no adjectives the numbers
    do not support.
 4. If the next report falls inside the planned trade (an overnight hold, or a
-   report before the open), say it before `/trader-exit` sets the stop: a stop
+   report before the open), say it before `$trader-exit` sets the stop: a stop
    does not protect against a gap, the stock can open past it.
 
 ## Example: the reel's stock
@@ -119,5 +124,5 @@ so the summary read that 10-Q directly.
 ## Safety
 
 Education and tooling, not financial advice. This skill only reads filings.
-Nothing places an order except `/trader-broker`, after `/trader-risk` passes
+Nothing places an order except `$trader-broker`, after `$trader-risk` passes
 and the user types an explicit yes for that order.

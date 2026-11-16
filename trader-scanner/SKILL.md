@@ -11,8 +11,7 @@ description: >-
   bar by bar. Use when the user says "scan the market", "find me setups",
   "what is breaking out", "opening range breakouts", "scan for bull flags",
   "oversold stocks", "pre-market scan", "build my watchlist", "what should I
-  look at today", or at the start of a trading day before /trader-news.
-argument-hint: "[universe | daily | orb] [--at HH:MM]"
+  look at today", or at the start of a trading day before $trader-news.
 ---
 
 # trader-scanner
@@ -24,15 +23,19 @@ setup on a chart is not a prediction. Most people who day trade lose money;
 the scanner does not change that. It only saves you from flipping through
 5,000 charts by hand.
 
-`${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                       # -> trader/universe.txt
-python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                          # before the open -> trader/watchlist.json
-python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols TSLA,NVDA,AMD  # or --watchlist FILE, --limit 200
-python3 "${CLAUDE_SKILL_DIR}/scan.py" orb                            # after 9:50 AM ET -> trader/watchlist.json
-python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --at 10:15                 # cut the clock at 10:15 AM ET
-python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --watchlist trader/watchlist.json --json
+python3 "${SKILL_DIR}/scan.py" universe                       # -> trader/universe.txt
+python3 "${SKILL_DIR}/scan.py" daily                          # before the open -> trader/watchlist.json
+python3 "${SKILL_DIR}/scan.py" daily --symbols TSLA,NVDA,AMD  # or --watchlist FILE, --limit 200
+python3 "${SKILL_DIR}/scan.py" orb                            # after 9:50 AM ET -> trader/watchlist.json
+python3 "${SKILL_DIR}/scan.py" orb --at 10:15                 # cut the clock at 10:15 AM ET
+python3 "${SKILL_DIR}/scan.py" orb --watchlist trader/watchlist.json --json
 ```
 
 Flags: `--min-price 5` and `--min-volume` (daily 1,000,000, orb 0),
@@ -148,13 +151,13 @@ are in the calendar.
 3. After 9:50 AM ET (10:15 is the classic): `scan.py orb`. Tell the user how
    many usable charts broke their range and when, and that a later hit is
    closer to the price now.
-4. The user picks one chart. Hand it on: `/trader-news TICKER` (what is moving
-   it), then `/trader-entry TICKER` (the entry bar by bar). Never pick for them.
+4. The user picks one chart. Hand it on: `$trader-news TICKER` (what is moving
+   it), then `$trader-entry TICKER` (the entry bar by bar). Never pick for them.
 
 ## Example: the reel
 
 Monday Oct 19 2026, scan at 10:15 AM over the reel's 234-ticker wall
-(`tests/fixtures/trader-scanner/wall5m-2026-10-19.json.gz`, real Yahoo charts):
+(`tests/fixtures$trader-scanner/wall5m-2026-10-19.json.gz`, real Yahoo charts):
 
 ```
 python3 scan.py orb --offline wall5m-2026-10-19.json.gz --now "2026-10-19 10:15" --min-price 0
@@ -168,8 +171,8 @@ Fetched 233 of 234 charts (1 failed or had no data); 231 usable; 95 candidates, 
 The reel's wall had no price floor (AMC at $2.97 is one of the 42), hence
 `--min-price 0`; with the default $5 floor it is 41. TSLA's range is the 9:30
 to 9:40 bars, high 362.18, low 354.47; the 10:10 bar closed at 364.18, 0.55 %
-over the high, at 10:15 AM. The user picks TSLA and Claude hands it to
-`/trader-news TSLA`, then `/trader-entry TSLA`. In the reel the universe was
+over the high, at 10:15 AM. The user picks TSLA and Codex hands it to
+`$trader-news TSLA`, then `$trader-entry TSLA`. In the reel the universe was
 5,259 US stocks; this tool's rule gives 5,943 on the same files.
 
 The pre-market scan that morning (closes through Fri Oct 16, the reel's daily
@@ -197,7 +200,8 @@ never calls data real time, and never promises that a setup works.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+  user approved the exact broker tool call in Codex. Configure the broker MCP server with
+  `default_tools_approval_mode = "prompt"`; never bypass or auto-approve order calls.
+  If the client cannot require a separate tool approval, stop at the ticket and use the broker UI.
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- Broker keys live in environment variables forwarded by Codex MCP config, never in the chat.

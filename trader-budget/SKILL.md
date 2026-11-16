@@ -10,9 +10,8 @@ description: >-
   too far away for your max loss is a plain refusal, not a smaller order.
   Nothing is placed. Use when the user says "how many shares", "size this
   trade", "how much should I buy", "I have $5,000", "I only want to risk $50
-  a trade", "set my rules", "keep 10% in cash", or after /trader-exit writes
+  a trade", "set my rules", "keep 10% in cash", or after $trader-exit writes
   a plan.
-argument-hint: "[budget in dollars]"
 ---
 
 # trader-budget
@@ -24,14 +23,18 @@ proposal only. trader-risk checks it and trader-broker asks the user yes or
 no. Day trading loses most people money. Sizing to a max loss keeps each
 loss small; it does not make a trade win.
 
-`${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+Resolve this SKILL.md file's directory to an absolute path and set `SKILL_DIR`
+to that path in each shell call below. `SKILL_DIR` is a shell variable you set,
+not a Codex-provided environment variable. Keep the working directory at the
+user's trading project so relative `trader/` files stay in that project.
+When calling another skill's tool, resolve that skill's directory separately.
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/size.py"                        # trader/plan.json + trader/config.json
-python3 "${CLAUDE_SKILL_DIR}/size.py" --write                # write trader/orders.json
-python3 "${CLAUDE_SKILL_DIR}/size.py" --limit --write        # a limit order at the plan's entry
-python3 "${CLAUDE_SKILL_DIR}/size.py" --limit 364.00 --json  # a limit order at 364.00
-python3 "${CLAUDE_SKILL_DIR}/size.py" --weights AAPL=40,KO=60 --config split.json   # weights mode, below
+python3 "${SKILL_DIR}/size.py"                        # trader/plan.json + trader/config.json
+python3 "${SKILL_DIR}/size.py" --write                # write trader/orders.json
+python3 "${SKILL_DIR}/size.py" --limit --write        # a limit order at the plan's entry
+python3 "${SKILL_DIR}/size.py" --limit 364.00 --json  # a limit order at 364.00
+python3 "${SKILL_DIR}/size.py" --weights AAPL=40,KO=60 --config split.json   # weights mode, below
 ```
 
 `--now "2026-10-19 10:15"` pins the clock (New York time). A plan for
@@ -66,7 +69,7 @@ If `trader/config.json` does not exist, copy `config.example.json` into
 ## Step 2: size the trade
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/size.py" --write
+python3 "${SKILL_DIR}/size.py" --write
 ```
 
 Whole shares only: Alpaca takes no fractions in a bracket order. The size is
@@ -95,7 +98,7 @@ the reason to the user in one line.
 Show the four limits, which one decided the size, the shares, the dollars
 and the max loss at the stop. Say plainly that a stop is an order, not a
 promise: in a fast market it can fill below the stop. Then hand over to
-`/trader-risk`.
+`$trader-risk`.
 
 ## Example: the reel
 
@@ -160,7 +163,8 @@ margin or short positions.
 - Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+  user approved the exact broker tool call in Codex. Configure the broker MCP server with
+  `default_tools_approval_mode = "prompt"`; never bypass or auto-approve order calls.
+  If the client cannot require a separate tool approval, stop at the ticket and use the broker UI.
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- Broker keys live in environment variables forwarded by Codex MCP config, never in the chat.

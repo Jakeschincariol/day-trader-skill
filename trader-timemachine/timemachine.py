@@ -515,7 +515,7 @@ def load_plan(a, now_utc):
         src = "flags"
     else:
         if not os.path.exists(a.plan):
-            raise TMError("no plan at %s: run /trader-exit first, or pass --symbol --date --entry --stop "
+            raise TMError("no plan at %s: run $trader-exit first, or pass --symbol --date --entry --stop "
                           "--target --entry-time" % a.plan)
         try:
             with open(a.plan, encoding="utf-8") as fh:
@@ -888,7 +888,7 @@ def cmd_run(a):
         print("\n".join(report(doc)))
         if a.write:
             print("Wrote %s." % a.write)
-        print("Next: /trader-budget sizes it to your budget and your max loss per trade.")
+        print("Next: $trader-budget sizes it to your budget and your max loss per trade.")
     return 0
 
 

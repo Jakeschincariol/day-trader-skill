@@ -506,7 +506,7 @@ def main(argv=None):
     else:
         watch = watch_from_files(args.portfolio, args.watchlist, args.plan)
     if not watch:
-        print("news: no tickers. Pass --tickers, or run /trader-scanner first (it writes "
+        print("news: no tickers. Pass --tickers, or run $trader-scanner first (it writes "
               "trader/watchlist.json).", file=sys.stderr)
         return 2
     now = parse_time(args.now) if args.now else _dt.datetime.now(_dt.timezone.utc)
