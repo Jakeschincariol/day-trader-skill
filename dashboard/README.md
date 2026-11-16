@@ -80,6 +80,15 @@ Four reviewers (long-term investing, trading and risk, visual design, mobile use
 - **Fixes**: positions already below their stop are flagged in the risk panel; the stock *Max* return compares from the same start date as the S&P 500; weak stocks say *Avoid*; swing backtests include 0.4% costs and buy-and-hold; Copy works on the iPhone; sparkline colours follow the day's change; one €1,200 monthly default.
 - **Clearer pages**: portfolio value first on the Dashboard; positions first on Portfolio; on stock pages (long-term mode) a verdict strip under the price, a full-width calm chart (price and 200-day average; tick *Trader view* for candles, volume and RSI), and Statistics / Earnings folded; plainer labels (*Good time to add*, *Keep buying as planned*, *Pricey: buy small*, *Gain so far*); compact market banner on the iPhone.
 
+## Rebalancing tracker (Portfolio page, long-term mode)
+
+Four parts with a target each (default AI build-out 35%, world and broad funds 40%, health care and biotech 20%, everything else 5%;
+edit the targets, they are saved in this browser). Holdings are sorted automatically: AI build-out by theme, health care by name or
+sector, world/broad funds by fund name (world, ACWI, Europe, emerging markets, S&P 500, factor funds; sector funds such as an energy
+ETF count as "everything else"). For each part: where you are now, the target, and how much of your monthly amount to put in.
+It shows how many months of buying get you to the target without selling (prices assumed flat, parts above target get nothing).
+Includes a list of UCITS ETF ideas per part, alternatives to VWCE included (Xetra tickers; FWRA in London).
+
 ## Momentum (menu: Find stocks → Momentum)
 
 Momentum waves (WaveTrend 10/21) and MACD (12/26/9) for your holdings and watchlist (or both), plus any ticker you add, on hourly,

@@ -929,3 +929,23 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
   .tabs.more-open a.hide-m[data-tab="momentum"] { bottom: calc(234px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 760px) { .mo-filter { display: flex; flex-wrap: wrap; } .mo-hourly .muted { font-size: 12.5px; } }
+
+/* ---------- rebalancing tracker */
+.rb-rows { display: grid; gap: 14px; }
+.rb-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 14px; }
+.rb-head .muted { font-size: 12.5px; }
+.rb-bar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-3); margin: 6px 0; }
+.rb-bar span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.rb-bar span.over { background: var(--bad); } .rb-bar span.under { background: var(--warning); } .rb-bar span.ok { background: var(--good); }
+.rb-bar i { position: absolute; top: -4px; width: 3px; height: 18px; margin-left: -1px; border-radius: 2px; background: var(--text-primary); }
+.rb-nums { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 13.5px; color: var(--text-secondary); }
+.rb-nums b { color: var(--text-primary); }
+.rb-nums input { width: 60px; margin: 0 4px; padding: 4px 6px; border-radius: 7px; border: 1px solid rgba(255,255,255,.22); background: var(--surface-2); color: var(--text-primary); text-align: right; }
+.rb-out { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+.rb-out b { color: var(--text-primary); }
+.rb-ideas { margin-top: 14px; }
+.rb-ideas summary { cursor: pointer; padding: 6px 0; }
+.rb-etfs { list-style: none; margin: 0; padding: 0; }
+.rb-etfs li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13.5px; color: var(--text-secondary); }
+.rb-etfs li a { font-family: var(--mono); font-weight: 600; }
+.rb-etfs li b { color: var(--text-primary); margin-right: 4px; }

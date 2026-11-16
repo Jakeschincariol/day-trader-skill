@@ -424,5 +424,125 @@
     });
   }
 
-  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, zoneBadge, bandBadge, cache };
+
+  // ------------------------------------------------------------ rebalancing tracker: target mix, where you are, months of buying to get there
+  const BUCKETS = [
+    { id: "ai", name: "AI build-out", hint: "chips, chip equipment, memory, optics, power for data centres" },
+    { id: "world", name: "World and broad funds", hint: "world, all-country, Europe, emerging markets, S&P 500 and factor funds" },
+    { id: "health", name: "Health care and biotech", hint: "pharma, medical devices, biotech (stocks or ETFs)" },
+    { id: "other", name: "Everything else", hint: "other stocks and sector funds (energy, staples...)" },
+  ];
+  const DEFAULT_TARGETS = { ai: 35, world: 40, health: 20, other: 5 };
+  const HEALTH_RE = /health|pharma|biotech|medical|life science|healthcare/i;
+  const BROAD_RE = /\b(world|all[- ]?world|all country|acwi|ftse all|msci europe|stoxx europe|europe 600|emerging|em imi|equal weight|small cap|quality factor|minimum volatility|high dividend)\b|s&p 500(?! (health|energy|information|tech|financ|consumer|utilit|industr|material|real estate|communication))/i;
+  const SECTOR_FUND_RE = /energy|information technology|technology|semiconductor|financials|utilities|consumer|industrials|materials|real estate|communication/i;
+
+  /** Which bucket a holding belongs to. */
+  function bucketOf(p, groupOf, lt, isFund) {
+    const name = (p.name || (p.q && p.q.name) || "") + " " + p.symbol;
+    if (groupOf(p.symbol) === "AI build-out") return "ai";
+    if (HEALTH_RE.test(name) || HEALTH_RE.test((lt && lt.sector) || "")) return "health";
+    if (isFund && BROAD_RE.test(name) && !SECTOR_FUND_RE.test(name.replace(/s&p 500/i, ""))) return "world";
+    return "other";
+  }
+
+  /** Months of new money (no selling) until every bucket is at or under its target, and how to split each month meanwhile.
+      values and targets are keyed by bucket; targets in % (any sum, normalised). Prices assumed flat. */
+  function rebalPlan(values, targets, monthly) {
+    const ids = Object.keys(targets);
+    const tsum = ids.reduce((a, k) => a + (+targets[k] || 0), 0) || 100;
+    const t = Object.fromEntries(ids.map((k) => [k, (+targets[k] || 0) / tsum]));
+    const V = ids.reduce((a, k) => a + (values[k] || 0), 0);
+    let months = 0;
+    if (monthly > 0) {
+      for (const k of ids) {
+        const v = values[k] || 0;
+        if (!v) continue;
+        if (t[k] <= 0) { months = Infinity; break; }
+        months = Math.max(months, Math.ceil(Math.max(0, (v / t[k] - V) / monthly)));
+      }
+    } else months = null;
+    const per = {};
+    if (months === null) ids.forEach((k) => (per[k] = 0));
+    else if (months === 0 || months === Infinity) ids.forEach((k) => (per[k] = monthly * t[k]));
+    else {
+      const end = V + months * monthly;
+      // parts already above their target get nothing until the others catch up
+      const need = Object.fromEntries(ids.map((k) => [k, (values[k] || 0) / V > t[k] ? 0 : Math.max(0, t[k] * end - (values[k] || 0))]));
+      const nsum = ids.reduce((a, k) => a + need[k], 0) || 1;
+      ids.forEach((k) => (per[k] = monthly * need[k] / nsum));
+    }
+    return { months, per, now: Object.fromEntries(ids.map((k) => [k, V ? 100 * (values[k] || 0) / V : 0])), target: Object.fromEntries(ids.map((k) => [k, 100 * t[k]])), total: V };
+  }
+
+  const ETF_IDEAS = [
+    { group: "Instead of VWCE (whole world in one fund)", items: [
+      ["EUNL.DE", "iShares Core MSCI World (Acc)", "23 developed countries, the most popular world fund in Europe. No emerging markets."],
+      ["XDWD.DE", "Xtrackers MSCI World 1C", "Same index as EUNL, usually a little cheaper."],
+      ["IUSQ.DE", "iShares MSCI ACWI (Acc)", "Developed and emerging markets, like VWCE."],
+      ["SPYI.DE", "SPDR MSCI ACWI IMI", "Like ACWI plus small companies: about 9,000 shares."],
+      ["FWRA.L", "Invesco FTSE All-World (Acc)", "Same index as VWCE from another provider (London, in USD)."],
+    ] },
+    { group: "Less US big tech (world funds are about 70% US and hold Nvidia too)", items: [
+      ["XDEW.DE", "Xtrackers S&P 500 Equal Weight", "The 500 US companies with the same weight each: Nvidia is 0.2%, not 7%."],
+      ["XSX6.DE", "Xtrackers Stoxx Europe 600", "600 European companies: banks, pharma, industry, consumer brands."],
+      ["IS3N.DE", "iShares Core MSCI EM IMI", "Emerging markets: India, China, Taiwan, Brazil..."],
+      ["ZPRV.DE", "SPDR MSCI USA Small Cap Value", "Small, cheaply valued US companies: moves very differently from mega caps."],
+    ] },
+    { group: "Steadier (fall less in sell-offs)", items: [
+      ["IQQ0.DE", "iShares MSCI World Minimum Volatility", "World shares chosen for smaller swings."],
+      ["IS3Q.DE", "iShares MSCI World Quality Factor", "Companies with high profits and low debt."],
+      ["VGWD.DE", "Vanguard FTSE All-World High Dividend", "Large dividend payers worldwide (pays out cash)."],
+      ["XDWS.DE", "Xtrackers MSCI World Consumer Staples", "Food, drinks, household products: people buy them in any economy."],
+      ["XDWU.DE", "Xtrackers MSCI World Utilities", "Electricity, gas and water companies."],
+    ] },
+    { group: "Health care and biotech", items: [
+      ["XDWH.DE", "Xtrackers MSCI World Health Care 1C", "Pharma and medical companies worldwide: the steady core of this part."],
+      ["QDVG.DE", "iShares S&P 500 Health Care Sector", "US health care only (sister fund of your QDVF)."],
+      ["2B70.DE", "iShares Nasdaq US Biotechnology", "Biotech: big swings, keep it the smaller part."],
+    ] },
+  ];
+
+  async function rebalance(el, positions, acct, lt) {
+    const td = T();
+    const L = await lookthrough().catch(() => null);
+    const val = (p) => p.valueAcct || p.mv || 0;
+    const ts = await themeShares(positions, positions.reduce((s, p) => s + val(p), 0)).catch(() => ({ groupOf: () => null }));
+    const isFund = (p) => !!(L && Object.values(L.indexes).some((v) => v.funds.includes(p.symbol))) || /ETF|FUND/i.test((p.q && p.q.type) || "") || /\bETF\b|UCITS/i.test(p.name || "");
+    const values = { ai: 0, world: 0, health: 0, other: 0 }, members = { ai: [], world: [], health: [], other: [] };
+    positions.forEach((p) => { const b = bucketOf(p, ts.groupOf, lt[p.symbol], isFund(p)); values[b] += val(p); if (!members[b].includes(p.symbol)) members[b].push(p.symbol); });
+    const ccy = (acct && acct.ccy) || td.settings().ccy || "EUR";
+    const draw = () => {
+      const targets = Object.assign({}, DEFAULT_TARGETS, td.store.get("rebalTargets", {}));
+      const monthly = +td.settings().monthly || 0;
+      const r = rebalPlan(values, targets, monthly);
+      const m0 = (x) => td.money(x, ccy).replace(/[.,]\d\d(?=\D*$)/, "");
+      const tsum = Object.values(targets).reduce((a, b) => a + (+b || 0), 0);
+      el.innerHTML = `<p class="muted" style="margin:0 0 12px;font-size:13.5px">Set the mix you want. New money goes to the parts that are below target, so you get there without selling (no tax, no bad timing).</p>
+        <div class="rb-rows">${BUCKETS.map((b) => {
+          const now = r.now[b.id], tg = r.target[b.id], over = now > tg + 2, under = now < tg - 2;
+          return `<div class="rb-row"><div class="rb-head"><b>${td.esc(b.name)}</b><span class="muted">${td.esc(members[b.id].join(", ") || b.hint)}</span></div>
+            <div class="rb-bar" title="now ${now.toFixed(0)}%, target ${tg.toFixed(0)}%"><span class="${over ? "over" : under ? "under" : "ok"}" style="width:${Math.min(100, now).toFixed(1)}%"></span><i style="left:${Math.min(100, tg).toFixed(1)}%"></i></div>
+            <div class="rb-nums"><span>now <b class="num">${now.toFixed(0)}%</b> (${m0(values[b.id])})</span>
+              <label>target <input type="number" min="0" max="100" step="5" data-b="${b.id}" value="${targets[b.id]}" aria-label="Target for ${td.esc(b.name)}">%</label>
+              <span>buy <b class="num">${monthly ? m0(r.per[b.id]) : "–"}</b>/month</span></div></div>`;
+        }).join("")}</div>
+        ${tsum !== 100 ? `<p class="muted" style="font-size:12.5px">Your targets add up to ${tsum}%: they are scaled to 100%.</p>` : ""}
+        <div class="rb-out">${!monthly ? `Set your monthly amount in the 10-year plan to see how long it takes.`
+          : r.months === 0 ? `<b>You are on target.</b> Split each month's ${m0(monthly)} by the targets above.`
+            : r.months === Infinity ? `A part with a 0% target can't shrink by buying alone: give it a small target, or sell it.`
+              : `<b>About ${r.months} month${r.months === 1 ? "" : "s"}</b> of buying (${(r.months / 12).toFixed(1)} years) at ${m0(monthly)} a month, if prices stay flat. Buy the amounts above each month and recheck here: rising AI stocks make it take longer, falling ones shorter.`}</div>
+        <details class="rb-ideas"><summary><b>ETF ideas for each part</b> <span class="muted">(UCITS, for European investors)</span></summary>
+          ${ETF_IDEAS.map((g) => `<h3 class="h3">${td.esc(g.group)}</h3><ul class="rb-etfs">${g.items.map(([sym, nm, why]) => `<li><a href="#/stock/${encodeURIComponent(sym)}">${td.esc(sym.replace(/\.(DE|L)$/, ""))}</a><span><b>${td.esc(nm)}</b> ${td.esc(why)}</span></li>`).join("")}</ul>`).join("")}
+          <p class="muted" style="font-size:12px">Tickers shown are Xetra listings (FWRA: London). Check the exact fund, fees and that Trading 212 offers it before buying. Ideas, not advice.</p></details>`;
+      $$("input[data-b]", el).forEach((inp) => inp.addEventListener("change", () => {
+        const t = Object.assign({}, DEFAULT_TARGETS, td.store.get("rebalTargets", {}));
+        t[inp.dataset.b] = Math.max(0, Math.min(100, +inp.value || 0));
+        td.store.set("rebalTargets", t); draw();
+      }));
+    };
+    draw();
+  }
+
+  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, rebalance, rebalPlan, bucketOf, zoneBadge, bandBadge, cache };
 })();
