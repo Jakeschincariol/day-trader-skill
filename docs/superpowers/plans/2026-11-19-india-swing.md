@@ -61,7 +61,7 @@ Remove the US pack, set up the package, and build the IST clock and holiday cale
   - `add_trading_days(d: date, n: int) -> date`, `trading_days_between(a: date, b: date) -> int` (a exclusive, b inclusive)
   - `last_final_bar_date(now: datetime) -> date` (today if trading day and now >= BAR_FINAL, else previous trading day)
   - `refresh_holidays(source) -> int` (writes holidays.json from `source.trading_holidays()`; returns count; CLI `python3 -m india.market refresh-holidays`)
-- `holidays.json` shape: `{"source": "...", "updated": "YYYY-MM-DD", "years": {"2026": {"2026-01-26": "Republic Day", ...}}}`. Seed it in this task with the 2026 NSE CM trading holidays; if the implementer cannot fetch them yet (Task 4 builds the refresher), seed only `2026-01-26` and `2026-08-15`... **no**: leave `years` empty and fill it in Task 4 Step 6 from the live NSE list. Tests use a fixture holiday file, not the shipped one.
+- `holidays.json` shape: `{"source": "...", "updated": "YYYY-MM-DD", "years": {"2026": {"2026-01-26": "Republic Day", ...}}}`. Ship it with `years` empty in this task; Task 4 Step 6 fills it from NSE's live list. Never hand-type dates. Tests use a fixture holiday file, not the shipped one.
 
 - [ ] **Step 1: Delete the US pack and rewrite `tests/_load.py`**
 
@@ -157,7 +157,7 @@ def test_tick_rounding(self):
     self.assertEqual(ticks.round_down(358.32), 358.30)        # 250-1000: 0.05
     self.assertEqual(ticks.round_up(358.32), 358.35)
     self.assertEqual(ticks.round_down(3296.17), 3296.10)      # 1000-5000: 0.10
-    self.assertEqual(ticks.round_up(7001.0), 7001.50)         # 5000-10000: 0.50
+    self.assertEqual(ticks.round_up(7001.2), 7001.50)         # 5000-10000: 0.50
     self.assertTrue(ticks.is_valid(3296.10)); self.assertFalse(ticks.is_valid(3296.15))
 
 def test_inr_grouping(self):
@@ -201,7 +201,7 @@ def test_delivery_charges(self):
   - `nse_delivery(f: Fetcher, d: date) -> Dict[str, float]` from `https://archives.nseindia.com/products/content/sec_bhavdata_full_DDMMYYYY.csv` (symbol -> DELIV_PER for series EQ; `{}` on 404)
 - `india.config`: `load(trader_dir: str) -> Dict` (merges `trader/config.json` over `DEFAULTS` holding every default in Global Constraints, keys: `capital, cash, risk_per_trade_pct, max_position_pct, cash_buffer_pct, min_order, min_reward_risk, max_open_positions, max_heat_pct, max_hold_days, stop_method, target, entry_style, entry_limit_buffer_pct, gtt_slippage_pct, min_price, min_traded_value, include_be, block_bands, warn_bands, block_on_results, blocked, tick_schedule, charges`); `trader_path(trader_dir, name) -> str` (creates parent dirs).
 
-- [ ] **Step 1: Write `tests/capture_fixtures.py`** (argparse `--date 2026-11-18`): downloads the files listed above with `india.data.Fetcher(cache_dir=None)`, trims CSVs to the header plus rows for the 20 fixture symbols, gzips JSON. The 20 symbols: `TCS, M&M, IDEA, RELIANCE, INFY, HDFCBANK, ICICIBANK, SBIN, ITC, LT, BAJAJ-AUTO, TATAMOTORS, SUZLON, YESBANK, IRFC, ZOMATO, ADANIENT, BHARTIARTL, SUNPHARMA, TITAN` (replace any that Yahoo no longer serves and note it in the script). Pin `--range 5y` for the four detailed stocks. Confirm at least one of them closed under ₹250 on the capture date (for the 0.01 tick) and print a warning otherwise.
+- [ ] **Step 1: Write `tests/capture_fixtures.py`** (argparse `--date 2026-11-18`): downloads the files listed above with `india.data.Fetcher(cache_dir=None)`, trims CSVs to the header plus rows for the 20 fixture symbols, gzips JSON. The 20 symbols: `TCS, M&M, IDEA, RELIANCE, INFY, HDFCBANK, ICICIBANK, SBIN, ITC, LT, BAJAJ-AUTO, TATASTEEL, SUZLON, YESBANK, IRFC, ETERNAL, ADANIENT, BHARTIARTL, SUNPHARMA, TITAN` (replace any that Yahoo no longer serves and note it in the script). Pin `--range 5y` for the four detailed stocks. Confirm at least one of them closed under ₹250 on the capture date (for the 0.01 tick) and print a warning otherwise.
 
 - [ ] **Step 2: Write failing tests** (`test_india_data.py`, offline only)
 
@@ -318,8 +318,11 @@ def test_refresh_holidays_writes_file(self):
 - [ ] **Step 1: Write failing tests**
 
 ```python
-def test_rsi_matches_known_series(self):   # 14-period Wilder on a fixed 30-close list; expected values computed once by hand/spreadsheet and pasted
-    ...
+def test_rsi_edges(self):
+    self.assertEqual(ind.rsi_wilder([float(x) for x in range(1, 31)])[-1], 100.0)   # only gains
+    self.assertIsNone(ind.rsi_wilder([1.0] * 10)[-1])                                # under 15 closes
+    alt = [100.0 + (1 if k % 2 else -1) for k in range(60)]
+    self.assertAlmostEqual(ind.rsi_wilder(alt)[-1], 50.0, delta=3)
 def test_breakout_20d_level(self):
     bars = flat_bars(20, c=100) + [bar(c=101, h=102)]
     self.assertEqual(ind.setups_at(bars, 20)["breakout_20d"], 100)
@@ -457,7 +460,7 @@ def test_run_offline_pinned_numbers(self): ...       # plan fixture on TCS, n=10
 - `size.py [--write] [--json]` -> `orders.json`: `{"as_of", "proposals": [{"id": "<symbol>-<entry_date>", "symbol", "exchange", "product": "CNC", "side": "BUY", "qty", "entry_style", "entry_price", "entry_trigger" (sl-buy only), "valid_for", "gtt": {"type": "OCO", "stop_trigger", "stop_limit", "target_trigger", "target_limit"}, "risk_at_stop", "charges_est", "reward_risk", "time_stop_date", "setup"}]}`.
 - `config.example.json`: every key of `india.config.DEFAULTS` with `"capital": 500000`.
 
-- [ ] **Step 1: Write failing tests**: `test_risk_decides` (capital 500000, 1%, entry 3412.40, stop 3296.10 -> qty 42, decided_by "risk"), `test_position_cap_decides`, `test_cash_after_open_positions`, `test_refuses_when_one_share_breaks_risk`, `test_charges_included`, `test_orders_json_shape` (all GTT prices valid ticks).
+- [ ] **Step 1: Write failing tests**: `test_risk_decides` (capital 500000, 1%, entry 3412.40, stop 3100.00 -> qty 16, decided_by "risk"), `test_position_cap_decides` (stop 3296.10: risk allows 42, the 20% cap allows 29 -> qty 29, decided_by "position cap"), `test_cash_after_open_positions`, `test_refuses_when_one_share_breaks_risk`, `test_charges_included`, `test_orders_json_shape` (all GTT prices valid ticks).
 - [ ] **Step 2: Run, expect FAIL**; **Step 3:** implement; **Step 4:** SKILL.md (next `/swing-risk`)
 - [ ] **Step 5: Run, expect PASS**; **Step 6: Commit** `git commit -m "swing-budget: rupee sizing with charges and GTT OCO proposal"`
 
@@ -488,10 +491,10 @@ def test_run_offline_pinned_numbers(self): ...       # plan fixture on TCS, n=10
 - Consumes: `orders.json`, `state/risk.json` (only proposals whose current fingerprint has PASS or WARN verdict today are shown; WARN shows its reasons above the card).
 - `render(proposal: Dict, verdict: Dict) -> str`, exact layout:
   ```
-  BUY TCS (NSE) · CNC · 42 shares · LIMIT ₹3,412.40 · valid 2026-11-19
+  BUY TCS (NSE) · CNC · 29 shares · LIMIT ₹3,412.40 · valid 2026-11-19
   GTT OCO  stop trigger ₹3,296.10 / limit ₹3,263.10
            target trigger ₹3,645.00 / limit ₹3,645.00
-  Risk at stop ₹4,884.60 + charges ~₹<x> · R:R 2.0 · time stop 2026-12-10
+  Risk at stop ₹3,372.70 + charges ~₹<x> · R:R 2.0 · time stop 2026-12-10
   Place the GTT after the buy fills: most brokers need the shares in your holdings first.
   ```
   (SL-buy style prints `SL-BUY trigger ₹X / limit ₹Y` in place of `LIMIT ₹X`.)
@@ -547,7 +550,7 @@ def test_run_offline_pinned_numbers(self): ...       # plan fixture on TCS, n=10
 **Interfaces:**
 - `SKILLS = ["swing-scanner", "swing-news", "swing-entry", "swing-exit", "swing-timemachine", "swing-budget", "swing-risk", "swing-card", "swing-alerts"]`
 - `ABOUT = "9 Claude skills for swing trading Indian stocks: scan NSE charts, track news and results, plan entry, stop and target, replay the odds, size in rupees, and print a trade card you place yourself."`
-- Plugin `name`: `"india-swing-skill"`, `skills: "./"`, author Ibrahim Hassan with `url` `https://github.com/Ibrahimhass`, credit line to the original in `description`? No: keep `description` = `ABOUT`; credit goes in README.
+- Plugin `name`: `"india-swing-skill"`, `skills: "./"`, `description` = `ABOUT`, author `{"name": "Ibrahim Hassan", "url": "https://github.com/Ibrahimhass"}`, homepage/repository `https://github.com/Ibrahimhass/day-trader-skill`. Credit to the original author goes in the README.
 
 - [ ] **Step 1: Write failing `tests/test_repo.py`** (adapt `git show 3d0f4ef:tests/test_repo.py`): nine skill folders; root entries exactly `.claude-plugin, .gitignore, LICENSE, README.md, docs, india, requirements-nse.txt, tests` + SKILLS; frontmatter checks; every SKILL.md contains "not financial advice" and "never places"; manifests match `ABOUT` and names; README starts `# India Swing skill`, contains `ABOUT`, every `/swing-*`, `## Fine print`, `pip install -r requirements-nse.txt`, and copy-install instructions that copy `india/` too (`cp -r india swing-* ~/.claude/skills/`); no em dashes outside fixtures; Python 3.8 check over `india/*.py` and every skill script; no file under `india/` or `swing-*` except `india/nse_source.py` contains `import nse` or `from nse`; `config.example.json` keys equal `india.config.DEFAULTS` keys.
 - [ ] **Step 2: Run, expect FAIL**
