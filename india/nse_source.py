@@ -99,6 +99,8 @@ class NseSource:
             rows = self._call("board_meetings", symbol=sym, from_date=start, to_date=end) or []
             dates = set()
             for r in rows:
+                if r.get("bm_symbol") not in (None, sym):
+                    continue
                 text = ("%s %s" % (r.get("bm_purpose", ""), r.get("bm_desc", ""))).lower()
                 iso = _iso(r.get("bm_date", ""))
                 if "financial result" in text and iso and start.isoformat() <= iso <= end.isoformat():
@@ -113,6 +115,8 @@ class NseSource:
             rows = self._call("actions", symbol=sym, from_date=start, to_date=end) or []
             acts = []
             for r in rows:
+                if r.get("symbol") not in (None, sym):
+                    continue
                 iso = _iso(r.get("exDate", ""))
                 if iso and start.isoformat() <= iso <= end.isoformat():
                     acts.append({"ex_date": iso, "purpose": str(r.get("subject", "")).strip()})
