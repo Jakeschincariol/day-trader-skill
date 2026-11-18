@@ -19,3 +19,9 @@ def load(folder, name):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+# the 20 NSE stocks the offline fixtures were cut from (tests/capture_fixtures.py)
+FIXTURE_SYMBOLS = ["TCS", "M&M", "IDEA", "RELIANCE", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "ITC", "LT",
+                   "BAJAJ-AUTO", "TATASTEEL", "SUZLON", "YESBANK", "IRFC", "ETERNAL", "ADANIENT",
+                   "BHARTIARTL", "SUNPHARMA", "TITAN"]
+FIXTURE_DATE = "2026-11-18"
