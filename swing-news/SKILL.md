@@ -25,7 +25,7 @@ watchlist, and shows only what is new. The most useful line it prints is
 often UPCOMING: a results date inside the planned hold changes the trade
 more than any headline.
 
-This is not financial advice, and nothing in this pack ever places an
+This is not financial advice, and this pack never places an
 order. A headline is not a signal.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).

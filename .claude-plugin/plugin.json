@@ -1,22 +1,24 @@
 {
-  "name": "day-trader-skill",
-  "description": "11 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay every outcome before you risk a dollar.",
-  "version": "2.0.0",
+  "name": "india-swing-skill",
+  "description": "9 Claude skills for swing trading Indian stocks: scan NSE charts, track news and results, plan entry, stop and target, replay the odds, size in rupees, and print a trade card you place yourself.",
+  "version": "1.0.0",
   "author": {
-    "name": "Jake Schincariol",
-    "url": "https://opusjake.ai"
+    "name": "Ibrahim Hassan",
+    "url": "https://github.com/Ibrahimhass"
   },
-  "homepage": "https://github.com/Jakeschincariol/day-trader-skill",
-  "repository": "https://github.com/Jakeschincariol/day-trader-skill",
+  "homepage": "https://github.com/Ibrahimhass/day-trader-skill",
+  "repository": "https://github.com/Ibrahimhass/day-trader-skill",
   "license": "MIT",
   "keywords": [
     "claude-code",
     "claude-skills",
-    "day-trading",
+    "swing-trading",
+    "nse",
+    "bse",
+    "india",
     "stock-market",
     "backtesting",
-    "opening-range-breakout",
-    "paper-trading"
+    "gtt"
   ],
   "skills": "./"
 }

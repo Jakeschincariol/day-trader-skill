@@ -25,7 +25,7 @@ stop decides the size: the further away the stop, the fewer shares. It
 writes a proposal only. swing-risk checks it, and swing-card prints it for
 the user to place themselves.
 
-This is not financial advice, and nothing here ever places an order. Sizing
+This is not financial advice, and this pack never places an order. Sizing
 to a max loss keeps each loss small; it does not make a trade win.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).

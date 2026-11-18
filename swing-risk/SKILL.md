@@ -26,7 +26,7 @@ that proposal: swing-card will not show it, and Claude does not help place
 it. Most people who trade actively lose money. These limits keep each loss,
 and the sum of open losses, small. They do not make a trade win.
 
-This is not financial advice, and nothing in this pack ever places an
+This is not financial advice, and this pack never places an
 order: the user places every order themselves, after they decide yes.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).

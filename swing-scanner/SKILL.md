@@ -25,7 +25,7 @@ and a setup on a chart is not a prediction. Most people who trade actively
 lose money; the scanner does not change that. It only saves you from flipping
 through 2,000 charts by hand.
 
-This is not financial advice. Nothing in this pack ever places an order: the
+This is not financial advice. This pack never places an order: the
 pack ends in a trade card the user types into their own broker, and only
 after they decide yes.
 

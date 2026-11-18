@@ -27,7 +27,7 @@ first, or neither? It answers with 10,000 replays and with the real record
 of the same setup on the same stock.
 
 It is a simulation built from the stock's own past, not a prediction. This
-is not financial advice, and nothing here places an order. A good-looking
+is not financial advice, and this pack never places an order. A good-looking
 replay does not make a trade win; most active traders lose money.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).

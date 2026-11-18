@@ -23,7 +23,7 @@ a chart for three weeks. It checks once a day, after the close, because a
 swing plan lives on daily closes and the GTT at the broker does the actual
 selling.
 
-An alert is information, never an order. Nothing in this pack ever places,
+An alert is information, never an order. This pack never places,
 changes or cancels an order. This is not financial advice.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
