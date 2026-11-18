@@ -97,6 +97,7 @@ class Cli(unittest.TestCase):
         self.assertLess(saved["stop"], saved["entry"])
         self.assertEqual(saved["reward_risk"], 2.0)
         self.assertEqual(saved["max_hold_days"], 15)
+        self.assertEqual((saved["stop_method"], saved["target_spec"]), ("swing-low", "2R"))
 
     def test_plan_refuses_without_entry(self):
         code, p = self.cli(exit_, ["plan"])

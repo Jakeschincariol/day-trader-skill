@@ -42,7 +42,8 @@ def make_plan(ctx, ent, entry_price, stop_method, target_spec, max_hold):
     risk = round(entry_price - stop, 2)
     return {"symbol": s.code, "exchange": s.exchange, "setup": ent.get("setup", "level"),
             "entry": entry_price, "entry_style": order.get("style", "limit"), "entry_trigger": order.get("trigger"),
-            "entry_date": entry_date, "stop": stop, "stop_how": how,
+            "entry_date": entry_date, "stop": stop, "stop_how": how, "stop_method": stop_method,
+            "target_spec": target_spec,
             "gtt_stop_limit": levels.gtt_stop_limit(stop, float(ctx.cfg["gtt_slippage_pct"]), sched),
             "target": target, "risk_per_share": risk, "reward_risk": round((target - entry_price) / risk, 2),
             "max_hold_days": max_hold,
