@@ -291,10 +291,32 @@ credit the original author.
 - Build order: `india/` + tests, then scanner, exit, entry, timemachine,
   budget, risk, card, alerts, news, README.
 
-## Open questions (for the user)
+## NSE API access (decided by the user)
 
-1. **NSE results calendar and corporate announcements** come from
-   `www.nseindia.com/api/...`, which requires fetching the homepage first to
-   get a cookie and then calling the JSON API with a browser-like
-   User-Agent. Is that acceptable to you? If not, results dates come from a
-   file you maintain (`trader/results.json`) and news uses RSS only.
+The user chose the `nse` package (PyPI `nse`, BennyThadikaran/NseIndiaApi,
+GPL-3.0, pinned `nse==5.2.0`; needs `httpx` and `pyrate-limiter`) for the
+data only NSE's site API has. It handles NSE's cookie session and rate limit.
+
+- **Optional dependency.** All tools run on the standard library alone
+  (Yahoo + `archives.nseindia.com` static files). With `nse` installed they
+  add the features below; without it they say what is missing and carry on.
+  The "Python standard library only" goal applies to the core; the
+  `requirements-nse.txt` file lists the pin.
+- **Isolated in `india/nse_source.py`.** Only this file imports `nse`; every
+  call is wrapped, cached under `trader/cache/nse/`, and has an offline
+  fixture for tests. The rest of the pack never imports `nse`. Not vendored
+  (the repo stays MIT; the GPL package is installed by the user).
+- **Uses:**
+  - `holidays(type="trading")` -> refreshes `india/holidays.json` (`CM`
+    segment) via `python3 -m india.market refresh-holidays`; the JSON file
+    stays the source tools read, so they work offline.
+  - `board_meetings()` / `financial_results()` -> results dates per symbol
+    (risk check, alerts, Time Machine warning).
+  - `announcements()` and `actions()` -> swing-news (filings, dividends,
+    splits, bonuses, record dates).
+  - `priceband_report()` / `delivery_bhavcopy()` -> price bands and
+    delivery % (falling back to the static archive files).
+  - `block_deals()` / `bulk_deals()` -> optional news items.
+- Daily price history stays on Yahoo (one batched source for thousands of
+  symbols); `fetch_equity_historical_data()` is a fallback for a single
+  symbol when Yahoo fails.
