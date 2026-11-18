@@ -41,6 +41,13 @@ class Data(unittest.TestCase):
         b = out["TCS"][-1]
         self.assertEqual(b["o"], b["c"])
 
+    def test_spark_fills_latest_close_from_meta(self):
+        # Yahoo's spark leaves the latest day's close null; its meta carries it
+        out = data.yahoo_spark(self.f, [symbols.parse(s) for s in _load.FIXTURE_SYMBOLS], "1y")
+        self.assertEqual(out["TCS"][-1]["d"], "2026-11-18")
+        tcs = data.yahoo_daily(self.f, symbols.parse("TCS"), "1y")
+        self.assertAlmostEqual(out["TCS"][-1]["c"], [b for b in tcs if b["d"] == "2026-11-18"][0]["c"], delta=1.0)
+
     def test_equity_list_and_bands(self):
         eq = data.nse_equity_list(self.f)
         self.assertIn("TCS", {r["symbol"] for r in eq})

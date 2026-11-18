@@ -26,8 +26,8 @@ def inr(x: float, decimals: int = 2) -> str:
 
 
 def crore(x: float) -> str:
-    return "₹%.2f cr" % (float(x) / 1e7)
+    return inr(float(x) / 1e7) + " cr"
 
 
 def lakh(x: float) -> str:
-    return "₹%.2f lakh" % (float(x) / 1e5)
+    return inr(float(x) / 1e5) + " lakh"

@@ -150,8 +150,29 @@ def yahoo_daily(f: Fetcher, s: Sym, rng: str = "5y") -> List[Dict]:
         raise DataError("Yahoo has no daily bars for %s: %s" % (symbols.to_yahoo(s), err.get("description", "")))
     r = res[0]
     offset = int((r.get("meta") or {}).get("gmtoffset", 19800))
-    quote = ((r.get("indicators") or {}).get("quote") or [{}])[0]
-    return _bars_from(r.get("timestamp"), quote, offset)
+    quote = dict(((r.get("indicators") or {}).get("quote") or [{}])[0])
+    ts = r.get("timestamp") or []
+    _fill_latest(ts, quote, r.get("meta") or {}, offset)
+    return _bars_from(ts, quote, offset)
+
+
+def _fill_latest(ts, quote, meta, offset):
+    """Yahoo often leaves the latest day's close null; its meta carries the
+    last price (and day high / low / volume). Fill that one bar from it."""
+    closes = list(quote.get("close") or [])
+    px, pt = meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+    if not (ts and closes and closes[-1] is None and px is not None and pt is not None):
+        return
+    if _day(pt, offset) != _day(ts[-1], offset):
+        return
+    closes[-1] = px
+    quote["close"] = closes
+    for key, mkey in (("high", "regularMarketDayHigh"), ("low", "regularMarketDayLow"),
+                      ("volume", "regularMarketVolume")):
+        arr = list(quote.get(key) or [])
+        if arr and arr[-1] is None and meta.get(mkey) is not None:
+            arr[-1] = meta[mkey]
+            quote[key] = arr
 
 
 def yahoo_spark(f: Fetcher, syms: List[Sym], rng: str = "1y") -> Dict[str, List[Dict]]:
@@ -172,8 +193,10 @@ def yahoo_spark(f: Fetcher, syms: List[Sym], rng: str = "1y") -> Dict[str, List[
             if not s or not resp:
                 continue
             offset = int((resp.get("meta") or {}).get("gmtoffset", 19800))
-            closes = ((resp.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
-            out[s.code] = _bars_from(resp.get("timestamp"), {"close": closes}, offset)
+            ts = resp.get("timestamp") or []
+            quote = {"close": ((resp.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []}
+            _fill_latest(ts, quote, resp.get("meta") or {}, offset)
+            out[s.code] = _bars_from(ts, {"close": quote["close"]}, offset)
     return out
 
 

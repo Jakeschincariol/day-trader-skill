@@ -56,6 +56,7 @@ class Money(unittest.TestCase):
         self.assertEqual(money.inr(12345678.9), "₹1,23,45,678.90")
         self.assertEqual(money.inr(999), "₹999.00")
         self.assertEqual(money.crore(5e7), "₹5.00 cr")
+        self.assertEqual(money.crore(27698100000), "₹2,769.81 cr")
         self.assertEqual(money.lakh(250000), "₹2.50 lakh")
 
 
