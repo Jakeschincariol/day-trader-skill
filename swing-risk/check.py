@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from india import cli, config, data, money, symbols, ticks  # noqa: E402
+from india import cli, config, data, market, money, symbols, ticks  # noqa: E402
 
 TOL = 1.05
 
@@ -36,8 +36,15 @@ def heat(positions):
                for p in positions if float(p["stop"]) < float(p["entry"]))
 
 
-def check(p, cfg, positions, bands, results, avg_volume):
+def check(p, cfg, positions, bands, results, avg_volume, now=None):
     block, warn = [], []
+    if now is not None:
+        today = now.date().isoformat()
+        vf = p.get("valid_for") or ""
+        if vf < today:
+            block.append("the order is for %s, a session that has passed: run /swing-entry again" % vf)
+        elif vf == today and (now.time() >= market.CLOSE or not market.is_trading_day(now.date())):
+            block.append("the order is for today's session (%s), which is over: run /swing-entry again" % vf)
     capital = float(cfg["capital"])
     sched = cfg.get("tick_schedule")
     g = p.get("gtt") or {}
@@ -164,7 +171,7 @@ def main(argv=None):
     positions = (ctx.read("positions.json") or {}).get("positions", [])
     bands, results, vols = gather(ctx, orders["proposals"])
     notice = ctx.nse_notice()
-    verdicts = [check(p, ctx.cfg, positions, bands, results, vols.get(p["id"])) for p in orders["proposals"]]
+    verdicts = [check(p, ctx.cfg, positions, bands, results, vols.get(p["id"]), ctx.now) for p in orders["proposals"]]
     doc = {"date": ctx.now.date().isoformat(), "verdicts": verdicts, "notices": [notice] if notice else []}
     if not a.no_write:
         ctx.write("state/risk.json", doc)

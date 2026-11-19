@@ -127,6 +127,16 @@ class Check(unittest.TestCase):
         self.assertEqual(r["verdict"], "BLOCK")
         self.assertTrue(any("results data unavailable" in x for x in r["reasons"]))
 
+    def test_block_order_for_a_past_session(self):
+        from datetime import datetime
+        self.assertEqual(risk.check(prop(valid_for="2026-11-12"), CFG, [], BANDS, {}, 2_000_000,
+                                    now=datetime(2026, 11, 18, 16, 0))["verdict"], "BLOCK")
+        r = risk.check(prop(valid_for="2026-11-18"), CFG, [], BANDS, {}, 2_000_000, now=datetime(2026, 11, 18, 16, 0))
+        self.assertEqual(r["verdict"], "BLOCK")
+        self.assertTrue(any("session" in x for x in r["reasons"]))
+        r = risk.check(prop(valid_for="2026-11-18"), CFG, [], BANDS, {}, 2_000_000, now=datetime(2026, 11, 18, 11, 0))
+        self.assertEqual(r["verdict"], "PASS")
+
     def test_fingerprint_changes_with_qty(self):
         self.assertNotEqual(check()["fingerprint"], check(prop(qty=30))["fingerprint"])
         self.assertEqual(check()["fingerprint"], config.fingerprint(prop()))

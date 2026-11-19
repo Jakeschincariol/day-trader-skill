@@ -67,6 +67,22 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(r["state"], "failed")
         self.assertNotIn("order", r)
 
+    def test_late_check_orders_for_next_session_from_latest_close(self):
+        # triggered on the 16th, checked after the 18th close: the order is for the 19th
+        bars = BASE[:-1] + [bar("2026-11-16", 101, h=101.5), bar("2026-11-17", 101.5, h=102), bar("2026-11-18", 102, h=102.4)]
+        r = entry.evaluate(bars, level=100, since="2026-11-13", now=AFTER_CLOSE, cfg=CFG)
+        self.assertEqual((r["state"], r["trigger_date"]), ("triggered", "2026-11-16"))
+        self.assertEqual(r["order"]["valid_for"], "2026-11-19")
+        self.assertEqual(r["order"]["price"], ticks.round_up(102 * 1.005))
+        self.assertEqual(r["late_sessions"], 2)
+        self.assertIn("2 sessions ago", r["reason"])
+
+    def test_pre_close_order_is_for_today(self):
+        bars = BASE + [bar("2026-11-17", 99), bar("2026-11-18", 101)]
+        r = entry.evaluate(bars, level=100, since="2026-11-16", now=datetime(2026, 11, 18, 15, 15), cfg=CFG,
+                           pre_close=True)
+        self.assertEqual(r["order"]["valid_for"], "2026-11-18")
+
     def test_volume_check(self):
         bars = [bar("2026-10-%02d" % d, 98, v=1000) for d in range(1, 21)] + [bar("2026-11-18", 101, v=1200)]
         r = entry.evaluate(bars, level=100, since="2026-10-20", now=AFTER_CLOSE, cfg=CFG, min_volume_x=1.5)

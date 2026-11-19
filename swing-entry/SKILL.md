@@ -66,6 +66,11 @@ A trigger day that closes far above the level is still triggered, but the
 reason says it is extended: the stop will be further away, so the position
 will be smaller.
 
+The suggested order is always for the session after the latest completed
+bar (or today, with `--pre-close`). If the trigger was a session or two
+ago, the order is priced off the latest close and the reason says how late
+it is. swing-risk blocks any order whose session has already passed.
+
 ## The suggested order
 
 - **limit** (default): buy at the trigger close + 0.5 %, rounded UP to a

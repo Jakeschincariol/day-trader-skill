@@ -41,15 +41,15 @@ def _pre_close_window(now):
     return market.is_trading_day(now.date()) and PRE_CLOSE_FROM <= now.time() < market.CLOSE
 
 
-def suggest_order(trigger_close, trigger_high, trigger_date, cfg):
+def suggest_order(ref_close, ref_high, valid, cfg):
+    """The buy for session `valid`, priced off the latest completed bar."""
     sched = cfg.get("tick_schedule")
     buf = 1 + float(cfg.get("entry_limit_buffer_pct", 0.5)) / 100
-    valid = market.next_trading_day(datetime.date.fromisoformat(trigger_date)).isoformat()
     if cfg.get("entry_style") == "sl-buy":
-        hi = ticks.round_up(trigger_high, sched)
+        hi = ticks.round_up(ref_high, sched)
         trig = round(hi + ticks.tick_paise(hi, sched) / 100.0, 2)
         return {"style": "sl-buy", "trigger": trig, "price": ticks.round_up(trig * buf, sched), "valid_for": valid}
-    return {"style": "limit", "price": ticks.round_up(trigger_close * buf, sched), "valid_for": valid}
+    return {"style": "limit", "price": ticks.round_up(ref_close * buf, sched), "valid_for": valid}
 
 
 def evaluate(bars, level, since, now, cfg, pre_close=False, min_volume_x=None):
@@ -57,7 +57,7 @@ def evaluate(bars, level, since, now, cfg, pre_close=False, min_volume_x=None):
     last_final = market.last_final_bar_date(now).isoformat()
     today = now.date().isoformat()
     usable = [b for b in bars if b["d"] <= last_final or (provisional_ok and b["d"] == today)]
-    res = {"level": level, "state": "waiting", "trigger_date": None, "trigger_close": None,
+    res = {"level": level, "state": "waiting", "late_sessions": None, "trigger_date": None, "trigger_close": None,
            "trigger_high": None, "distance_pct": None, "provisional": False, "reason": "",
            "as_of": usable[-1]["d"] if usable else None}
     if not usable:
@@ -98,10 +98,18 @@ def evaluate(bars, level, since, now, cfg, pre_close=False, min_volume_x=None):
                          "different trade with a wider stop" % (t["d"], days, above_pct))
         return res
     res["state"] = "triggered"
-    res["order"] = suggest_order(t["c"], t["h"], t["d"], cfg)
+    res["late_sessions"] = days
+    if last["d"] == today and provisional_ok:
+        valid = today                                    # pre-close: buy in today's closing minutes
+    else:
+        valid = market.next_trading_day(datetime.date.fromisoformat(last["d"])).isoformat()
+    res["order"] = suggest_order(last["c"], last["h"], valid, cfg)
     res["reason"] = "the %s bar closed at %s, above %s%s" % (
         t["d"], money.inr(t["c"]), money.inr(level),
         " (%.1f%% above the level: extended)" % above_pct if above_pct > STALE_PCT else "")
+    if days:
+        res["reason"] += ("; that was %d session%s ago, so the order is priced off the latest close %s (%s)"
+                          % (days, "" if days == 1 else "s", money.inr(last["c"]), last["d"]))
     if res["provisional"]:
         res["reason"] += "; PROVISIONAL: today's bar has not closed"
     return res
