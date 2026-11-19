@@ -1,4 +1,5 @@
 import unittest
+from datetime import date, timedelta
 
 import _load  # noqa: F401
 from india import indicators as ind
@@ -11,6 +12,21 @@ def bar(d="2026-01-01", o=None, h=None, l=None, c=100.0, v=1000):
 
 def flat_bars(n, c=100.0):
     return [bar(c=c) for _ in range(n)]
+
+
+def dated(bars, start=date(2026, 1, 5), holiday_every=0):
+    """Give bars consecutive weekday dates, skipping every Nth weekday as a holiday."""
+    d, k = start, 0
+    for b in bars:
+        while True:
+            if d.weekday() < 5:
+                k += 1
+                if not (holiday_every and k % holiday_every == 0):
+                    break
+            d += timedelta(days=1)
+        b["d"] = d.isoformat()
+        d += timedelta(days=1)
+    return bars
 
 
 class Indicators(unittest.TestCase):
@@ -44,14 +60,21 @@ class Indicators(unittest.TestCase):
         self.assertEqual(ind.setups_at(bars, 20)["breakout_20d"], 100)
 
     def test_short_history_skips_52w(self):
-        bars = flat_bars(100, c=100) + [bar(c=150, h=151)]
+        bars = dated(flat_bars(100, c=100) + [bar(c=150, h=151)])
         got = ind.setups_at(bars, 100)
         self.assertNotIn("breakout_52w", got)
         self.assertIn("breakout_20d", got)
 
-    def test_breakout_52w(self):
-        bars = flat_bars(250, c=100) + [bar(c=105, h=106)]
-        self.assertEqual(ind.setups_at(bars, 250)["breakout_52w"], 100)
+    def test_breakout_52w_on_one_year_of_bars(self):
+        # Yahoo's 1y range is ~248 sessions: a calendar year, not 251 bars
+        bars = dated(flat_bars(247, c=100) + [bar(c=105, h=106)], start=date(2025, 11, 18), holiday_every=17)
+        self.assertEqual(len(bars), 248)
+        self.assertGreaterEqual((date.fromisoformat(bars[-1]["d"]) - date(2025, 11, 18)).days, 360)
+        self.assertEqual(ind.setups_at(bars, 247)["breakout_52w"], 100)
+
+    def test_52w_window_is_one_calendar_year(self):
+        bars = dated([bar(c=100, h=200)] + flat_bars(300, c=100) + [bar(c=150, h=151)], start=date(2025, 6, 2))
+        self.assertEqual(ind.setups_at(bars, len(bars) - 1)["breakout_52w"], 100)   # the 200 high is > 1 year old
 
     def test_bull_flag(self):
         rise = [bar(c=100 + 2 * k) for k in range(16)]          # 100 .. 130

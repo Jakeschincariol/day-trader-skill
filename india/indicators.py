@@ -5,7 +5,8 @@ setup comes with the level a later daily CLOSE must clear to trigger an
 entry (None for oversold, which is a watch-only flag).
 
     breakout_20d     close above every close of the 20 sessions before it   level: that highest close
-    breakout_52w     close above every high of the 250 sessions before it   level: that highest high
+    breakout_52w     close above every high of the year before it (needs ~a year of bars)
+                                                                            level: that highest high
     bull_flag        up > 10 % from 15 to 5 sessions ago, then the last 5 closes inside a 5 % range
                                                                             level: the flag's highest high
     reclaim_ma20     closed under the 20-day average, then closed above it  level: today's high
@@ -15,7 +16,10 @@ entry (None for oversold, which is a watch-only flag).
     oversold_bounce  RSI 14 under 30 yesterday and today closed up          level: today's high
 """
 
+import datetime
 from typing import Dict, List, Optional
+
+COVER_DAYS = 350   # history needed for a 52-week high (Yahoo's 1y range spans 365 days)
 
 SETUPS = ("breakout_20d", "breakout_52w", "bull_flag", "reclaim_ma20", "pullback_ma50",
           "oversold", "oversold_bounce")
@@ -74,6 +78,21 @@ def avg_traded_value(bars: List[Dict], n: int = 20, i: int = -1) -> Optional[flo
     return sum(b["c"] * b["v"] for b in window) / n
 
 
+def _year_high(bars: List[Dict], i: int) -> Optional[float]:
+    """Highest high of the sessions in the calendar year before bar i, or
+    None without (nearly) a year of history. NSE has ~248 sessions a year."""
+    try:
+        d_i = datetime.date.fromisoformat(bars[i]["d"])
+        first = datetime.date.fromisoformat(bars[0]["d"])
+    except (KeyError, ValueError):
+        return None
+    if (d_i - first).days < COVER_DAYS:
+        return None
+    cut = (d_i - datetime.timedelta(days=365)).isoformat()
+    window = [x["h"] for x in bars[:i] if x["d"] > cut]
+    return max(window) if window else None
+
+
 def setups_at(bars: List[Dict], i: int, rsi: Optional[List[Optional[float]]] = None) -> Dict[str, Optional[float]]:
     """Setups firing on bar i -> trigger level. rsi: a precomputed
     rsi_wilder(closes) to reuse across many i (the Time Machine's history)."""
@@ -84,10 +103,9 @@ def setups_at(bars: List[Dict], i: int, rsi: Optional[List[Optional[float]]] = N
     out = {}
     if i >= 20 and c[i] > max(c[i - 20:i]):
         out["breakout_20d"] = max(c[i - 20:i])
-    if i >= 250:
-        hi = max(x["h"] for x in bars[i - 250:i])
-        if c[i] > hi:
-            out["breakout_52w"] = hi
+    hi52 = _year_high(bars, i)
+    if hi52 is not None and c[i] > hi52:
+        out["breakout_52w"] = hi52
     if i >= 15 and c[i - 15] > 0:
         last5 = c[i - 4:i + 1]
         if c[i - 5] / c[i - 15] - 1 > 0.10 and max(last5) / min(last5) - 1 <= 0.05:

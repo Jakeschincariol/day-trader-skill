@@ -54,6 +54,10 @@ class Scanner(unittest.TestCase):
         code, out = run(["daily", "--symbols", SYMS, "--now", "2026-11-18 11:00"], self.tmp)
         self.assertEqual(out["as_of"], "2026-11-17")
 
+    def test_52_week_breakout_found_on_real_data(self):
+        code, out = run(["daily", "--symbols", SYMS, "--now", "2026-11-17 16:00"], self.tmp)
+        self.assertIn(("ETERNAL", "breakout_52w"), [(h["symbol"], h["setup"]) for h in out["hits"]])
+
     def test_min_price_filter_drops_penny_stocks(self):
         code, out = run(["daily", "--symbols", SYMS, "--now", "2026-11-18 16:00", "--min-price", "0",
                          "--min-traded-value", "0"], self.tmp)
