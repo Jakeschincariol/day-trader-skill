@@ -103,6 +103,25 @@ class Check(unittest.TestCase):
         self.assertTrue(any("results data unavailable" in x for x in r["reasons"]))
         self.assertTrue(any("price band unknown" in x for x in r["reasons"]))
 
+    def test_recomputes_cost_and_risk_from_prices(self):
+        # qty edited, derived fields left stale: must not pass on the stale numbers
+        r = check(prop(qty=290))
+        self.assertEqual(r["verdict"], "BLOCK")
+        self.assertTrue(any("does not match" in x for x in r["reasons"]), r["reasons"])
+        p = prop(qty=290)
+        del p["risk_at_stop"], p["cost"]
+        r = check(p)
+        self.assertEqual(r["verdict"], "BLOCK")
+        self.assertTrue(any("per trade" in x for x in r["reasons"]), r["reasons"])
+
+    def test_block_stop_or_target_on_wrong_side(self):
+        p = prop()
+        p["gtt"]["stop_trigger"] = 3420.0
+        self.assertEqual(check(p)["verdict"], "BLOCK")
+        p = prop()
+        p["gtt"]["target_trigger"] = 3400.0
+        self.assertEqual(check(p)["verdict"], "BLOCK")
+
     def test_fingerprint_changes_with_qty(self):
         self.assertNotEqual(check()["fingerprint"], check(prop(qty=30))["fingerprint"])
         self.assertEqual(check()["fingerprint"], config.fingerprint(prop()))

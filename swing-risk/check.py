@@ -55,26 +55,50 @@ def check(p, cfg, positions, bands, results, avg_volume):
     for name, v in prices:
         if v is not None and not ticks.is_valid(v, sched):
             block.append("%s %s is not on a valid NSE tick" % (name, v))
+    # recompute what matters from qty and prices; never trust the derived fields
+    try:
+        qty = int(p["qty"])
+        entry = float(p["entry_price"])
+        stop = float(g["stop_trigger"])
+        target = float(g["target_trigger"])
+    except (KeyError, TypeError, ValueError):
+        block.append("proposal is missing qty, entry price, GTT stop or GTT target")
+        qty, entry, stop, target = 0, 0.0, 0.0, 0.0
+    if qty < 1 and not block:
+        block.append("quantity %s is not a positive whole number" % p.get("qty"))
+    if entry and stop >= entry:
+        block.append("the GTT stop %s is not below the entry %s" % (money.inr(stop), money.inr(entry)))
+    if entry and target <= entry:
+        block.append("the GTT target %s is not above the entry %s" % (money.inr(target), money.inr(entry)))
+    cost = round(qty * entry, 2)
+    risk_at_stop = round(qty * (entry - stop), 2) if stop < entry else 0.0
+    rr = round((target - entry) / (entry - stop), 2) if entry > stop else None
+    for name, stored, calc, tol in (("cost", p.get("cost"), cost, 1.0),
+                                    ("risk_at_stop", p.get("risk_at_stop"), risk_at_stop, 1.0),
+                                    ("reward_risk", p.get("reward_risk"), rr, 0.02)):
+        if stored is not None and calc is not None and abs(float(stored) - calc) > tol:
+            block.append("%s %s does not match qty and prices (%s): the proposal was edited; run /swing-budget again" % (
+                name, stored, calc))
     budget = capital * float(cfg["risk_per_trade_pct"]) / 100
-    if float(p.get("risk_at_stop", 0)) > budget * TOL:
-        block.append("loss at the stop %s is over your %s per trade" % (money.inr(p["risk_at_stop"]), money.inr(budget)))
-    if p.get("reward_risk") is None or float(p["reward_risk"]) < float(cfg["min_reward_risk"]):
-        block.append("reward:risk %s is under your minimum %s" % (p.get("reward_risk"), cfg["min_reward_risk"]))
+    if risk_at_stop > budget * TOL:
+        block.append("loss at the stop %s is over your %s per trade" % (money.inr(risk_at_stop), money.inr(budget)))
+    if rr is None or rr < float(cfg["min_reward_risk"]):
+        block.append("reward:risk %s is under your minimum %s" % (rr, cfg["min_reward_risk"]))
     if len(positions) >= int(cfg["max_open_positions"]):
         block.append("%d open positions already (max %d)" % (len(positions), cfg["max_open_positions"]))
-    total = heat(positions) + float(p.get("risk_at_stop", 0))
+    total = heat(positions) + risk_at_stop
     max_heat = capital * float(cfg["max_heat_pct"]) / 100
     if total > max_heat:
         block.append("portfolio heat %s (open risk to stops + this trade) is over %s (%s%% of capital)" % (
             money.inr(total), money.inr(max_heat), cfg["max_heat_pct"]))
     cap = capital * float(cfg["max_position_pct"]) / 100
-    if float(p.get("cost", 0)) > cap + 0.01:
-        block.append("cost %s is over the position cap %s" % (money.inr(p["cost"]), money.inr(cap)))
+    if cost > cap + 0.01:
+        block.append("cost %s is over the position cap %s" % (money.inr(cost), money.inr(cap)))
     cash = float(cfg["cash"]) if cfg.get("cash") is not None else capital - sum(
         float(x["qty"]) * float(x["entry"]) for x in positions)
     buffer = capital * float(cfg["cash_buffer_pct"]) / 100
-    if cash - float(p.get("cost", 0)) < buffer - 0.01:
-        block.append("buying leaves %s cash, under your %s buffer" % (money.inr(cash - float(p.get("cost", 0))), money.inr(buffer)))
+    if cash - cost < buffer - 0.01:
+        block.append("buying leaves %s cash, under your %s buffer" % (money.inr(cash - cost), money.inr(buffer)))
     if sym and sym.code in [str(x).upper() for x in cfg.get("blocked", [])]:
         block.append("%s is on your blocked list" % sym.code)
     band = bands.get(sym.code) if sym and sym.exchange == "NSE" else None
@@ -91,7 +115,7 @@ def check(p, cfg, positions, bands, results, avg_volume):
         if inside:
             msg = "results due %s, inside the hold (to %s)" % (inside[0], p.get("time_stop_date"))
             (block if cfg.get("block_on_results") else warn).append(msg)
-    if avg_volume and float(p.get("qty", 0)) > 0.01 * avg_volume:
+    if avg_volume and qty > 0.01 * avg_volume:
         warn.append("%s shares is over 1%% of the 20-day average volume (%d): hard to get out quickly" % (
             p["qty"], avg_volume))
     verdict = "BLOCK" if block else ("WARN" if warn else "PASS")
