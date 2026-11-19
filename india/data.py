@@ -84,7 +84,8 @@ class Fetcher:
         if self.offline:
             return self._offline(cache_key)
         cpath = os.path.join(self.cache_dir, cache_key) if self.cache_dir else None
-        if cpath and os.path.exists(cpath) and time.time() - os.path.getmtime(cpath) < self.ttl:
+        if cpath and os.path.exists(cpath) and time.time() - os.path.getmtime(cpath) < self.ttl \
+                and not _crossed_bar_final(os.path.getmtime(cpath)):
             with open(cpath, "rb") as fh:
                 return fh.read()
         last_err = None
@@ -110,6 +111,15 @@ class Fetcher:
                     last_err = e
                     break
         raise DataError("could not fetch %s: %s" % (url, last_err))
+
+
+def _crossed_bar_final(mtime: float) -> bool:
+    """True when a cache file was written before today's 15:50 IST and it is
+    now after it: the day's bar may have changed from forming to final."""
+    now = market.now_ist()
+    written = datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=mtime, hours=5, minutes=30)
+    return (written.date() == now.date() and market.is_trading_day(now.date())
+            and written.time() < market.BAR_FINAL <= now.time())
 
 
 def cache_key_for(kind: str, s: Sym, rng: str) -> str:

@@ -68,6 +68,40 @@ class Data(unittest.TestCase):
         self.assertIn("offline", str(cm.exception))
 
 
+def ist_epoch(dt):
+    """Epoch seconds for a naive IST datetime."""
+    import calendar
+    from datetime import timedelta
+    return calendar.timegm((dt - timedelta(hours=5, minutes=30)).timetuple())
+
+
+class CacheAcrossTheClose(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.f = data.Fetcher(cache_dir=self.tmp, ttl=900)
+        self.path = os.path.join(self.tmp, "k.json")
+        with open(self.path, "wb") as fh:
+            fh.write(b"old")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp)
+
+    def fetch(self, written, now):
+        os.utime(self.path, (ist_epoch(written), ist_epoch(written)))
+        with mock.patch.object(data.market, "now_ist", return_value=now), \
+                mock.patch.object(data.time, "time", return_value=ist_epoch(now)), \
+                mock.patch.object(self.f, "_open", return_value=b"new"):
+            return self.f.get("https://example.invalid/x", "k.json")
+
+    def test_pre_close_cache_not_served_after_bar_final(self):
+        self.assertEqual(self.fetch(datetime(2026, 11, 18, 15, 40), datetime(2026, 11, 18, 15, 52)), b"new")
+
+    def test_fresh_cache_still_served(self):
+        self.assertEqual(self.fetch(datetime(2026, 11, 18, 15, 51), datetime(2026, 11, 18, 15, 58)), b"old")
+        self.assertEqual(self.fetch(datetime(2026, 11, 18, 11, 0), datetime(2026, 11, 18, 11, 10)), b"old")
+
+
 class Config(unittest.TestCase):
     def test_defaults_and_override(self):
         with tempfile.TemporaryDirectory() as tmp:
