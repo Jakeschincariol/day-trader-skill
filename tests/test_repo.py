@@ -89,6 +89,18 @@ class Repo(unittest.TestCase):
             with open(path, encoding="utf-8", errors="replace") as fh:
                 self.assertNotIn(chr(0x2014), fh.read(), rel)
 
+    def test_ampersand_symbols_quoted_in_shell_examples(self):
+        # an unquoted & in bash runs the command in the background and cuts the symbol: M&M -> M
+        files = [os.path.join(ROOT, "README.md")] + [os.path.join(ROOT, s, "SKILL.md") for s in SKILLS]
+        files += [path for _, _, path in python_files()]
+        for path in files:
+            with open(path, encoding="utf-8") as fh:
+                for n, line in enumerate(fh, 1):
+                    if "python3 " not in line or "&" not in line:
+                        continue
+                    outside = re.sub(r"'[^']*'", "", line.split("#")[0])
+                    self.assertNotIn("&", outside, "%s:%d %s" % (os.path.relpath(path, ROOT), n, line.strip()))
+
     def test_python_3_8(self):
         for folder, f, path in python_files():
             with open(path, encoding="utf-8") as fh:

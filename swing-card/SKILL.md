@@ -30,6 +30,10 @@ broker credentials, and never says a trade is a good idea.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/card.py" show                                   # cards that passed today
 python3 "${CLAUDE_SKILL_DIR}/card.py" record --id TCS-2026-11-19 --qty 29 --price 3412.40

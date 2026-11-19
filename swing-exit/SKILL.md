@@ -34,6 +34,10 @@ the order unfilled, and the loss can be larger than planned.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/exit.py" plan                                  # trader/entry.json: swing-low stop, 2R
 python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop atr:2 --target 3R --write # -> trader/plan.json

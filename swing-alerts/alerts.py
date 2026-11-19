@@ -3,7 +3,7 @@
 
     python3 alerts.py check              # after 15:50 IST; exit 0 = something rang, 1 = nothing new
     python3 alerts.py clock              # NSE open or closed, next session, today's holiday
-    python3 alerts.py quote TCS M&M --write
+    python3 alerts.py quote TCS 'M&M' --write
     python3 alerts.py quote --holdings --write     # -> trader/prices.json
 
 For each position in trader/positions.json, on the last final daily bar:

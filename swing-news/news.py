@@ -2,7 +2,7 @@
 """News Monitor for swing-news: Indian headlines, NSE filings and the dates that move a swing trade.
 
     python3 news.py                              # watchlist + plan + positions
-    python3 news.py --tickers TCS M&M --hours 48
+    python3 news.py --tickers TCS 'M&M' --hours 48
     python3 news.py --no-nse --json
     python3 news.py --all                        # include items already shown
 

@@ -118,7 +118,7 @@ An example, from the offline test data (real NSE data, Reliance, Tuesday
 ```bash
 python3 swing-scanner/scan.py universe                       # NSE equity list
 python3 swing-scanner/scan.py daily                          # after 15:50 IST
-python3 swing-news/news.py --tickers TCS M&M --hours 48
+python3 swing-news/news.py --tickers TCS 'M&M' --hours 48
 python3 swing-entry/entry.py check RELIANCE --setup breakout_20d --write
 python3 swing-exit/exit.py plan --write                      # -> trader/plan.json
 python3 swing-timemachine/timemachine.py run --write

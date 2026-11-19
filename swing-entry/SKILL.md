@@ -30,10 +30,14 @@ A clean signal does not make a trade win; most active traders lose money.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TCS --setup breakout_20d          # level from the setup
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TCS --setup bull_flag --write     # -> trader/entry.json
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check M&M --level 3400                  # your own level
+python3 "${CLAUDE_SKILL_DIR}/entry.py" check 'M&M' --level 3400                # your own level
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TCS --level 3400 --pre-close      # 15:00-15:30 IST, provisional
 python3 "${CLAUDE_SKILL_DIR}/entry.py" check TCS --level 3400 --entry-style sl-buy
 python3 "${CLAUDE_SKILL_DIR}/entry.py" watchlist                               # every hit in trader/watchlist.json

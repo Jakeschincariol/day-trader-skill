@@ -3,7 +3,7 @@
 
     python3 scan.py universe                       # NSE equity list -> trader/universe.txt
     python3 scan.py daily                          # after 15:50 IST -> trader/watchlist.json
-    python3 scan.py daily --symbols TCS,M&M,INFY   # or --limit 300
+    python3 scan.py daily --symbols 'TCS,M&M,INFY' # or --limit 300
     python3 scan.py daily --now "2026-11-18 16:00" --offline tests/fixtures/india
 
 universe  NSE's EQUITY_L.csv, series EQ (add --include-be for the trade-for-

@@ -28,10 +28,14 @@ changes or cancels an order. This is not financial advice.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/alerts.py" check                    # after 15:50 IST; exit 0 = something rang
 python3 "${CLAUDE_SKILL_DIR}/alerts.py" clock                    # NSE open or closed, next session
-python3 "${CLAUDE_SKILL_DIR}/alerts.py" quote TCS M&M --write    # -> trader/prices.json
+python3 "${CLAUDE_SKILL_DIR}/alerts.py" quote TCS 'M&M' --write  # -> trader/prices.json
 python3 "${CLAUDE_SKILL_DIR}/alerts.py" quote --holdings --write # positions + plan
 ```
 

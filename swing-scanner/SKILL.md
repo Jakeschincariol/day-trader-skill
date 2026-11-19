@@ -13,7 +13,7 @@ description: >-
   "what is breaking out on NSE", "52-week highs", "bull flags", "oversold
   stocks", "build my watchlist", "what should I look at this week", or
   after the close before /swing-news.
-argument-hint: "[universe | daily] [--symbols TCS,M&M]"
+argument-hint: "[universe | daily] [--symbols 'TCS,M&M']"
 ---
 
 # swing-scanner
@@ -30,12 +30,16 @@ pack ends in a trade card the user types into their own broker, and only
 after they decide yes.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
+
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
 The tools import the shared `india/` folder next to it.
 
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                       # -> trader/universe.txt
 python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                          # after 15:50 IST -> trader/watchlist.json
-python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols TCS,M&M,INFY   # or --limit 300
+python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols 'TCS,M&M,INFY' # or --limit 300
 python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --bands 10,20,-          # allow only these price bands
 ```
 

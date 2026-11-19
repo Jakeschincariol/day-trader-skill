@@ -13,7 +13,7 @@ description: >-
   on TCS", "why is this stock moving", "when are the results", "is there a
   dividend coming", "check the filings", "news on my watchlist", "morning
   briefing", or after /swing-scanner, before /swing-entry.
-argument-hint: "[--tickers TCS M&M] [--hours 24]"
+argument-hint: "[--tickers TCS 'M&M'] [--hours 24]"
 ---
 
 # swing-news
@@ -30,9 +30,13 @@ order. A headline is not a signal.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
+Symbols with `&` (M&M) must be single-quoted on the command line, e.g. `'M&M'` or
+`--symbols 'TCS,M&M'`: an unquoted `&` makes the shell cut the symbol and run the rest
+in the background.
+
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/news.py"                              # watchlist + plan + positions
-python3 "${CLAUDE_SKILL_DIR}/news.py" --tickers TCS M&M --hours 48
+python3 "${CLAUDE_SKILL_DIR}/news.py" --tickers TCS 'M&M' --hours 48
 python3 "${CLAUDE_SKILL_DIR}/news.py" --no-nse --json
 python3 "${CLAUDE_SKILL_DIR}/news.py" --all                        # include items already shown
 ```
