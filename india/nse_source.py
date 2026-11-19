@@ -47,6 +47,7 @@ class NseSource:
         self.cache_dir = cache_dir
         self.offline = offline
         self.last_error = ""
+        self._failed = False
         self.factory = client_factory or (None if offline else _default_factory(cache_dir))
         self.available = bool(self.factory) or bool(offline and os.path.isdir(os.path.join(offline, "nse")))
         self.why_unavailable = "" if self.available else INSTALL
@@ -77,6 +78,7 @@ class NseSource:
                 got = getattr(client, method)(**kwargs)
         except Exception as e:   # NSE refuses, changes shape, times out: soft
             self.last_error = "%s: %s" % (method, e)
+            self._failed = True
             return None
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
@@ -93,7 +95,12 @@ class NseSource:
                 out[iso] = str(row.get("description", "")).strip()
         return out
 
-    def results_dates(self, symbols: List[str], start: datetime.date, end: datetime.date) -> Dict[str, List[str]]:
+    def results_dates(self, symbols: List[str], start: datetime.date, end: datetime.date) -> Optional[Dict[str, List[str]]]:
+        """symbol -> results dates; None when unavailable or any request failed
+        (unknown is not the same as none)."""
+        if not self.available:
+            return None
+        self._failed = False
         out = {}
         for sym in symbols:
             rows = self._call("board_meetings", symbol=sym, from_date=start, to_date=end) or []
@@ -107,9 +114,12 @@ class NseSource:
                     dates.add(iso)
             if dates:
                 out[sym] = sorted(dates)
-        return out
+        return None if self._failed else out
 
-    def corporate_actions(self, symbols: List[str], start: datetime.date, end: datetime.date) -> Dict[str, List[Dict]]:
+    def corporate_actions(self, symbols: List[str], start: datetime.date, end: datetime.date) -> Optional[Dict[str, List[Dict]]]:
+        if not self.available:
+            return None
+        self._failed = False
         out = {}
         for sym in symbols:
             rows = self._call("actions", symbol=sym, from_date=start, to_date=end) or []
@@ -122,7 +132,7 @@ class NseSource:
                     acts.append({"ex_date": iso, "purpose": str(r.get("subject", "")).strip()})
             if acts:
                 out[sym] = sorted(acts, key=lambda a: a["ex_date"])
-        return out
+        return None if self._failed else out
 
     def announcements(self, symbol: str, start: datetime.date, end: datetime.date) -> List[Dict]:
         rows = self._call("announcements", symbol=symbol, from_date=start, to_date=end) or []

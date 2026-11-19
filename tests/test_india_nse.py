@@ -63,7 +63,7 @@ class NseSource(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"nse": None}):
             src = nse_source.NseSource(self.tmp)
         self.assertFalse(src.available)
-        self.assertEqual(src.results_dates(["TCS"], date(2026, 11, 1), date(2026, 12, 31)), {})
+        self.assertIsNone(src.results_dates(["TCS"], date(2026, 11, 1), date(2026, 12, 31)))
         self.assertIn("pip install", nse_source.soft_notice(src))
 
     def test_results_dates_filters_purpose(self):
@@ -94,6 +94,13 @@ class NseSource(unittest.TestCase):
         src = nse_source.NseSource(self.tmp, client_factory=BrokenNSE)
         self.assertEqual(src.trading_holidays(), {})
         self.assertIn("401", src.last_error)
+
+    def test_failed_call_is_unknown_not_empty(self):
+        src = nse_source.NseSource(self.tmp, client_factory=BrokenNSE)
+        self.assertTrue(src.available)
+        self.assertIsNone(src.results_dates(["TCS"], date(2026, 11, 1), date(2026, 12, 31)))
+        self.assertIsNone(src.corporate_actions(["TCS"], date(2026, 11, 1), date(2026, 12, 31)))
+        self.assertIn("partly unavailable", nse_source.soft_notice(src))
 
     def test_refresh_holidays_writes_file(self):
         path = os.path.join(self.tmp, "holidays.json")

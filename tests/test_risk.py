@@ -122,6 +122,11 @@ class Check(unittest.TestCase):
         p["gtt"]["target_trigger"] = 3400.0
         self.assertEqual(check(p)["verdict"], "BLOCK")
 
+    def test_unknown_results_blocks_when_configured(self):
+        r = risk.check(prop(), dict(CFG, block_on_results=True), [], BANDS, None, 2_000_000)
+        self.assertEqual(r["verdict"], "BLOCK")
+        self.assertTrue(any("results data unavailable" in x for x in r["reasons"]))
+
     def test_fingerprint_changes_with_qty(self):
         self.assertNotEqual(check()["fingerprint"], check(prop(qty=30))["fingerprint"])
         self.assertEqual(check()["fingerprint"], config.fingerprint(prop()))
@@ -151,6 +156,24 @@ class Cli(unittest.TestCase):
         with open(os.path.join(self.tmp, "state", "risk.json")) as fh:
             v = json.load(fh)["verdicts"][0]
         self.assertEqual((v["id"], v["verdict"]), ("TCS-2026-11-19", "WARN"))
+
+    def test_nse_failure_reported_in_json(self):
+        from india import cli, nse_source
+
+        class Broken:
+            def __enter__(self):
+                raise RuntimeError("403 from NSE")
+
+            def __exit__(self, *a):
+                return False
+        src = nse_source.NseSource(self.tmp, client_factory=Broken)
+        buf = io.StringIO()
+        with mock.patch.object(cli.Ctx, "nse", new_callable=mock.PropertyMock, return_value=src), \
+                contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            risk.main(["--dir", self.tmp, "--now", "2026-11-18 16:00", "--offline", self.off, "--json"])
+        doc = json.loads(buf.getvalue())
+        self.assertTrue(any("results data unavailable" in x for x in doc["verdicts"][0]["reasons"]))
+        self.assertTrue(any("403" in n for n in doc["notices"]))
 
     def test_manual_results_file(self):
         with open(os.path.join(self.tmp, "results.json"), "w") as fh:

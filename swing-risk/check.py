@@ -109,7 +109,8 @@ def check(p, cfg, positions, bands, results, avg_volume):
     elif band is None:
         warn.append("price band unknown (check it on NSE before buying)")
     if results is None:
-        warn.append("results data unavailable: check the results date yourself, or add it to trader/results.json")
+        msg = "results data unavailable: check the results date yourself, or add it to trader/results.json"
+        (block if cfg.get("block_on_results") else warn).append(msg)
     elif sym:
         inside = [d for d in results.get(sym.code, []) if p.get("valid_for", "") <= d <= p.get("time_stop_date", "")]
         if inside:
@@ -134,8 +135,8 @@ def gather(ctx, proposals):
         start = ctx.now.date()
         ends = [p.get("time_stop_date") for p in proposals if p.get("time_stop_date")]
         end = max(datetime.date.fromisoformat(max(ends)), start) if ends else start + datetime.timedelta(days=60)
-        results = ctx.nse.results_dates(syms, start, end)
-    if manual:
+        results = ctx.nse.results_dates(syms, start, end)   # None when NSE failed
+    if manual and (results is not None or set(syms) <= set(manual)):
         results = dict(results or {})
         for k, v in manual.items():
             results[k] = sorted(set(results.get(k, [])) | set(v))
@@ -162,9 +163,9 @@ def main(argv=None):
         return 2
     positions = (ctx.read("positions.json") or {}).get("positions", [])
     bands, results, vols = gather(ctx, orders["proposals"])
-    ctx.nse_notice()
+    notice = ctx.nse_notice()
     verdicts = [check(p, ctx.cfg, positions, bands, results, vols.get(p["id"])) for p in orders["proposals"]]
-    doc = {"date": ctx.now.date().isoformat(), "verdicts": verdicts}
+    doc = {"date": ctx.now.date().isoformat(), "verdicts": verdicts, "notices": [notice] if notice else []}
     if not a.no_write:
         ctx.write("state/risk.json", doc)
     lines = []

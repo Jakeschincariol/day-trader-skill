@@ -156,9 +156,9 @@ def main(argv=None):
                      (": " + x["text"][:160] if x["text"] else ""), "url": x["url"]}
                     for x in ctx.nse.announcements(s.code, today - datetime.timedelta(days=7), today)]
             ev = []
-            ev += ["results %s" % d for d in ctx.nse.results_dates([s.code], today, horizon).get(s.code, [])]
+            ev += ["results %s" % d for d in (ctx.nse.results_dates([s.code], today, horizon) or {}).get(s.code, [])]
             ev += ["ex-date %s (%s)" % (x["ex_date"], x["purpose"])
-                   for x in ctx.nse.corporate_actions([s.code], today, horizon).get(s.code, [])]
+                   for x in (ctx.nse.corporate_actions([s.code], today, horizon) or {}).get(s.code, [])]
             if ev:
                 events[s.code] = ev
         for it in dedupe(got):

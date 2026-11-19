@@ -248,7 +248,7 @@ def main(argv=None):
     if plan.get("entry_date") and plan.get("time_stop_date"):
         got = ctx.nse.results_dates([s.code], datetime.date.fromisoformat(plan["entry_date"]),
                                     datetime.date.fromisoformat(plan["time_stop_date"]))
-        results_inside = (got.get(s.code) or [None])[0]
+        results_inside = ((got or {}).get(s.code) or [None])[0]
         ctx.nse_notice()
     doc = {"plan": plan, "sim": sim, "history": hist, "results_inside": results_inside,
            "verdict": verdict(sim["avg_r"], hist["avg_r"] if hist else None), "as_of": bars[-1]["d"]}

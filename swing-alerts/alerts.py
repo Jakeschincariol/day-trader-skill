@@ -73,8 +73,8 @@ def cmd_check(ctx, a):
         bands = {}
     syms = sorted({p["symbol"] for p in positions})
     nxt = market.next_trading_day(as_of)
-    results = ctx.nse.results_dates(syms, nxt, nxt) if syms else {}
-    actions = ctx.nse.corporate_actions(syms, nxt, nxt) if syms else {}
+    results = (ctx.nse.results_dates(syms, nxt, nxt) if syms else {}) or {}
+    actions = (ctx.nse.corporate_actions(syms, nxt, nxt) if syms else {}) or {}
     ctx.nse_notice()
     rang, notes = [], []
     for p in positions:
