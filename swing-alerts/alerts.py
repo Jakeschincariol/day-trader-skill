@@ -11,7 +11,8 @@ For each position in trader/positions.json, on the last final daily bar:
   stop_touched     the low reached the stop (the GTT should have fired)
   below_gtt_limit  the low went under the GTT's limit: it may not have filled
   target_touched   the high reached the target
-  time_stop        the time stop date has come: out at the close
+  time_stop_tomorrow  the time stop is next session: sell by its close
+  time_stop        the time stop date has passed: out next session
   results_tomorrow results are due next session      (optional nse package)
   ex_date_tomorrow a dividend, split or bonus goes ex next session (nse)
   band_changed     NSE moved the stock to another price band
@@ -49,9 +50,13 @@ def daily_alerts(position, bar, prev_close, today, results, actions, band_now, b
     if bar["h"] >= target:
         ring("target_touched", "%s reached %s on %s: your target %s. Check that the GTT sold." % (
             sym, money.inr(bar["h"]), d, money.inr(target)))
-    if position.get("time_stop_date") and today.isoformat() >= position["time_stop_date"]:
-        ring("time_stop", "%s: time stop (%s). The plan says out at the close; close %s." % (
-            sym, position["time_stop_date"], money.inr(bar["c"])))
+    ts = position.get("time_stop_date")
+    if ts and tomorrow == ts:
+        ring("time_stop_tomorrow", "%s: time stop is tomorrow, %s. The plan says sell by that session's close "
+             "if neither the stop nor the target is hit; cancel the GTT when you do." % (sym, ts))
+    if ts and today.isoformat() >= ts:
+        ring("time_stop", "%s: the time stop (%s) has passed; the plan said out by that close (last close %s). "
+             "Sell next session and cancel the GTT." % (sym, ts, money.inr(bar["c"])))
     if tomorrow in (results or []):
         ring("results_tomorrow", "%s reports results on %s, next session: expect a gap either way." % (sym, tomorrow))
     for act in actions or []:

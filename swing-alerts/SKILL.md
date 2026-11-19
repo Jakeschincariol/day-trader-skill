@@ -61,7 +61,8 @@ Other flags: `--now "2026-11-18 16:00"` (IST), `--offline PATH`, `--json`,
 | `stop_touched` | low reached the stop | check that the GTT sold; record the exit with swing-card |
 | `below_gtt_limit` | low went under the GTT's limit price | the stop order may NOT have filled: check holdings now |
 | `target_touched` | high reached the target | check that the GTT sold; record the exit |
-| `time_stop` | the time stop date has come | the plan says sell at the close |
+| `time_stop_tomorrow` | the time stop is next session | sell by that session's close if neither leg hit |
+| `time_stop` | the time stop date has passed | sell next session; cancel the GTT |
 | `results_tomorrow` | results next session | expect a gap; decide before the open |
 | `ex_date_tomorrow` | dividend / split / bonus ex next session | the price drop is mechanical; adjust the GTT if needed |
 | `band_changed` | NSE moved it to another band | a tighter band can lock the stock |

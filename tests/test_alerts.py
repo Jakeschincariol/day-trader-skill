@@ -42,6 +42,11 @@ class Daily(unittest.TestCase):
         got = alerts.daily_alerts(POS, bar("2026-12-10", 3420, 3450, 3400, 3440), 3420, date(2026, 12, 10), [], [], "-", "-")
         self.assertEqual(kinds(got), ["time_stop"])
 
+    def test_time_stop_tomorrow_rings_the_day_before(self):
+        got = alerts.daily_alerts(POS, bar("2026-12-09", 3420, 3450, 3400, 3440), 3420, date(2026, 12, 9), [], [], "-", "-")
+        self.assertEqual(kinds(got), ["time_stop_tomorrow"])
+        self.assertIn("2026-12-10", got[0]["message"])
+
     def test_results_tomorrow(self):
         got = alerts.daily_alerts(POS, bar("2026-11-23", 3420, 3450, 3400, 3440), 3420, date(2026, 11, 23),
                                   ["2026-11-25"], [], "-", "-")        # 24th is a holiday: the 25th is tomorrow
