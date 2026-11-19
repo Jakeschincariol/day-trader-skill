@@ -1,0 +1,40 @@
+{
+ "capital": 500000,
+ "cash": null,
+ "risk_per_trade_pct": 1.0,
+ "max_position_pct": 20.0,
+ "cash_buffer_pct": 10.0,
+ "min_order": 1000,
+ "min_reward_risk": 1.5,
+ "max_open_positions": 5,
+ "max_heat_pct": 5.0,
+ "max_hold_days": 15,
+ "stop_method": "swing-low",
+ "target": "2R",
+ "entry_style": "limit",
+ "entry_limit_buffer_pct": 0.5,
+ "gtt_slippage_pct": 1.0,
+ "min_price": 50,
+ "min_traded_value": 50000000.0,
+ "include_be": false,
+ "block_bands": [
+  "2",
+  "5"
+ ],
+ "warn_bands": [
+  "10"
+ ],
+ "block_on_results": false,
+ "blocked": [],
+ "tick_schedule": null,
+ "charges": {
+  "last_checked": "2026-11-19",
+  "brokerage_per_order": 0.0,
+  "stt_pct": 0.1,
+  "exchange_txn_pct": 0.00297,
+  "sebi_per_crore": 10.0,
+  "stamp_buy_pct": 0.015,
+  "gst_pct": 18.0,
+  "dp_per_sell": 15.93
+ }
+}
