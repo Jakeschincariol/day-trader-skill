@@ -186,8 +186,11 @@ def clock24(minutes):
 # ---------------------------------------------------------------- data
 
 def chart_url(sym, host="query2"):
+    sym = sym.upper()
+    if not sym.endswith(".NS") and not sym.endswith(".BO"):
+        sym = sym.replace(".", "-")
     return "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=60d&interval=5m" % (
-        host, urllib.parse.quote(sym.upper().replace(".", "-")))
+        host, urllib.parse.quote(sym))
 
 
 def _sleep(seconds):

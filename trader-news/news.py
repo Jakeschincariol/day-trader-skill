@@ -52,7 +52,6 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
-YAHOO = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=US&lang=en-US"
 CHART = "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=1d&interval=5m"
 SEC_FEED = ("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=%s&type=%s"
             "&dateb=&owner=include&count=%d&output=atom")
@@ -192,7 +191,15 @@ class Fetcher(object):
 
 
 def yahoo_symbol(ticker):
-    return ticker.upper().replace(".", "-")
+    ticker = ticker.upper()
+    if ticker.endswith(".NS") or ticker.endswith(".BO"):
+        return ticker
+    return ticker.replace(".", "-")
+
+
+def yahoo_rss_url(ticker, region="US", lang="en-US"):
+    return ("https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=%s&lang=%s" %
+            (yahoo_symbol(ticker), region, lang))
 
 
 def cik_map(fetcher, state):
@@ -378,12 +385,13 @@ def fingerprint(it):
 
 # ---------------------------------------------------------------- the check
 
-def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=None):
+def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=None,
+            region="US", lang="en-US"):
     errors = [] if errors is None else errors
     items = []
     for t in sorted(watch):
         try:
-            items += parse_rss(fetcher.get(YAHOO % yahoo_symbol(t), "yahoo-%s.xml" % t), t)
+            items += parse_rss(fetcher.get(yahoo_rss_url(t, region, lang), "yahoo-%s.xml" % t), t)
         except NewsError as exc:
             errors.append("headlines for %s: %s" % (t, exc))
     if sec:
@@ -497,6 +505,8 @@ def main(argv=None):
     ap.add_argument("--now", help="ISO time, for reproducible runs")
     ap.add_argument("--dry-run", action="store_true", help="do not update the state file")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--region", default="US", help="Yahoo Finance region code (global: IN, US, GB, etc.)")
+    ap.add_argument("--lang", default="en-US", help="Yahoo Finance language code (for India use en-IN)")
     args = ap.parse_args(argv)
 
     if args.tickers:
@@ -512,15 +522,22 @@ def main(argv=None):
     now = parse_time(args.now) if args.now else _dt.datetime.now(_dt.timezone.utc)
     state = load_json(args.state) or {}
     errors = []
+    india = False
+    if args.config and os.path.isfile(args.config):
+        try:
+            with open(args.config, encoding="utf-8") as fh:
+                india = str(json.load(fh).get("market", "us")).lower() == "india"
+        except (OSError, ValueError):
+            india = False
+    if india:
+        args.region = "IN"
+        args.lang = "en-IN"
     ua = sec_user_agent(args.user_agent, args.config)
-    sec = not args.no_sec
-    if sec and not ua and not args.offline:
-        errors.append("SEC filings skipped: set sec_user_agent in trader/config.json or "
-                      "SEC_USER_AGENT (\"Your Name you@example.com\") to include them")
-        sec = False
+    sec = not args.no_sec and not india
     fetcher = Fetcher(ua, offline=args.offline)
     forms = [f.strip().upper() for f in args.forms.split(",") if f.strip()]
-    items = collect(fetcher, watch, state, sec=sec, forms=forms, errors=errors)
+    items = collect(fetcher, watch, state, sec=sec, forms=forms, errors=errors,
+                    region=args.region, lang=args.lang)
     items = dedupe(tag(items, watch))
     shown = select(items, state, now, hours=args.hours, show_all=args.all)
     moves = [] if args.no_moves else collect_moves(fetcher, watch, errors)
