@@ -479,6 +479,16 @@ def main(argv=None):
     ap.add_argument("--offline", metavar="DIR")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    cfg = {}
+    if args.config and os.path.isfile(args.config):
+        try:
+            with open(args.config, encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except (OSError, ValueError):
+            cfg = {}
+    if str(cfg.get("market", "us")).lower() == "india":
+        print("facts: SEC/XBRL analysis is US-only; use an NSE/BSE or SEBI filings adapter for Indian stocks.", file=sys.stderr)
+        return 2
     if not args.tickers and not args.cik:
         ap.print_help()
         return 2

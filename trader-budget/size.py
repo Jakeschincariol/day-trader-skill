@@ -331,7 +331,8 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     if sym in blocked:
         raise SizeError("%s is on your blocked list" % sym)
 
-    budget = float(budget if budget is not None else (c.get("budget") or 0))
+    budget = float(budget if budget is not None else
+                   (c.get("budget_inr") or c.get("budget") or 0))
     if budget <= 0:
         raise SizeError("no budget: pass --budget or set \"budget\" in trader/config.json")
     buf_pct = float(c.get("cash_buffer_pct") or 0)
@@ -604,7 +605,7 @@ def whole_shares(dollars, prices, order, cap, cash):
 
 def size(rows, cfg, budget=None, prices=None, whole=None, cents=False, top=None):
     """Weights mode. Pure function: weights + rules -> the full sizing result (a dict)."""
-    budget = float(budget if budget is not None else (cfg.get("budget") or 0))
+    budget = float(budget if budget is not None else (cfg.get("budget_inr") or cfg.get("budget") or 0))
     if budget <= 0:
         raise SizeError("no budget: pass --budget or set \"budget\" in trader/config.json")
     buf_pct = float(cfg.get("cash_buffer_pct", 10))

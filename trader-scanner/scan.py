@@ -268,7 +268,10 @@ def yahoo_get(path):
 
 
 def to_yahoo(sym):
-    return sym.upper().replace(".", "-")
+    sym = sym.upper()
+    if sym.endswith(".NS") or sym.endswith(".BO"):
+        return sym
+    return sym.replace(".", "-")
 
 
 def spark_path(symbols, rng, interval):
@@ -397,7 +400,7 @@ def load_offline(path):
 
 # ---------------------------------------------------------------- universe
 
-TICKER = re.compile(r"^[A-Z]{1,5}$|^[A-Z]{1,4}\.[A-Z]$")
+TICKER = re.compile(r"^[A-Z0-9][A-Z0-9.&-]{0,28}(?:\.(?:NS|BO))?$", re.I)
 ALWAYS_OUT = [
     ("warrant", re.compile(r"\bwarrants?\b")),
     ("unit or right", re.compile(r"\b(units?|rights?),? (each|that|entitling)\b|(?<!the )\brights? to\b")),

@@ -201,3 +201,17 @@ never calls data real time, and never promises that a setup works.
   (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
 - No options, margin, short selling or leverage unless the config allows it and the user confirms.
 - Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+
+## NSE public market data
+
+Use the NSE public website adapter for Indian cash quotes and derivatives open interest:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/nse.py" quote RELIANCE.NS
+python3 "${CLAUDE_SKILL_DIR}/nse.py" oi RELIANCE.NS --expiry 26-NOV-2026
+python3 "${CLAUDE_SKILL_DIR}/nse.py" oi RELIANCE.NS --offline FILE --json
+```
+
+This reads public NSE `nseindia.com` endpoints, including the equity quote and option-chain JSON.
+It requires no login and makes no orders. NSE may throttle requests or change endpoints; use delayed
+public data only and verify live values with the broker.

@@ -1,0 +1,5 @@
+{
+  "info": {"symbol": "RELIANCE", "companyName": "Reliance Industries Limited", "industry": "Oil & Gas"},
+  "metadata": {"lastUpdateTime": "21-Nov-2026 15:30:00"},
+  "priceInfo": {"lastPrice": 2850.25, "change": 30.25, "pChange": 1.07, "open": 2825.0, "previousClose": 2820.0, "intraDayHighLow": {"max": 2875.5, "min": 2818.0}, "weekHighLow": {"max": 3217.0, "min": 1114.85}, "vwap": 2844.65}
+}

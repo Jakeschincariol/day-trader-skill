@@ -475,6 +475,16 @@ def _fetch_and_read(doc_id, year, pdf_dir, filed=None):
 
 def main(argv=None):
     args = _parser().parse_args(argv)
+    config = "trader/config.json"
+    if os.path.isfile(config):
+        try:
+            with open(config, encoding="utf-8") as fh:
+                cfg = json.load(fh)
+            if str(cfg.get("market", "us")).lower() == "india":
+                print("ptr: Congress tracking is US-only; no Indian SEBI/MP disclosure source is configured.", file=sys.stderr)
+                return 2
+        except (OSError, ValueError):
+            pass
     if not args.cmd:
         _parser().print_help()
         return 2

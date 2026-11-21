@@ -228,7 +228,10 @@ def next_open(d):
 # ---------------------------------------------------------------- Yahoo
 
 def yahoo_symbol(sym):
-    return sym.upper().replace(".", "-")
+    sym = sym.upper()
+    if sym.endswith(".NS") or sym.endswith(".BO"):
+        return sym
+    return sym.replace(".", "-")
 
 
 def chart_path(sym, rng, interval):
@@ -954,7 +957,3 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("entry.py: stopped.", file=sys.stderr)
         return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

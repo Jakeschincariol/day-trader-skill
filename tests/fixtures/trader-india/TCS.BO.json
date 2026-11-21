@@ -1,0 +1,16 @@
+{
+  "chart": {
+    "result": [{
+      "meta": {"symbol": "TCS.BO", "currency": "INR", "regularMarketPrice": 4120.50, "previousClose": 4100.00, "exchangeName": "BSE", "dataGranularity": "5m"},
+      "timestamp": [1792416600,1792416900,1792417200,1792417500,1792417800],
+      "indicators": {"quote": [{
+        "open": [4105,4110,4115,4120,4125],
+        "high": [4112,4118,4122,4128,4132],
+        "low": [4098,4105,4110,4115,4120],
+        "close": [4110,4115,4122,4125,4130],
+        "volume": [800,900,1000,1100,1200]
+      }]}
+    }],
+    "error": null
+  }
+}
