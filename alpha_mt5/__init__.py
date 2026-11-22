@@ -10,6 +10,7 @@ from .readonly import (
     ReadOnlyMT5Adapter,
     SymbolSpec,
 )
+from .risk import RiskContext, RiskDecision, RiskLimits, TradeProposal, evaluate_trade
 
 __all__ = [
     "Bar",
@@ -19,5 +20,10 @@ __all__ = [
     "MT5ReadOnlyError",
     "Quote",
     "ReadOnlyMT5Adapter",
+    "RiskContext",
+    "RiskDecision",
+    "RiskLimits",
     "SymbolSpec",
+    "TradeProposal",
+    "evaluate_trade",
 ]
