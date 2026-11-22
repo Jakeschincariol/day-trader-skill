@@ -5,6 +5,7 @@
 - تضاف Python read-only adapter: health/account summary، symbol specs، tick وbars، timestamps UTC، وقيم غير صالحة كترجع `None`.
 - تضاف exports واختبارات fake MT5؛ 10 tests نجحو محلياً. لا اتصال حقيقي بMT5.
 - تضاف وثائق المشروع الأساسية فـ`docs/`.
+- تضاف GitHub Actions workflow لاختبار المحوّل؛ تشغيل push وتشغيل يدوي بجوجهم `success`.
 - ما تضاف حتى دالة إرسال/تعديل/إغلاق، وما تدار حتى معاملة تداول.
 
 ## سياسة السجل
