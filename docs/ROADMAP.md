@@ -7,7 +7,7 @@
 - [x] تأكيد fork وإتاحة branch تطوير منفصل.
 - [x] إضافة وثائق المشروع الأساسية.
 - [x] إضافة read-only adapter ونموذج tests offline.
-- [ ] إعداد CI/test runner فالمستودع.
+- [x] إعداد CI وتشغيل اختبارات المحوّل بنجاح على GitHub Actions.
 
 ## P1 — Local developer foundation
 - [ ] إعداد Windows/MT5 demo environment عند المستخدم؛ لا وصول محلي متاح حالياً.
