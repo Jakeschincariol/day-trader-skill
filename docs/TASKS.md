@@ -5,14 +5,15 @@
 - [x] إضافة `alpha_mt5/readonly.py` وexports.
 - [x] إضافة tests بواجهة fake بدون حساب أوامر.
 - [x] تشغيل suite المحلي على النسخة المحلية: 10 اختبارات ناجحة.
+- [x] إضافة GitHub Actions workflow؛ تشغيلين على الفرع دازو بنجاح.
 - [x] إضافة وثائق المشروع الأساسية.
 
 ## التالي — أولوية عالية
-- [ ] إضافة CI لتشغيل unittest على كل تغيير.
-- [ ] بناء schema/config آمن بوضع READ_ONLY افتراضي.
+- [ ] إعداد Windows/MT5 demo environment عند المستخدم؛ ما عندناش وصول للجهاز.
+- [ ] تحقق من Python وMT5 terminal/package على الجهاز المستهدف.
 - [ ] تحديد broker demo، account currency/type، symbols الدقيقة، timeframes وtimezone.
-- [ ] تحقق المستخدم من Python وMT5 terminal على Windows؛ ما عندناش وصول للجهاز.
 - [ ] اختبار adapter ضد terminal demo الحقيقي، قراءة فقط.
+- [ ] بناء schema/config آمن بوضع READ_ONLY افتراضي.
 - [ ] Risk Manager وPosition Sizing بحسابات MT5 وfixtures.
 - [ ] freshness/session/spread/kill-switch validations.
 
