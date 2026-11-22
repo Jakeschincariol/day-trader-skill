@@ -7,7 +7,7 @@
 - [x] تأكيد fork وإتاحة branch تطوير منفصل.
 - [x] إضافة وثائق المشروع الأساسية.
 - [x] إضافة read-only adapter ونموذج tests offline.
-- [x] إعداد CI وتشغيل اختبارات المحوّل بنجاح على GitHub Actions.
+- [x] إعداد CI وتشغيل اختبارات المحوّل والمخاطر بنجاح على GitHub Actions.
 
 ## P1 — Local developer foundation
 - [ ] إعداد Windows/MT5 demo environment عند المستخدم؛ لا وصول محلي متاح حالياً.
@@ -18,7 +18,8 @@
 - **Exit gate:** اختبار فعلي read-only على terminal demo؛ لا أوامر.
 
 ## P2 — Deterministic core
-- [ ] Risk Manager fail-closed، freshness، sessions، spread، exposure وkill switch.
+- [x] risk evaluator أولي fail-closed مع tests؛ يعتمد على context/limits معطاة ولا يعطي execution authorization.
+- [ ] ربط risk بمصادر موثوقة من MT5، وحساب loss بعملة الحساب واختبار جميع الحدود.
 - [ ] Position sizing حسب MT5 contract/tick/currency conversion؛ تقريب volume للأسفل.
 - [ ] Market Scanner محدود للـForex والمؤشرات اللي يحددها المستخدم.
 - [ ] Smart Entry/Dynamic Exit خطط paper-only.
@@ -41,7 +42,7 @@
 
 ## P6 — Langdock orchestration/availability
 - [ ] central knowledge base، agents/workflows، integration آمنة بعد مراجعة إعدادات workspace.
-- [ ] local always-on service + bridge يُهيّأ ويُختبر عند المستخدم؛ الدردشة وحدها ما كتخدمش 24/24.
+- [ ] local always-on service + bridge يُهيّأ ويُختبر عند المستخدم؛ الدردشة الدردشة وحدها ما كتخدمش 24/24.
 - **Exit gate:** outage cloud ما يتجاوزش local risk gate، ومراقبة health واضحة.
 
 ## Live eligibility
