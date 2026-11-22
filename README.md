@@ -152,6 +152,25 @@ for the 60 days to October 19 2026, the 10:15 AM opening-range scan, Yahoo's
 TSLA headlines that morning, the House Clerk's 2026 index, real PTR text and
 real XBRL facts. They reproduce every number in the example above.
 
+## Informational market-analysis card
+
+Create a local PNG card and a matching traceability JSON for one ticker:
+
+```powershell
+python trader-news/card.py TSLA --now "2026-10-19T14:15:00Z" --at 10:15 --offline-scanner tests/fixtures/trader-scanner/wall5m-2026-10-19.json.gz --offline-news tests/fixtures/trader-news --no-sec --output-dir trader/card
+```
+
+By default, live mode reads the existing Yahoo Finance scanner and news
+sources. `--offline-scanner` and `--offline-news` select saved fixtures or
+previously downloaded data for reproducible runs. `--offline-daily` may be
+used for a 3-month daily-close fixture. `--now` pins the generation and
+replay time; `--at` pins the opening-range cutoff.
+
+The card reports scanner matches, recent headlines and filings, source links,
+price movement, and explicitly unavailable data. It does not recommend a
+buy or sell, place an order, or connect to a broker. The PNG and JSON are
+written together under `trader/card/` unless `--output-dir` is changed.
+
 ## Fine print
 
 **Not financial advice.** This is software that reads public data and does
