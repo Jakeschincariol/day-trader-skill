@@ -1,0 +1,30 @@
+name: MT5 foundation tests
+
+on:
+  push:
+    branches:
+      - main
+      - "alpha/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Python tests (mock MT5)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run read-only adapter tests
+        run: python -m unittest discover -s tests -p 'test_mt5_readonly_adapter.py' -v
+      - name: Run risk gate tests
+        run: python -m unittest discover -s tests -p 'test_alpha_mt5_risk.py' -v

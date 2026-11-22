@@ -1,0 +1,5 @@
+{
+  "mode": "READ_ONLY",
+  "symbols": [],
+  "poll_interval_seconds": 5
+}

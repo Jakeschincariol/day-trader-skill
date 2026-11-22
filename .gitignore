@@ -1,0 +1,18 @@
+# Local MT5 history and generated reports
+data/
+*.sqlite
+*.sqlite3
+*.db
+history_sync_report.json
+
+# Local configuration and credentials
+config.mt5.local.json
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
