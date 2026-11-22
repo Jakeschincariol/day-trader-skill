@@ -1,4 +1,4 @@
-name: Read-only MT5 adapter tests
+name: MT5 foundation tests
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   unit-tests:
-    name: Python unit tests (mock MT5)
+    name: Python tests (mock MT5)
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -26,3 +26,5 @@ jobs:
           python-version: "3.11"
       - name: Run read-only adapter tests
         run: python -m unittest discover -s tests -p 'test_mt5_readonly_adapter.py' -v
+      - name: Run risk gate tests
+        run: python -m unittest discover -s tests -p 'test_alpha_mt5_risk.py' -v
