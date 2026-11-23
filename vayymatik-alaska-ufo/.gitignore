@@ -1,0 +1,9 @@
+node_modules/
+frames/
+voice/models/
+audio/*.wav
+render.log
+.venv-tts/
+VAYYMATIK0_Alaska_UFO_piper_eski.mp4
+voice/cb_rest/
+.venv-tts/

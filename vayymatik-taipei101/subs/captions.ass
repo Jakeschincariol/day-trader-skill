@@ -1,0 +1,98 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,Montserrat ExtraBold,74,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,6,3,5,60,60,10,1
+Style: Big,Montserrat Black,200,&H003CC9FF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,40,40,10,1
+Style: Src,Montserrat SemiBold,38,&H00D8E0E6,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,3,0,5,60,60,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 2,0:00:00.31,0:00:00.41,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Bu{\c&H00FFFFFF&} {\alpha&H70&}gökdelenin{\alpha&H00&} {\alpha&H70&}içinde{\alpha&H00&}
+Dialogue: 2,0:00:00.41,0:00:00.97,Cap,,0,0,0,,{\an5\pos(540,1300)}Bu {\c&H003FD2FF&\3c&H00101010&}gökdelenin{\c&H00FFFFFF&} {\alpha&H70&}içinde{\alpha&H00&}
+Dialogue: 2,0:00:00.97,0:00:01.34,Cap,,0,0,0,,{\an5\pos(540,1300)}Bu gökdelenin {\c&H003FD2FF&\3c&H00101010&}içinde{\c&H00FFFFFF&}
+Dialogue: 2,0:00:01.36,0:00:01.56,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}tam{\c&H00FFFFFF&} {\alpha&H70&}660{\alpha&H00&} {\alpha&H70&}tonluk{\alpha&H00&} {\alpha&H70&}dev{\alpha&H00&}
+Dialogue: 2,0:00:01.56,0:00:02.38,Cap,,0,0,0,,{\an5\pos(540,1300)}tam {\c&H003FD2FF&\3c&H00101010&}660{\c&H00FFFFFF&} {\alpha&H70&}tonluk{\alpha&H00&} {\alpha&H70&}dev{\alpha&H00&}
+Dialogue: 2,0:00:02.38,0:00:02.71,Cap,,0,0,0,,{\an5\pos(540,1300)}tam 660 {\c&H003FD2FF&\3c&H00101010&}tonluk{\c&H00FFFFFF&} {\alpha&H70&}dev{\alpha&H00&}
+Dialogue: 2,0:00:02.71,0:00:02.82,Cap,,0,0,0,,{\an5\pos(540,1300)}tam 660 tonluk {\c&H003FD2FF&\3c&H00101010&}dev{\c&H00FFFFFF&}
+Dialogue: 2,0:00:02.84,0:00:02.97,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}bir{\c&H00FFFFFF&} {\alpha&H70&}top{\alpha&H00&} {\alpha&H70&}asılı!{\alpha&H00&}
+Dialogue: 2,0:00:02.97,0:00:03.17,Cap,,0,0,0,,{\an5\pos(540,1300)}bir {\c&H003FD2FF&\3c&H00101010&}top{\c&H00FFFFFF&} {\alpha&H70&}asılı!{\alpha&H00&}
+Dialogue: 2,0:00:03.17,0:00:03.91,Cap,,0,0,0,,{\an5\pos(540,1300)}bir top {\c&H003FD2FF&\3c&H00101010&}asılı!{\c&H00FFFFFF&}
+Dialogue: 2,0:00:04.76,0:00:04.99,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Peki{\c&H00FFFFFF&} {\alpha&H70&}neden?{\alpha&H00&}
+Dialogue: 2,0:00:04.99,0:00:05.73,Cap,,0,0,0,,{\an5\pos(540,1300)}Peki {\c&H003FD2FF&\3c&H00101010&}neden?{\c&H00FFFFFF&}
+Dialogue: 2,0:00:05.87,0:00:06.53,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Tayvan'daki{\c&H00FFFFFF&} {\alpha&H70&}Taipei{\alpha&H00&}
+Dialogue: 2,0:00:06.53,0:00:06.94,Cap,,0,0,0,,{\an5\pos(540,1300)}Tayvan'daki {\c&H003FD2FF&\3c&H00101010&}Taipei{\c&H00FFFFFF&}
+Dialogue: 2,0:00:06.96,0:00:07.41,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}101,{\c&H00FFFFFF&} {\alpha&H70&}dünyanın{\alpha&H00&} {\alpha&H70&}en{\alpha&H00&}
+Dialogue: 2,0:00:07.41,0:00:07.91,Cap,,0,0,0,,{\an5\pos(540,1300)}101, {\c&H003FD2FF&\3c&H00101010&}dünyanın{\c&H00FFFFFF&} {\alpha&H70&}en{\alpha&H00&}
+Dialogue: 2,0:00:07.91,0:00:08.02,Cap,,0,0,0,,{\an5\pos(540,1300)}101, dünyanın {\c&H003FD2FF&\3c&H00101010&}en{\c&H00FFFFFF&}
+Dialogue: 2,0:00:08.04,0:00:08.44,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}dikkat{\c&H00FFFFFF&} {\alpha&H70&}çekici{\alpha&H00&}
+Dialogue: 2,0:00:08.44,0:00:08.84,Cap,,0,0,0,,{\an5\pos(540,1300)}dikkat {\c&H003FD2FF&\3c&H00101010&}çekici{\c&H00FFFFFF&}
+Dialogue: 2,0:00:08.86,0:00:09.67,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}gökdelenlerinden{\c&H00FFFFFF&} {\alpha&H70&}biri.{\alpha&H00&}
+Dialogue: 2,0:00:09.67,0:00:10.35,Cap,,0,0,0,,{\an5\pos(540,1300)}gökdelenlerinden {\c&H003FD2FF&\3c&H00101010&}biri.{\c&H00FFFFFF&}
+Dialogue: 2,0:00:10.76,0:00:10.98,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Ama{\c&H00FFFFFF&} {\alpha&H70&}asıl{\alpha&H00&} {\alpha&H70&}sırrı,{\alpha&H00&}
+Dialogue: 2,0:00:10.98,0:00:11.33,Cap,,0,0,0,,{\an5\pos(540,1300)}Ama {\c&H003FD2FF&\3c&H00101010&}asıl{\c&H00FFFFFF&} {\alpha&H70&}sırrı,{\alpha&H00&}
+Dialogue: 2,0:00:11.33,0:00:11.79,Cap,,0,0,0,,{\an5\pos(540,1300)}Ama asıl {\c&H003FD2FF&\3c&H00101010&}sırrı,{\c&H00FFFFFF&}
+Dialogue: 2,0:00:11.81,0:00:12.05,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}üst{\c&H00FFFFFF&} {\alpha&H70&}katlarında{\alpha&H00&} {\alpha&H70&}gizli.{\alpha&H00&}
+Dialogue: 2,0:00:12.05,0:00:12.57,Cap,,0,0,0,,{\an5\pos(540,1300)}üst {\c&H003FD2FF&\3c&H00101010&}katlarında{\c&H00FFFFFF&} {\alpha&H70&}gizli.{\alpha&H00&}
+Dialogue: 2,0:00:12.57,0:00:13.34,Cap,,0,0,0,,{\an5\pos(540,1300)}üst katlarında {\c&H003FD2FF&\3c&H00101010&}gizli.{\c&H00FFFFFF&}
+Dialogue: 2,0:00:13.36,0:00:13.59,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Tam{\c&H00FFFFFF&} {\alpha&H70&}5{\alpha&H00&} {\alpha&H70&}buçuk{\alpha&H00&} {\alpha&H70&}metre{\alpha&H00&}
+Dialogue: 2,0:00:13.59,0:00:13.83,Cap,,0,0,0,,{\an5\pos(540,1300)}Tam {\c&H003FD2FF&\3c&H00101010&}5{\c&H00FFFFFF&} {\alpha&H70&}buçuk{\alpha&H00&} {\alpha&H70&}metre{\alpha&H00&}
+Dialogue: 2,0:00:13.83,0:00:14.12,Cap,,0,0,0,,{\an5\pos(540,1300)}Tam 5 {\c&H003FD2FF&\3c&H00101010&}buçuk{\c&H00FFFFFF&} {\alpha&H70&}metre{\alpha&H00&}
+Dialogue: 2,0:00:14.12,0:00:14.44,Cap,,0,0,0,,{\an5\pos(540,1300)}Tam 5 buçuk {\c&H003FD2FF&\3c&H00101010&}metre{\c&H00FFFFFF&}
+Dialogue: 2,0:00:14.46,0:00:14.94,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}çapındaki{\c&H00FFFFFF&} {\alpha&H70&}bu{\alpha&H00&} {\alpha&H70&}dev{\alpha&H00&} {\alpha&H70&}çelik{\alpha&H00&}
+Dialogue: 2,0:00:14.94,0:00:15.04,Cap,,0,0,0,,{\an5\pos(540,1300)}çapındaki {\c&H003FD2FF&\3c&H00101010&}bu{\c&H00FFFFFF&} {\alpha&H70&}dev{\alpha&H00&} {\alpha&H70&}çelik{\alpha&H00&}
+Dialogue: 2,0:00:15.04,0:00:15.16,Cap,,0,0,0,,{\an5\pos(540,1300)}çapındaki bu {\c&H003FD2FF&\3c&H00101010&}dev{\c&H00FFFFFF&} {\alpha&H70&}çelik{\alpha&H00&}
+Dialogue: 2,0:00:15.16,0:00:15.43,Cap,,0,0,0,,{\an5\pos(540,1300)}çapındaki bu dev {\c&H003FD2FF&\3c&H00101010&}çelik{\c&H00FFFFFF&}
+Dialogue: 2,0:00:15.45,0:00:15.87,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}küre,{\c&H00FFFFFF&} {\alpha&H70&}binanın{\alpha&H00&} {\alpha&H70&}87'nci{\alpha&H00&}
+Dialogue: 2,0:00:15.87,0:00:16.32,Cap,,0,0,0,,{\an5\pos(540,1300)}küre, {\c&H003FD2FF&\3c&H00101010&}binanın{\c&H00FFFFFF&} {\alpha&H70&}87'nci{\alpha&H00&}
+Dialogue: 2,0:00:16.32,0:00:17.17,Cap,,0,0,0,,{\an5\pos(540,1300)}küre, binanın {\c&H003FD2FF&\3c&H00101010&}87'nci{\c&H00FFFFFF&}
+Dialogue: 2,0:00:17.19,0:00:17.26,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}ve{\c&H00FFFFFF&} {\alpha&H70&}92'nci{\alpha&H00&} {\alpha&H70&}katları{\alpha&H00&}
+Dialogue: 2,0:00:17.26,0:00:18.12,Cap,,0,0,0,,{\an5\pos(540,1300)}ve {\c&H003FD2FF&\3c&H00101010&}92'nci{\c&H00FFFFFF&} {\alpha&H70&}katları{\alpha&H00&}
+Dialogue: 2,0:00:18.12,0:00:18.44,Cap,,0,0,0,,{\an5\pos(540,1300)}ve 92'nci {\c&H003FD2FF&\3c&H00101010&}katları{\c&H00FFFFFF&}
+Dialogue: 2,0:00:18.46,0:00:18.94,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}arasında{\c&H00FFFFFF&} {\alpha&H70&}asılı{\alpha&H00&}
+Dialogue: 2,0:00:18.94,0:00:19.20,Cap,,0,0,0,,{\an5\pos(540,1300)}arasında {\c&H003FD2FF&\3c&H00101010&}asılı{\c&H00FFFFFF&}
+Dialogue: 2,0:00:19.22,0:00:20.06,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}duruyor.{\c&H00FFFFFF&}
+Dialogue: 2,0:00:20.72,0:00:21.19,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Şiddetli{\c&H00FFFFFF&} {\alpha&H70&}rüzgârda{\alpha&H00&} {\alpha&H70&}bina{\alpha&H00&}
+Dialogue: 2,0:00:21.19,0:00:21.71,Cap,,0,0,0,,{\an5\pos(540,1300)}Şiddetli {\c&H003FD2FF&\3c&H00101010&}rüzgârda{\c&H00FFFFFF&} {\alpha&H70&}bina{\alpha&H00&}
+Dialogue: 2,0:00:21.71,0:00:21.96,Cap,,0,0,0,,{\an5\pos(540,1300)}Şiddetli rüzgârda {\c&H003FD2FF&\3c&H00101010&}bina{\c&H00FFFFFF&}
+Dialogue: 2,0:00:21.98,0:00:22.68,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}sallandığında,{\c&H00FFFFFF&} {\alpha&H70&}dev{\alpha&H00&}
+Dialogue: 2,0:00:22.68,0:00:22.79,Cap,,0,0,0,,{\an5\pos(540,1300)}sallandığında, {\c&H003FD2FF&\3c&H00101010&}dev{\c&H00FFFFFF&}
+Dialogue: 2,0:00:22.81,0:00:23.01,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}küre{\c&H00FFFFFF&} {\alpha&H70&}de{\alpha&H00&} {\alpha&H70&}hareket{\alpha&H00&} {\alpha&H70&}ederek{\alpha&H00&}
+Dialogue: 2,0:00:23.01,0:00:23.12,Cap,,0,0,0,,{\an5\pos(540,1300)}küre {\c&H003FD2FF&\3c&H00101010&}de{\c&H00FFFFFF&} {\alpha&H70&}hareket{\alpha&H00&} {\alpha&H70&}ederek{\alpha&H00&}
+Dialogue: 2,0:00:23.12,0:00:23.60,Cap,,0,0,0,,{\an5\pos(540,1300)}küre de {\c&H003FD2FF&\3c&H00101010&}hareket{\c&H00FFFFFF&} {\alpha&H70&}ederek{\alpha&H00&}
+Dialogue: 2,0:00:23.60,0:00:23.96,Cap,,0,0,0,,{\an5\pos(540,1300)}küre de hareket {\c&H003FD2FF&\3c&H00101010&}ederek{\c&H00FFFFFF&}
+Dialogue: 2,0:00:23.98,0:00:24.08,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}bu{\c&H00FFFFFF&} {\alpha&H70&}sallanmanın{\alpha&H00&}
+Dialogue: 2,0:00:24.08,0:00:24.65,Cap,,0,0,0,,{\an5\pos(540,1300)}bu {\c&H003FD2FF&\3c&H00101010&}sallanmanın{\c&H00FFFFFF&}
+Dialogue: 2,0:00:24.67,0:00:25.13,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}etkisini{\c&H00FFFFFF&} {\alpha&H70&}azaltıyor.{\alpha&H00&}
+Dialogue: 2,0:00:25.13,0:00:26.13,Cap,,0,0,0,,{\an5\pos(540,1300)}etkisini {\c&H003FD2FF&\3c&H00101010&}azaltıyor.{\c&H00FFFFFF&}
+Dialogue: 2,0:00:27.22,0:00:27.76,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Sistemin{\c&H00FFFFFF&} {\alpha&H70&}adı:{\alpha&H00&}
+Dialogue: 2,0:00:27.76,0:00:28.08,Cap,,0,0,0,,{\an5\pos(540,1300)}Sistemin {\c&H003FD2FF&\3c&H00101010&}adı:{\c&H00FFFFFF&}
+Dialogue: 2,0:00:28.10,0:00:28.49,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}ayarlı{\c&H00FFFFFF&} {\alpha&H70&}kütle{\alpha&H00&}
+Dialogue: 2,0:00:28.49,0:00:28.83,Cap,,0,0,0,,{\an5\pos(540,1300)}ayarlı {\c&H003FD2FF&\3c&H00101010&}kütle{\c&H00FFFFFF&}
+Dialogue: 2,0:00:28.85,0:00:29.90,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}sönümleyici.{\c&H00FFFFFF&}
+Dialogue: 2,0:00:30.01,0:00:30.36,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}Yani{\c&H00FFFFFF&} {\alpha&H70&}yüzlerce{\alpha&H00&} {\alpha&H70&}tonluk{\alpha&H00&}
+Dialogue: 2,0:00:30.36,0:00:30.91,Cap,,0,0,0,,{\an5\pos(540,1300)}Yani {\c&H003FD2FF&\3c&H00101010&}yüzlerce{\c&H00FFFFFF&} {\alpha&H70&}tonluk{\alpha&H00&}
+Dialogue: 2,0:00:30.91,0:00:31.21,Cap,,0,0,0,,{\an5\pos(540,1300)}Yani yüzlerce {\c&H003FD2FF&\3c&H00101010&}tonluk{\c&H00FFFFFF&}
+Dialogue: 2,0:00:31.23,0:00:31.36,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}bir{\c&H00FFFFFF&} {\alpha&H70&}top,{\alpha&H00&}
+Dialogue: 2,0:00:31.36,0:00:31.64,Cap,,0,0,0,,{\an5\pos(540,1300)}bir {\c&H003FD2FF&\3c&H00101010&}top,{\c&H00FFFFFF&}
+Dialogue: 2,0:00:31.66,0:00:32.19,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}gökdelenin{\c&H00FFFFFF&} {\alpha&H70&}daha{\alpha&H00&}
+Dialogue: 2,0:00:32.19,0:00:32.35,Cap,,0,0,0,,{\an5\pos(540,1300)}gökdelenin {\c&H003FD2FF&\3c&H00101010&}daha{\c&H00FFFFFF&}
+Dialogue: 2,0:00:32.37,0:00:32.77,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}dengeli{\c&H00FFFFFF&} {\alpha&H70&}kalmasına{\alpha&H00&}
+Dialogue: 2,0:00:32.77,0:00:33.22,Cap,,0,0,0,,{\an5\pos(540,1300)}dengeli {\c&H003FD2FF&\3c&H00101010&}kalmasına{\c&H00FFFFFF&}
+Dialogue: 2,0:00:33.24,0:00:33.61,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}yardım{\c&H00FFFFFF&} {\alpha&H70&}ediyor!{\alpha&H00&}
+Dialogue: 2,0:00:33.61,0:00:34.35,Cap,,0,0,0,,{\an5\pos(540,1300)}yardım {\c&H003FD2FF&\3c&H00101010&}ediyor!{\c&H00FFFFFF&}
+Dialogue: 2,0:00:37.61,0:00:38.19,Cap,,0,0,0,,{\an5\pos(540,1300)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&\3c&H00101010&}İnanılmaz{\c&H00FFFFFF&} {\alpha&H70&}değil{\alpha&H00&} {\alpha&H70&}mi?{\alpha&H00&}
+Dialogue: 2,0:00:38.19,0:00:38.48,Cap,,0,0,0,,{\an5\pos(540,1300)}İnanılmaz {\c&H003FD2FF&\3c&H00101010&}değil{\c&H00FFFFFF&} {\alpha&H70&}mi?{\alpha&H00&}
+Dialogue: 2,0:00:38.48,0:00:39.00,Cap,,0,0,0,,{\an5\pos(540,1300)}İnanılmaz değil {\c&H003FD2FF&\3c&H00101010&}mi?{\c&H00FFFFFF&}
+Dialogue: 0,0:00:00.35,0:00:04.65,Big,,0,0,0,,{\an5\pos(540,470)\fs230\1c&H003CC9FF&\blur16\alpha&H66&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}660 TON!
+Dialogue: 1,0:00:00.35,0:00:04.65,Big,,0,0,0,,{\an5\pos(540,470)\fs230\1c&H003CC9FF&\bord4\3c&H00101010&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}660 TON!
+Dialogue: 0,0:00:27.25,0:00:29.35,Big,,0,0,0,,{\an5\pos(540,420)\fs112\1c&H003AC2FF&\blur16\alpha&H66&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}AYARLI KÜTLE
+Dialogue: 1,0:00:27.25,0:00:29.35,Big,,0,0,0,,{\an5\pos(540,420)\fs112\1c&H003AC2FF&\bord4\3c&H00101010&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}AYARLI KÜTLE
+Dialogue: 0,0:00:27.25,0:00:29.35,Big,,0,0,0,,{\an5\pos(540,526)\fs112\1c&H003AC2FF&\blur16\alpha&H66&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}SÖNÜMLEYİCİ
+Dialogue: 1,0:00:27.25,0:00:29.35,Big,,0,0,0,,{\an5\pos(540,526)\fs112\1c&H003AC2FF&\bord4\3c&H00101010&\fad(120,250)\fscx175\fscy175\t(0,160,\fscx100\fscy100)}SÖNÜMLEYİCİ
+Dialogue: 1,0:00:27.45,0:00:29.35,Src,,0,0,0,,{\an5\pos(540,605)\fad(200,250)}Tuned Mass Damper (TMD)

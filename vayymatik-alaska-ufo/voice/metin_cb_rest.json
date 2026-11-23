@@ -1,0 +1,13 @@
+[
+ {"seg":"s5","t":14.55,"text":"Koyu renkli bir gövde...","ex":0.6,"cfg":0.4},
+ {"seg":"s6","t":0,"text":"Ve aşağıya doğru sarkan, sürekli hareket eden uzun kollar!","ex":0.7,"cfg":0.45,"gap":0.45},
+ {"seg":"s7","t":22.65,"text":"Üstelik görüntüler bir Amerikan askeri üssünün yakınında kaydedilmişti.","ex":0.55,"cfg":0.5},
+ {"seg":"s8","t":0,"text":"Peki bu gerçekten dünya dışı bir araç mıydı?","ex":0.65,"cfg":0.45,"gap":0.4},
+ {"seg":"s9","t":30.65,"text":"Eski Pentagon ufo araştırmacısı Şon Kırkpatrik...","ex":0.5,"cfg":0.5},
+ {"seg":"s9","t":0,"text":"çok daha basit bir ihtimalden söz etti.","ex":0.55,"cfg":0.5,"gap":0.2},
+ {"seg":"s10","t":0,"text":"Ahtapot şeklinde bir uçurtma!","ex":0.8,"cfg":0.45,"gap":0.45},
+ {"seg":"s11","t":0,"text":"Ancak görüntüler cismin ne olduğunu kesin olarak belirlemeye yetmiyor.","ex":0.5,"cfg":0.5,"gap":0.4},
+ {"seg":"s12","t":0,"text":"Yani uzaylı olduğuna dair hiçbir kanıt yok.","ex":0.55,"cfg":0.5,"gap":0.4},
+ {"seg":"s13","t":0,"text":"Peki sen ne düşünüyorsun?","ex":0.65,"cfg":0.45,"gap":0.5},
+ {"seg":"s14","t":0,"text":"Bu şey gerçekten neydi?","ex":0.7,"cfg":0.4,"gap":0.4}
+]

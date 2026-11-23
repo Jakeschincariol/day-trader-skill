@@ -1,0 +1,48 @@
+[
+ {
+  "seg": "s1",
+  "t": 0.3,
+  "text": "Amerika'da, gökyüzünde ahtapota benzeyen gizemli bir cisim görüntülendi!",
+  "ex": 0.75,
+  "cfg": 0.45,
+  "dur": 4.027,
+  "file": "p00.wav"
+ },
+ {
+  "seg": "s2",
+  "t": 4.15,
+  "text": "Ve bu görüntüler, uzaylı tartışmalarını yeniden başlattı.",
+  "ex": 0.55,
+  "cfg": 0.45,
+  "dur": 5.146,
+  "file": "p01.wav"
+ },
+ {
+  "seg": "s3",
+  "t": 7.4,
+  "text": "On beş Haziran, iki bin yirmi altı.",
+  "ex": 0.45,
+  "cfg": 0.35,
+  "dur": 4.146,
+  "file": "p02.wav"
+ },
+ {
+  "seg": "s4",
+  "t": 9.85,
+  "text": "Alaska'da bir kadın, gökkuşağını görüntülerken...",
+  "ex": 0.5,
+  "cfg": 0.4,
+  "dur": 2.795,
+  "file": "p03.wav"
+ },
+ {
+  "seg": "s4",
+  "t": 0,
+  "text": "gökyüzünde tuhaf bir şey fark etti.",
+  "ex": 0.7,
+  "cfg": 0.35,
+  "gap": 0.25,
+  "dur": 2.34,
+  "file": "p04.wav"
+ }
+]

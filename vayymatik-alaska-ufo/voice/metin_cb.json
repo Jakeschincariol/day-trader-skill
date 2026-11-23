@@ -1,0 +1,38 @@
+[
+ {
+  "seg": "s1",
+  "t": 0.3,
+  "text": "Amerika'da, gökyüzünde ahtapota benzeyen gizemli bir cisim görüntülendi!",
+  "ex": 0.75,
+  "cfg": 0.45
+ },
+ {
+  "seg": "s2",
+  "t": 4.15,
+  "text": "Ve bu görüntüler uzaylı tartışmalarını yeniden başlattı.",
+  "ex": 0.5,
+  "cfg": 0.5
+ },
+ {
+  "seg": "s3",
+  "t": 7.4,
+  "text": "On beş Haziran iki bin yirmi altı.",
+  "ex": 0.45,
+  "cfg": 0.5
+ },
+ {
+  "seg": "s4",
+  "t": 9.85,
+  "text": "Alaska'da bir kadın, gökkuşağını görüntülerken...",
+  "ex": 0.5,
+  "cfg": 0.4
+ },
+ {
+  "seg": "s4",
+  "t": 0,
+  "text": "gökyüzünde tuhaf bir şey fark etti.",
+  "ex": 0.7,
+  "cfg": 0.35,
+  "gap": 0.25
+ }
+]

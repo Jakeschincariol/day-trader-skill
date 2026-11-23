@@ -1,0 +1,463 @@
+[
+ {
+  "id": "s1",
+  "t": 0.3,
+  "text": "Bu gökdelenin içinde tam {660|altı yüz altmış} tonluk dev bir top asılı!",
+  "dur": 3.267,
+  "words": [
+   {
+    "w": "Bu",
+    "t0": 0.317,
+    "t1": 0.419
+   },
+   {
+    "w": "gökdelenin",
+    "t0": 0.419,
+    "t1": 0.978
+   },
+   {
+    "w": "içinde",
+    "t0": 0.978,
+    "t1": 1.361
+   },
+   {
+    "w": "tam",
+    "t0": 1.361,
+    "t1": 1.564
+   },
+   {
+    "w": "660",
+    "t0": 1.564,
+    "t1": 2.381
+   },
+   {
+    "w": "tonluk",
+    "t0": 2.381,
+    "t1": 2.718
+   },
+   {
+    "w": "dev",
+    "t0": 2.718,
+    "t1": 2.841
+   },
+   {
+    "w": "bir",
+    "t0": 2.841,
+    "t1": 2.974
+   },
+   {
+    "w": "top",
+    "t0": 2.974,
+    "t1": 3.174
+   },
+   {
+    "w": "asılı!",
+    "t0": 3.174,
+    "t1": 3.462
+   }
+  ],
+  "cap": "Bu gökdelenin içinde tam 660 tonluk dev bir top asılı!"
+ },
+ {
+  "id": "s2",
+  "t": 4.75,
+  "text": "Peki neden?",
+  "dur": 0.637,
+  "words": [
+   {
+    "w": "Peki",
+    "t0": 4.766,
+    "t1": 4.995
+   },
+   {
+    "w": "neden?",
+    "t0": 4.995,
+    "t1": 5.281
+   }
+  ],
+  "cap": "Peki neden?"
+ },
+ {
+  "id": "s3",
+  "t": 5.85,
+  "text": "Tayvan'daki {Taipei|Taypey} {101,|yüz bir,} dünyanın en dikkat çekici gökdelenlerinden biri.",
+  "dur": 4.17,
+  "words": [
+   {
+    "w": "Tayvan'daki",
+    "t0": 5.871,
+    "t1": 6.532
+   },
+   {
+    "w": "Taipei",
+    "t0": 6.532,
+    "t1": 6.965
+   },
+   {
+    "w": "101,",
+    "t0": 6.965,
+    "t1": 7.244
+   },
+   {
+    "w": "dünyanın",
+    "t0": 7.416,
+    "t1": 7.914
+   },
+   {
+    "w": "en",
+    "t0": 7.914,
+    "t1": 8.04
+   },
+   {
+    "w": "dikkat",
+    "t0": 8.04,
+    "t1": 8.442
+   },
+   {
+    "w": "çekici",
+    "t0": 8.442,
+    "t1": 8.868
+   },
+   {
+    "w": "gökdelenlerinden",
+    "t0": 8.868,
+    "t1": 9.679
+   },
+   {
+    "w": "biri.",
+    "t0": 9.679,
+    "t1": 9.902
+   }
+  ],
+  "cap": "Tayvan'daki Taipei 101, dünyanın en dikkat çekici gökdelenlerinden biri."
+ },
+ {
+  "id": "s4",
+  "t": 10.75,
+  "text": "Ama asıl sırrı, üst katlarında gizli.",
+  "dur": 2.279,
+  "words": [
+   {
+    "w": "Ama",
+    "t0": 10.767,
+    "t1": 10.985
+   },
+   {
+    "w": "asıl",
+    "t0": 10.985,
+    "t1": 11.335
+   },
+   {
+    "w": "sırrı,",
+    "t0": 11.335,
+    "t1": 11.628
+   },
+   {
+    "w": "üst",
+    "t0": 11.818,
+    "t1": 12.057
+   },
+   {
+    "w": "katlarında",
+    "t0": 12.057,
+    "t1": 12.579
+   },
+   {
+    "w": "gizli.",
+    "t0": 12.579,
+    "t1": 12.916
+   }
+  ],
+  "cap": "Ama asıl sırrı, üst katlarında gizli."
+ },
+ {
+  "id": "s5",
+  "t": 13.35,
+  "text": "Tam {5|beş} buçuk metre çapındaki bu dev çelik küre, binanın {87'nci|seksen yedinci} ve {92'nci|doksan ikinci} katları arasında asılı duruyor.",
+  "dur": 6.363,
+  "words": [
+   {
+    "w": "Tam",
+    "t0": 13.369,
+    "t1": 13.594
+   },
+   {
+    "w": "5",
+    "t0": 13.594,
+    "t1": 13.831
+   },
+   {
+    "w": "buçuk",
+    "t0": 13.831,
+    "t1": 14.122
+   },
+   {
+    "w": "metre",
+    "t0": 14.122,
+    "t1": 14.463
+   },
+   {
+    "w": "çapındaki",
+    "t0": 14.463,
+    "t1": 14.945
+   },
+   {
+    "w": "bu",
+    "t0": 14.945,
+    "t1": 15.043
+   },
+   {
+    "w": "dev",
+    "t0": 15.043,
+    "t1": 15.162
+   },
+   {
+    "w": "çelik",
+    "t0": 15.162,
+    "t1": 15.454
+   },
+   {
+    "w": "küre,",
+    "t0": 15.454,
+    "t1": 15.651
+   },
+   {
+    "w": "binanın",
+    "t0": 15.871,
+    "t1": 16.32
+   },
+   {
+    "w": "87'nci",
+    "t0": 16.32,
+    "t1": 17.192
+   },
+   {
+    "w": "ve",
+    "t0": 17.192,
+    "t1": 17.261
+   },
+   {
+    "w": "92'nci",
+    "t0": 17.261,
+    "t1": 18.124
+   },
+   {
+    "w": "katları",
+    "t0": 18.124,
+    "t1": 18.467
+   },
+   {
+    "w": "arasında",
+    "t0": 18.467,
+    "t1": 18.944
+   },
+   {
+    "w": "asılı",
+    "t0": 18.944,
+    "t1": 19.222
+   },
+   {
+    "w": "duruyor.",
+    "t0": 19.222,
+    "t1": 19.614
+   }
+  ],
+  "cap": "Tam 5 buçuk metre çapındaki bu dev çelik küre, binanın 87'nci ve 92'nci katları arasında asılı duruyor."
+ },
+ {
+  "id": "s6",
+  "t": 20.7,
+  "text": "Şiddetli rüzgârda bina sallandığında, dev küre de hareket ederek bu sallanmanın etkisini azaltıyor.",
+  "dur": 5.092,
+  "words": [
+   {
+    "w": "Şiddetli",
+    "t0": 20.728,
+    "t1": 21.192
+   },
+   {
+    "w": "rüzgârda",
+    "t0": 21.192,
+    "t1": 21.714
+   },
+   {
+    "w": "bina",
+    "t0": 21.714,
+    "t1": 21.985
+   },
+   {
+    "w": "sallandığında,",
+    "t0": 21.985,
+    "t1": 22.689
+   },
+   {
+    "w": "dev",
+    "t0": 22.689,
+    "t1": 22.811
+   },
+   {
+    "w": "küre",
+    "t0": 22.811,
+    "t1": 23.013
+   },
+   {
+    "w": "de",
+    "t0": 23.013,
+    "t1": 23.125
+   },
+   {
+    "w": "hareket",
+    "t0": 23.125,
+    "t1": 23.602
+   },
+   {
+    "w": "ederek",
+    "t0": 23.602,
+    "t1": 23.981
+   },
+   {
+    "w": "bu",
+    "t0": 23.981,
+    "t1": 24.082
+   },
+   {
+    "w": "sallanmanın",
+    "t0": 24.082,
+    "t1": 24.67
+   },
+   {
+    "w": "etkisini",
+    "t0": 24.67,
+    "t1": 25.137
+   },
+   {
+    "w": "azaltıyor.",
+    "t0": 25.137,
+    "t1": 25.681
+   }
+  ],
+  "cap": "Şiddetli rüzgârda bina sallandığında, dev küre de hareket ederek bu sallanmanın etkisini azaltıyor."
+ },
+ {
+  "id": "s7",
+  "t": 27.2,
+  "text": "Sistemin adı: ayarlı kütle sönümleyici.",
+  "dur": 2.384,
+  "words": [
+   {
+    "w": "Sistemin",
+    "t0": 27.224,
+    "t1": 27.767
+   },
+   {
+    "w": "adı:",
+    "t0": 27.767,
+    "t1": 27.941
+   },
+   {
+    "w": "ayarlı",
+    "t0": 28.102,
+    "t1": 28.496
+   },
+   {
+    "w": "kütle",
+    "t0": 28.496,
+    "t1": 28.85
+   },
+   {
+    "w": "sönümleyici.",
+    "t0": 28.85,
+    "t1": 29.457
+   }
+  ],
+  "cap": "Sistemin adı: ayarlı kütle sönümleyici."
+ },
+ {
+  "id": "s8",
+  "t": 30.0,
+  "text": "Yani yüzlerce tonluk bir top, gökdelenin daha dengeli kalmasına yardım ediyor!",
+  "dur": 4.044,
+  "words": [
+   {
+    "w": "Yani",
+    "t0": 30.017,
+    "t1": 30.365
+   },
+   {
+    "w": "yüzlerce",
+    "t0": 30.365,
+    "t1": 30.913
+   },
+   {
+    "w": "tonluk",
+    "t0": 30.913,
+    "t1": 31.236
+   },
+   {
+    "w": "bir",
+    "t0": 31.236,
+    "t1": 31.364
+   },
+   {
+    "w": "top,",
+    "t0": 31.364,
+    "t1": 31.556
+   },
+   {
+    "w": "gökdelenin",
+    "t0": 31.667,
+    "t1": 32.192
+   },
+   {
+    "w": "daha",
+    "t0": 32.192,
+    "t1": 32.374
+   },
+   {
+    "w": "dengeli",
+    "t0": 32.374,
+    "t1": 32.778
+   },
+   {
+    "w": "kalmasına",
+    "t0": 32.778,
+    "t1": 33.247
+   },
+   {
+    "w": "yardım",
+    "t0": 33.247,
+    "t1": 33.615
+   },
+   {
+    "w": "ediyor!",
+    "t0": 33.615,
+    "t1": 33.909
+   }
+  ],
+  "cap": "Yani yüzlerce tonluk bir top, gökdelenin daha dengeli kalmasına yardım ediyor!"
+ },
+ {
+  "id": "s9",
+  "t": 37.6,
+  "text": "İnanılmaz değil mi?",
+  "dur": 1.057,
+  "words": [
+   {
+    "w": "İnanılmaz",
+    "t0": 37.616,
+    "t1": 38.198
+   },
+   {
+    "w": "değil",
+    "t0": 38.198,
+    "t1": 38.48
+   },
+   {
+    "w": "mi?",
+    "t0": 38.48,
+    "t1": 38.553
+   }
+  ],
+  "cap": "İnanılmaz değil mi?"
+ }
+]
