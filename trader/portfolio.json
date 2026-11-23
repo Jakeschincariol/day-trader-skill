@@ -1,0 +1,7 @@
+{
+  "positions": [
+    {"ticker": "VOO", "name": "Vanguard S&P 500 ETF"},
+    {"ticker": "NVDA", "name": "NVIDIA"},
+    {"ticker": "TSLA", "name": "Tesla"}
+  ]
+}
