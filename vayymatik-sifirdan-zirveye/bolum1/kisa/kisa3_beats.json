@@ -1,0 +1,101 @@
+{
+ "baslik": "180 Bin TL Bulmak İçin 4 Günü Kaldı!",
+ "kanca": [
+  "4 GÜN İÇİNDE",
+  "180.000 TL"
+ ],
+ "son": [
+  "YORUMLARA YAZ",
+  "EMİR BU PARAYI NASIL BULMALI?"
+ ],
+ "beats": [
+  {
+   "i": 0,
+   "sahne": 5,
+   "kon": "H",
+   "cek": "D.tel_yakin",
+   "panel": "-",
+   "ara": 0.4,
+   "cap": "Emir, üç taksit geçti. 180.000 lira. Cumaya kadar ödemezsen, noterden ihtar çekeceğim.",
+   "say": "Emir, üç taksit geçti. Yüz seksen bin lira. Cumaya kadar ödemezsen, noterden ihtar çekeceğim.",
+   "wav": "ses/parca/p52"
+  },
+  {
+   "i": 1,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "X.takvim",
+   "panel": "kriz",
+   "ara": 1.2,
+   "cap": "Emir'in dört günü vardı.",
+   "say": "Emir'in dört günü vardı.",
+   "wav": "ses/parca/p53"
+  },
+  {
+   "i": 2,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "C.aksam_yuru",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Salı günü bankaya gitti. Kredi başvurusu, teminat yetersizliği nedeniyle reddedildi.",
+   "say": "Salı günü bankaya gitti. Kredi başvurusu, teminat yetersizliği nedeniyle reddedildi.",
+   "wav": "ses/parca/p54"
+  },
+  {
+   "i": 3,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "G.emir_yalniz",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Kerem'i aramayı düşündü, vazgeçti. Ona zaten 180.000 lira borçluydu.",
+   "say": "Kerem'i aramayı düşündü, vazgeçti. Ona zaten yüz seksen bin lira borçluydu.",
+   "wav": "ses/parca/p55"
+  },
+  {
+   "i": 4,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "D.kasa_gece",
+   "panel": "ay3_sonu",
+   "ara": 0.3,
+   "cap": "Kasada 159.100 lira görünüyordu. Ama tedarikçiye 216.000 lira ödemesi gerekiyordu.",
+   "say": "Kasada yüz elli dokuz bin yüz lira görünüyordu. Ama tedarikçiye iki yüz on altı bin lira ödemesi gerekiyordu.",
+   "wav": "ses/parca/p56"
+  },
+  {
+   "i": 5,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "H.panel",
+   "panel": "kullanilabilir",
+   "ara": 0.4,
+   "cap": "Gerçekte kullanılabilir parası, eksi 56.900 liraydı. Gecikme cezası olarak 8.000 lira da gider yazılmıştı.",
+   "say": "Gerçekte kullanılabilir parası, eksi elli altı bin dokuz yüz liraydı. Gecikme cezası olarak sekiz bin lira da gider yazılmıştı.",
+   "wav": "ses/parca/p57"
+  },
+  {
+   "i": 6,
+   "sahne": 5,
+   "kon": "E",
+   "cek": "G.emir_yalniz",
+   "panel": "-",
+   "ara": 0.4,
+   "cap": "Dükkânı kaybedersem... Babama, Kerem'e ne derim?",
+   "say": "Dükkânı kaybedersem... Babama, Kerem'e ne derim?",
+   "wav": "ses/parca/p58"
+  },
+  {
+   "i": 7,
+   "sahne": 5,
+   "kon": "N",
+   "cek": "G.emir_push",
+   "panel": "-",
+   "ara": 0.4,
+   "cap": "Dört gün. Yüz seksen bin lira. Sence Emir bu parayı nasıl bulmalı? Yorumlara yaz.",
+   "say": "Dört gün. Yüz seksen bin lira. Sence Emir bu parayı nasıl bulmalı? Yorumlara yaz.",
+   "wav": "ses/kisa_parca/p08"
+  }
+ ]
+}

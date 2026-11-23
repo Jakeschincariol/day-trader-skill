@@ -1,0 +1,83 @@
+1
+00:00:00,150 --> 00:00:02,253
+Toplam satış: 4 milyon lira.
+
+2
+00:00:02,323 --> 00:00:03,272
+Dört milyon!
+
+3
+00:00:03,442 --> 00:00:06,377
+Dur, heyecanlanma.
+Satılan ürünlerin maliyeti
+
+4
+00:00:06,417 --> 00:00:09,739
+3,2 milyon. Kira, faturalar,
+güvenlik, komisyonlar,
+
+5
+00:00:09,779 --> 00:00:11,227
+reklam, faiz ve vergi:
+
+6
+00:00:11,267 --> 00:00:12,084
+560.000
+
+7
+00:00:12,254 --> 00:00:15,126
+Net kâr: 240.000 lira.
+
+8
+00:00:15,296 --> 00:00:17,835
+Dört milyon liralık
+satış, Emir'in dört milyon
+
+9
+00:00:17,875 --> 00:00:19,536
+kazandığı anlamına gelmiyordu.
+
+10
+00:00:19,576 --> 00:00:22,784
+Bir yılın karşılığı, iki
+yüz kırk bin liralık kârdı.
+
+11
+00:00:22,954 --> 00:00:25,040
+Nakit tarafında tablo netti.
+
+12
+00:00:25,080 --> 00:00:27,166
+Yılı 18.000 lirayla açmıştı.
+
+13
+00:00:27,206 --> 00:00:28,633
+240.000 kâr ekledi.
+
+14
+00:00:28,673 --> 00:00:31,932
+Satıcıya ve Kerem'e
+toplam 130.000 lira borç
+
+15
+00:00:31,972 --> 00:00:33,518
+anaparası ödedi.
+
+16
+00:00:33,688 --> 00:00:35,205
+Borç ödemek gider değildi.
+
+17
+00:00:35,245 --> 00:00:38,484
+Kârı azaltmadı ama kasadan
+çıktı ve borcu azalttı.
+
+18
+00:00:38,654 --> 00:00:41,585
+Yıl sonunda kasada
+128.000 lira kaldı.
+
+19
+00:00:41,625 --> 00:00:43,449
+Ciro, kâr değildir.
+

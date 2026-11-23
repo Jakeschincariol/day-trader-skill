@@ -1,0 +1,7 @@
+node_modules/
+**/frames*/
+**/audio/*.wav
+**/ses/parca*/*.wav
+*.log
+__pycache__/
+ortak/sesler/

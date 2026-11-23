@@ -1,0 +1,12 @@
+@baslik|400 Bin TL İçin Dükkânın Yarısını Verecekti!
+@kanca|400.000 TL TEKLİF|KARŞILIĞI: DÜKKÂNIN YARISI
+@son|YORUMLARA YAZ|SEN OLSAN İMZALAR MIYDIN?
+6|Y|{400.000|Dört yüz bin} lira koyarım. Karşılığında işletmenin yarısı benim.|D.murat_yakin|-|0.3
+6|N|Dört yüz bine yüzde elli. Yani Murat Bey işletmeye {800.000|sekiz yüz bin} lira değer biçiyordu. Defterlerdeki özkaynak ise yalnızca {215.100|iki yüz on beş bin yüz} liraydı.|H.panel|yatirimci|0.3
+6|N|Emir kalemi eline aldı. Ama imzalamadan önce muhasebecisini aradı.|D.kalem|-|0.3
+6|M|Emir, belgeleri incelerken bir şey buldum. Eski işletmeye ait olduğu iddia edilen {240.000|iki yüz kırk bin} liralık bir borç talebi var.|F.ahmet_tel|belirsiz|0.3
+6|E|Ne? Bu borç bana mı geçti?|D.emir_sok|-|0.3
+6|M|Henüz bilmiyoruz. Devir sözleşmesine ve hukuki belgelere bakmamız gerek. Bu belirsizken hiçbir şey imzalama.|F.ahmet_belge|-|0.3
+6|E|Murat Bey, teşekkür ederim. Ama şimdi imzalayamam.|D.ikili_murat|-|0.3
+6|Y|Kapı her zaman açık kalmaz delikanlı.|D.murat_cikis|-|0.6
+6|N|Sen olsan imzalar mıydın? Yorumlara yaz.|D.murat_cikis|-|0.4

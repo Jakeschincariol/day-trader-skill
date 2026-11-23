@@ -1,0 +1,11 @@
+@baslik|2,5 Milyonluk Teklifi Kabul Edecek Mi?
+@kanca|TEKLİF|2.500.000 TL
+@son|YORUMLARA YAZ|SATMALI MI, BÜYÜTMELİ Mİ?
+1|K|Bu dükkân için sana {2,5|iki buçuk} milyon lira teklif ediyorum.|G.kenan_yakin|-|0.3
+1|N|Bir yıl önce cebinde yalnızca {85.000|seksen beş bin} lira vardı.|G.emir_push|-|0.3
+9|N|Emir hesap yaptı. Satış gerçekleşirse önce kalan {490.000|dört yüz doksan bin} lira borcu kapatacaktı.|H.final|final1|0.3
+9|N|Kasadaki {128.000|yüz yirmi sekiz bin} lira da onundu. Vergi, komisyon ve masraflardan önce eline yaklaşık {2.138.000|iki milyon yüz otuz sekiz bin} lira geçebilirdi.|H.final|final2|0.3
+9|N|Ama o {240.000|iki yüz kırk bin} liralık belirsiz talep haklı çıkarsa, bu rakam {1.898.000|bir milyon sekiz yüz doksan sekiz bine} düşecekti.|H.final|final3|0.4
+9|K|Ne diyorsun Emir?|G.kenan_omuz|-|0.6
+9|E|Ben...|G.emir_push|-|1.2
+9|N|Satacak mı, büyütecek mi? Sen olsan ne yapardın? Yorumlara yaz.|G.emir_yansima|-|0.4

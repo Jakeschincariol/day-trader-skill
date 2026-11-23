@@ -1,0 +1,13 @@
+@baslik|85 Bin TL ile Kuyumcu Açtı!
+@kanca|CEBİNDE 85.000 TL|DÜKKÂN 660.000 TL
+@son|BÖLÜMÜN TAMAMI KANALDA|SIFIRDAN ZİRVEYE · BÖLÜM 1
+2|N|Cebinde {85.000|seksen beş bin} lira vardı. Aldığı dükkân ise {660.000|altı yüz altmış bin} liraydı.|C.aksam_yuru|-|0.3
+2|H|{660|Altı yüz altmış} bine devrederim.|D.hasan_yakin|-|0.3
+2|E|{660|Altı yüz altmış} bin mi? Benim {85.000|seksen beş binim} var...|D.emir_yakin|-|0.3
+2|N|Ertesi sabah en sevdiği şeyi, arabasını sattı. {230.000|İki yüz otuz bin} lira.|O.satis|kaynak2|0.3
+2|R|Sana güveniyorum kardeşim. {180.000|Yüz seksen bin.} Ama bir yıl içinde bana lazım olacak, haberin olsun.|O.kerem_tel|kaynak3|0.3
+2|N|Babası da {80.000|seksen bin} lira borç verdi.|V.aile_genis|kaynak4|0.3
+2|N|Toplam kaynak: {575.000|beş yüz yetmiş beş bin} lira. Ama bunun neredeyse yarısı, {260.000|iki yüz altmış bin} lirası borçtu.|H.kaynak|kaynak_toplam|0.4
+3|N|{300.000|Üç yüz bin} lirayı peşin ödedi. Kalan {360.000|üç yüz altmış bin} lira, satıcıya borç olarak yazıldı.|H.kullanim|kullanim2|0.3
+3|N|Açılış sabahı kasada yalnızca {18.000|on sekiz bin} lira vardı. Toplam borcu ise {620.000|altı yüz yirmi bin} liraydı.|D.acilis_kapi|acilis|0.3
+3|N|Peki bu borçla ayakta kalabilecek mi?|D.vitrin|-|0.4
