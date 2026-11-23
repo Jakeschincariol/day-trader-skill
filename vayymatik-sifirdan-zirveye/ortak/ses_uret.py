@@ -32,7 +32,7 @@ for i, p in enumerate(P):
     if os.path.exists(cf + '.json'): print(i, 'önbellek'); continue
     say, cap = p['say'], p.get('cap') or p['say']; best = None
     for att in range(3):
-        torch.manual_seed(100 + i * 10 + att)
+        torch.manual_seed(int(os.environ.get('TOHUM', 100)) + i * 10 + att)  # TOHUM: yeniden üretimde farklı tohum
         w = m.generate(say, language_id='tr', audio_prompt_path=p.get('ref', REF), exaggeration=min(p.get('ex', .5), .5), cfg_weight=.68, temperature=.5)
         y = librosa.resample(w.squeeze(0).numpy().astype(np.float32), orig_sr=m.sr, target_sr=SR); idx = np.where(np.abs(y) > .01)[0]
         y = tighten(enhance(y[max(idx[0] - 960, 0):min(idx[-1] + 4800, len(y))]), .25)
