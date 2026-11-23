@@ -43,7 +43,7 @@ export function scene6b(renderer) {
       else { u.uCol.value.set(0x3ee8ff); u.uBase.value = .3; u.uAmp.value = .45; } });
     Object.assign(P, { bloom: [.8, .4, .45], exposure: 1, tone: 'none', vignette: .55, grain: .03, sat: 1.05, contrast: 1.05 });
     O.xmark(brk, cam, sstep(.05, .3, t), t);
-    O.label(MAP.routes['marea'].curve.getPointAt(.45), cam, ['Alternatif güzergâh'], sstep(.6, .9, t), { dx: -60, dy: 330, color: '#3dffa0' });
+    O.label(MAP.routes['marea'].curve.getPointAt(.45), cam, ['Alternatif güzergâh'], sstep(.6, .9, t), { dx: -60, dy: 330, color: '#3dffa0', yr: [380, 1180] });
     O.label(brk, cam, ['Arızalı hat'], sstep(.2, .5, t), { dx: 40, dy: -300, color: '#ff4a3d' });
   } };
 }
@@ -87,7 +87,7 @@ export function scene4a(renderer) {
     O.label(new THREE.Vector3(-4.2, .98, .2), cam, ['Polietilen yalıtım'], A(.25), { dx: -40, dy: -300, color: '#9fb3c8' });
     O.label(new THREE.Vector3(-1.9, .7, .1), cam, ['Bakır iletken'], A(.6), { dx: -360, dy: -170, color: '#ff9a52' });
     O.label(new THREE.Vector3(-1.05, .44, .2), cam, ['Çelik teller'], A(.95), { dx: -380, dy: 220, color: '#d8e0e8' });
-    O.label(tips[3].position, cam, ['Optik lifler'], A(1.3), { dx: 60, dy: 300, color: '#4fe3ff' });
+    O.label(tips[3].position, cam, ['Optik lifler'], A(1.3), { dx: 60, dy: 300, color: '#4fe3ff', yr: [380, 1180] });
   } };
 }
 // ---------- Sahne 4B: fiberin içinde ışık sinyalleri ----------

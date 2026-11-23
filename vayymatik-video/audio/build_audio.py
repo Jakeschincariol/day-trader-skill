@@ -227,6 +227,6 @@ mix = bed + np.stack([V, V], 1) * db(-3)
 mix = hp(mix, 28)
 fade = np.ones(N); f0, f1 = int(44.35 * SR), N; fade[f0:f1] = np.linspace(1, 0, f1 - f0) ** 2; fade[:int(.02 * SR)] = np.linspace(0, 1, int(.02 * SR))
 mix *= fade[:, None]
-for _ in range(3): mix *= db(-14 - lufs(mix)); mix = limiter(mix, -1.6)
+for _ in range(3): mix *= db(-14 - lufs(mix)); mix = limiter(mix, -2.4)  # AAC aşımı için pay: kodlama sonrası ≈ -2 dBTP
 print(f'yatak(müzik+efekt): {lufs(bed):.2f} LUFS | miks: {lufs(mix):.2f} LUFS, tepe {tpeak(mix):.2f} dBTP')
 wr(f'{D}/mix.wav', mix); wr(f'{D}/music_stem.wav', mus * .5); wr(f'{D}/sfx_stem.wav', sfx * .5)

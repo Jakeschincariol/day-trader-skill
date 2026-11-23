@@ -279,6 +279,6 @@ export function scene6(renderer) {
     Object.assign(P, { bloom: [.8, .5, .72], exposure: .95, tone: 'aces', vignette: .52, grain: .04, sat: 1.0, contrast: 1.06 });
     O.badge('TEMSİLİ CANLANDIRMA', 540, 210, 1);
     O.label(new THREE.Vector3(4, 23.5, 10), cam, ['Kablo onarım gemisi'], sstep(.2, .5, u) * (1 - sstep(3.7, 4.0, u)), { dx: -230, dy: 170, color: '#ffd23f', yr: [290, 1100] });
-    O.label(G.clone().lerp(tdP, .35), cam, ['Kablo yüzeye çekiliyor'], sstep(1.0, 1.3, u) * (1 - sstep(3.7, 4.0, u)), { dx: -330, dy: 260, color: '#4fe3ff' });
+    O.label(G.clone().lerp(tdP, .35), cam, ['Kablo yüzeye çekiliyor'], sstep(1.0, 1.3, u) * (1 - sstep(3.7, 4.0, u)), { dx: -330, dy: 260, color: '#4fe3ff', yr: [380, 1180] });
   } };
 }
