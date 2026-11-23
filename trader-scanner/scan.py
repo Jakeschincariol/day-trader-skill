@@ -170,6 +170,80 @@ def eastern_to_utc(local):
     return local + datetime.timedelta(hours=5)
 
 
+# ---------------------------------------------------------------- India (NSE)
+# "market": "IN" in trader/config.json (or TRADER_MARKET=IN in the environment)
+# moves the clock to the NSE: 9:15 to 15:30 India time (UTC+5:30, no daylight
+# saving), the NSE holiday list, no early closes, day trades flat by 15:15.
+# Amounts in the config are then rupees. Symbols ending in .NS are never rewritten.
+
+def _market():
+    m = os.environ.get("TRADER_MARKET")
+    if not m:
+        try:
+            with open(os.path.join("trader", "config.json"), encoding="utf-8") as fh:
+                m = json.load(fh).get("market")
+        except (OSError, ValueError, AttributeError):
+            m = None
+    return "IN" if str(m or "").strip().upper() in ("IN", "INDIA", "NSE") else "US"
+
+
+def _ysym(sym):
+    """Yahoo's form of a symbol: BRK.B -> BRK-B. An NSE symbol (RELIANCE.NS) stays as it is."""
+    s = str(sym).upper()
+    return s if s.endswith(".NS") else s.replace(".", "-")
+
+
+_SAY = ((re.compile(r"New York time"), "India time"), (re.compile(r"New York \(ET\)"), "India (IST)"),
+        (re.compile(r"New York"), "IST"), (re.compile(r"\bET\b"), "IST"),
+        (re.compile(r"\bNYSE\b"), "NSE"), (re.compile(r"\bnyse\.com\b"), "nseindia.com"),
+        (re.compile(r"\$(?=-?\d)"), "\u20b9"))
+
+
+class _Say(object):
+    """India mode: what the tool prints says IST, NSE and rupees."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        for pat, word in _SAY:
+            text = pat.sub(word, text)
+        return self._out.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+NSE_HOLIDAYS = {  # capital market segment, 2026 (NSE circulars NSE/CMTR/71775 and 72260)
+    "2026-01-15": "Municipal Corporation election in Maharashtra",
+    "2026-01-26": "Republic Day",
+    "2026-03-03": "Holi",
+    "2026-03-26": "Shri Ram Navami",
+    "2026-03-31": "Shri Mahavir Jayanti",
+    "2026-04-03": "Good Friday",
+    "2026-04-14": "Dr. Baba Saheb Ambedkar Jayanti",
+    "2026-05-01": "Maharashtra Day",
+    "2026-05-28": "Bakri Id",
+    "2026-06-26": "Muharram",
+    "2026-09-14": "Ganesh Chaturthi",
+    "2026-10-02": "Mahatma Gandhi Jayanti",
+    "2026-10-20": "Dussehra",
+    "2026-11-10": "Diwali Balipratipada",
+    "2026-11-24": "Prakash Gurpurb Sri Guru Nanak Dev",
+    "2026-12-25": "Christmas",
+}
+MARKET = _market()
+if MARKET == "IN":
+    NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, CALENDAR_YEARS = NSE_HOLIDAYS, {}, (2026,)
+    OPEN, CLOSE = datetime.time(9, 15), datetime.time(15, 30)
+
+    def eastern_offset(utc):  # noqa: F811
+        return 5.5
+
+    def eastern_to_utc(local):  # noqa: F811
+        return local - datetime.timedelta(hours=5.5)
+
+
 def ts_to_eastern(ts):
     """Unix seconds -> naive New York time. Never uses the machine's time zone."""
     return to_eastern(datetime.datetime(1970, 1, 1) + datetime.timedelta(seconds=int(ts)))
@@ -268,7 +342,7 @@ def yahoo_get(path):
 
 
 def to_yahoo(sym):
-    return sym.upper().replace(".", "-")
+    return _ysym(sym)
 
 
 def spark_path(symbols, rng, interval):
@@ -309,7 +383,7 @@ def parse_spark(text_or_doc, wanted=None):
         if not resp:
             continue
         ysym = item.get("symbol") or (resp[0].get("meta") or {}).get("symbol") or ""
-        sym = (wanted or {}).get(ysym.upper(), ysym.upper().replace("-", "."))
+        sym = (wanted or {}).get(ysym.upper(), ysym.upper() if ysym.upper().endswith(".NS") else ysym.upper().replace("-", "."))
         out[sym] = series_from_result(resp[0])
     if err and not out:
         raise ScanError("Yahoo spark: %s" % (err.get("description") or err.get("code") or err))
@@ -671,9 +745,10 @@ def orb_window(now_utc, at, or_minutes, until, explicit_day=None):
             raise ScanError("The market closed at %s ET on %s. Replay the session with --at 10:15."
                             % (clock_label(close_dt), day_label(day)))
     if cutoff < first_close:
-        raise ScanError("It is %s ET: the %d-minute opening range runs 9:30 to %s and the first bar after it "
+        raise ScanError("It is %s ET: the %d-minute opening range runs %s to %s and the first bar after it "
                         "closes at %s. Run orb again after %s."
-                        % (clock_label(cutoff), or_minutes, clock_label(range_end), clock_label(first_close),
+                        % (clock_label(cutoff), or_minutes, clock_label(slot(day, 0)), clock_label(range_end),
+                           clock_label(first_close),
                            clock_label(first_close)))
     if until is not None and cutoff.time() > until:
         raise ScanError("It is %s ET, after %s, your last time for new entries (no_entries_after): an "
@@ -995,8 +1070,9 @@ def cmd_orb(a):
     if a.json:
         print(json.dumps(dict(doc, counts=counts, seconds=round(time.time() - t0, 1)), indent=2))
         return 0 if hits else 1
-    print("Opening-range breakout scan, %s %s ET: %d-minute range (9:30 to %s), 5-minute bars, Yahoo."
-          % (day_label(day), clock_label(cutoff), a.or_minutes, clock_label(slot(day, a.or_minutes // BAR_MIN))))
+    print("Opening-range breakout scan, %s %s ET: %d-minute range (%s to %s), 5-minute bars, Yahoo."
+          % (day_label(day), clock_label(cutoff), a.or_minutes, clock_label(slot(day, 0)),
+             clock_label(slot(day, a.or_minutes // BAR_MIN))))
     print("Fetched %s of %s charts%s; %s usable%s; %s candidates, %s confirmed with real highs and lows."
           % ("{:,}".format(counts["fetched"]), "{:,}".format(len(symbols)),
              (" (%s failed or had no data)" % "{:,}".format(nfailed)) if nfailed else "",
@@ -1080,4 +1156,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if MARKET == "IN":
+        sys.stdout, sys.stderr = _Say(sys.stdout), _Say(sys.stderr)
     sys.exit(main())

@@ -55,6 +55,9 @@ DOUBT_WORDS = {"no", "not", "dont", "don't", "wait", "cancel", "stop", "but", "m
                "hold", "unless", "if"}
 
 
+FLAT_BY = "15:55"
+
+
 class TicketError(Exception):
     pass
 
@@ -90,6 +93,61 @@ def eastern_to_utc(local):
     return local + datetime.timedelta(hours=5)
 
 
+# ---------------------------------------------------------------- India (NSE)
+# "market": "IN" in trader/config.json (or TRADER_MARKET=IN in the environment)
+# moves the clock to the NSE: 9:15 to 15:30 India time (UTC+5:30, no daylight
+# saving), the NSE holiday list, no early closes, day trades flat by 15:15.
+# Amounts in the config are then rupees. Symbols ending in .NS are never rewritten.
+
+def _market():
+    m = os.environ.get("TRADER_MARKET")
+    if not m:
+        try:
+            with open(os.path.join("trader", "config.json"), encoding="utf-8") as fh:
+                m = json.load(fh).get("market")
+        except (OSError, ValueError, AttributeError):
+            m = None
+    return "IN" if str(m or "").strip().upper() in ("IN", "INDIA", "NSE") else "US"
+
+
+def _ysym(sym):
+    """Yahoo's form of a symbol: BRK.B -> BRK-B. An NSE symbol (RELIANCE.NS) stays as it is."""
+    s = str(sym).upper()
+    return s if s.endswith(".NS") else s.replace(".", "-")
+
+
+_SAY = ((re.compile(r"New York time"), "India time"), (re.compile(r"New York \(ET\)"), "India (IST)"),
+        (re.compile(r"New York"), "IST"), (re.compile(r"\bET\b"), "IST"),
+        (re.compile(r"\bNYSE\b"), "NSE"), (re.compile(r"\bnyse\.com\b"), "nseindia.com"),
+        (re.compile(r"\$(?=-?\d)"), "\u20b9"))
+
+
+class _Say(object):
+    """India mode: what the tool prints says IST, NSE and rupees."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        for pat, word in _SAY:
+            text = pat.sub(word, text)
+        return self._out.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+MARKET = _market()
+if MARKET == "IN":
+    FLAT_BY = "15:15"
+
+    def eastern_offset(utc):  # noqa: F811
+        return 5.5
+
+    def eastern_to_utc(local):  # noqa: F811
+        return local - datetime.timedelta(hours=5.5)
+
+
 def parse_now(text):
     """ISO time -> naive UTC. A time without an offset is taken as New York time."""
     if not text:
@@ -107,7 +165,8 @@ def parse_now(text):
 def ny_iso(now_utc):
     """naive UTC -> "2026-10-19T10:15:00-04:00" (New York wall clock with its offset)."""
     off = eastern_offset(now_utc)
-    return "%s%+03d:00" % (to_eastern(now_utc).replace(microsecond=0).isoformat(), off)
+    return "%s%+03d:%02d" % (to_eastern(now_utc).replace(microsecond=0).isoformat(), int(off),
+                             int(abs(off) * 60) % 60)
 
 
 # ---------------------------------------------------------------- files
@@ -602,7 +661,7 @@ def cmd_flatten(a):
                               "%s) and pass --qty if you do hold some" % (sym, a.portfolio, sym))
     plan = read_json(a.plan, "plan", required=False) or {}
     flat_by = (plan.get("flat_by") if str(plan.get("symbol", "")).upper() == sym else None) \
-        or cfg.get("flat_by") or "15:55"
+        or cfg.get("flat_by") or FLAT_BY
     order = {"symbol": sym, "side": "sell", "qty": _str_num(qty), "type": "market", "time_in_force": "day",
              "why": "flat by %s New York: closes the %s day trade before the close (qty from %s)"
              % (flat_by, sym, source)}
@@ -717,4 +776,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if MARKET == "IN":
+        sys.stdout, sys.stderr = _Say(sys.stdout), _Say(sys.stderr)
     sys.exit(main())
