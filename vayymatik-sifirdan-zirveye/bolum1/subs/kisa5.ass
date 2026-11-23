@@ -11,90 +11,90 @@ Style: C,Montserrat ExtraBold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.15,0:00:00.58,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TOPLAM{\c&HFFFFFF&} SATIŞ:
-Dialogue: 0,0:00:00.58,0:00:01.00,C,,0,0,0,,TOPLAM {\c&H4AC4E8&}SATIŞ:{\c&HFFFFFF&}
-Dialogue: 0,0:00:01.02,0:00:01.15,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}4{\c&HFFFFFF&} MİLYON LİRA.
-Dialogue: 0,0:00:01.15,0:00:01.58,C,,0,0,0,,4 {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&} LİRA.
-Dialogue: 0,0:00:01.58,0:00:02.20,C,,0,0,0,,4 MİLYON {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
-Dialogue: 0,0:00:02.32,0:00:02.57,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON!
-Dialogue: 0,0:00:02.57,0:00:03.22,C,,0,0,0,,DÖRT {\c&H4AC4E8&}MİLYON!{\c&HFFFFFF&}
-Dialogue: 0,0:00:03.44,0:00:03.75,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DUR,{\c&HFFFFFF&}
-Dialogue: 0,0:00:03.77,0:00:04.65,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}HEYECANLANMA.{\c&HFFFFFF&}
-Dialogue: 0,0:00:04.67,0:00:05.19,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATILAN{\c&HFFFFFF&} ÜRÜNLERİN
-Dialogue: 0,0:00:05.19,0:00:05.82,C,,0,0,0,,SATILAN {\c&H4AC4E8&}ÜRÜNLERİN{\c&HFFFFFF&}
-Dialogue: 0,0:00:05.83,0:00:06.42,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}MALİYETİ{\c&HFFFFFF&} 3,2 MİLYON.
-Dialogue: 0,0:00:06.42,0:00:06.67,C,,0,0,0,,MALİYETİ {\c&H4AC4E8&}3,2{\c&HFFFFFF&} MİLYON.
-Dialogue: 0,0:00:06.67,0:00:07.17,C,,0,0,0,,MALİYETİ 3,2 {\c&H4AC4E8&}MİLYON.{\c&HFFFFFF&}
-Dialogue: 0,0:00:07.19,0:00:07.56,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KİRA,{\c&HFFFFFF&}
-Dialogue: 0,0:00:07.58,0:00:08.27,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}FATURALAR,{\c&HFFFFFF&}
-Dialogue: 0,0:00:08.29,0:00:08.92,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}GÜVENLİK,{\c&HFFFFFF&}
-Dialogue: 0,0:00:08.94,0:00:09.76,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KOMİSYONLAR,{\c&HFFFFFF&}
-Dialogue: 0,0:00:09.78,0:00:10.28,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}REKLAM,{\c&HFFFFFF&}
-Dialogue: 0,0:00:10.30,0:00:10.62,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}FAİZ{\c&HFFFFFF&} VE VERGİ:
-Dialogue: 0,0:00:10.62,0:00:10.81,C,,0,0,0,,FAİZ {\c&H4AC4E8&}VE{\c&HFFFFFF&} VERGİ:
-Dialogue: 0,0:00:10.81,0:00:11.25,C,,0,0,0,,FAİZ VE {\c&H4AC4E8&}VERGİ:{\c&HFFFFFF&}
-Dialogue: 0,0:00:11.27,0:00:12.03,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}560.000{\c&HFFFFFF&}
-Dialogue: 0,0:00:12.25,0:00:12.70,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NET{\c&HFFFFFF&} KÂR:
-Dialogue: 0,0:00:12.70,0:00:13.24,C,,0,0,0,,NET {\c&H4AC4E8&}KÂR:{\c&HFFFFFF&}
-Dialogue: 0,0:00:13.26,0:00:14.15,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}240.000{\c&HFFFFFF&} LİRA.
-Dialogue: 0,0:00:14.15,0:00:15.08,C,,0,0,0,,240.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
-Dialogue: 0,0:00:15.30,0:00:15.57,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON LİRALIK
-Dialogue: 0,0:00:15.57,0:00:15.96,C,,0,0,0,,DÖRT {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&} LİRALIK
-Dialogue: 0,0:00:15.96,0:00:16.37,C,,0,0,0,,DÖRT MİLYON {\c&H4AC4E8&}LİRALIK{\c&HFFFFFF&}
-Dialogue: 0,0:00:16.39,0:00:16.76,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATIŞ,{\c&HFFFFFF&}
-Dialogue: 0,0:00:16.78,0:00:17.22,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}EMİR'İN{\c&HFFFFFF&} DÖRT MİLYON
-Dialogue: 0,0:00:17.22,0:00:17.49,C,,0,0,0,,EMİR'İN {\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON
-Dialogue: 0,0:00:17.49,0:00:17.86,C,,0,0,0,,EMİR'İN DÖRT {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&}
-Dialogue: 0,0:00:17.88,0:00:18.42,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KAZANDIĞI{\c&HFFFFFF&} ANLAMINA
-Dialogue: 0,0:00:18.42,0:00:18.90,C,,0,0,0,,KAZANDIĞI {\c&H4AC4E8&}ANLAMINA{\c&HFFFFFF&}
-Dialogue: 0,0:00:18.92,0:00:19.56,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}GELMİYORDU.{\c&HFFFFFF&}
-Dialogue: 0,0:00:19.58,0:00:19.80,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİR{\c&HFFFFFF&} YILIN KARŞILIĞI,
-Dialogue: 0,0:00:19.80,0:00:20.12,C,,0,0,0,,BİR {\c&H4AC4E8&}YILIN{\c&HFFFFFF&} KARŞILIĞI,
-Dialogue: 0,0:00:20.12,0:00:20.71,C,,0,0,0,,BİR YILIN {\c&H4AC4E8&}KARŞILIĞI,{\c&HFFFFFF&}
-Dialogue: 0,0:00:20.73,0:00:20.95,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}İKİ{\c&HFFFFFF&} YÜZ KIRK
-Dialogue: 0,0:00:20.95,0:00:21.17,C,,0,0,0,,İKİ {\c&H4AC4E8&}YÜZ{\c&HFFFFFF&} KIRK
-Dialogue: 0,0:00:21.17,0:00:21.42,C,,0,0,0,,İKİ YÜZ {\c&H4AC4E8&}KIRK{\c&HFFFFFF&}
-Dialogue: 0,0:00:21.44,0:00:21.66,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİN{\c&HFFFFFF&} LİRALIK KÂRDI.
-Dialogue: 0,0:00:21.66,0:00:22.10,C,,0,0,0,,BİN {\c&H4AC4E8&}LİRALIK{\c&HFFFFFF&} KÂRDI.
-Dialogue: 0,0:00:22.10,0:00:22.73,C,,0,0,0,,BİN LİRALIK {\c&H4AC4E8&}KÂRDI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:22.95,0:00:23.39,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NAKİT{\c&HFFFFFF&} TARAFINDA TABLO
-Dialogue: 0,0:00:23.39,0:00:24.13,C,,0,0,0,,NAKİT {\c&H4AC4E8&}TARAFINDA{\c&HFFFFFF&} TABLO
-Dialogue: 0,0:00:24.13,0:00:24.55,C,,0,0,0,,NAKİT TARAFINDA {\c&H4AC4E8&}TABLO{\c&HFFFFFF&}
-Dialogue: 0,0:00:24.57,0:00:25.06,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NETTİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:25.08,0:00:25.45,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}YILI{\c&HFFFFFF&} 18.000 LİRAYLA
-Dialogue: 0,0:00:25.45,0:00:25.96,C,,0,0,0,,YILI {\c&H4AC4E8&}18.000{\c&HFFFFFF&} LİRAYLA
-Dialogue: 0,0:00:25.96,0:00:26.53,C,,0,0,0,,YILI 18.000 {\c&H4AC4E8&}LİRAYLA{\c&HFFFFFF&}
-Dialogue: 0,0:00:26.55,0:00:27.19,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AÇMIŞTI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:27.21,0:00:27.79,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}240.000{\c&HFFFFFF&} KÂR EKLEDİ.
-Dialogue: 0,0:00:27.79,0:00:28.09,C,,0,0,0,,240.000 {\c&H4AC4E8&}KÂR{\c&HFFFFFF&} EKLEDİ.
-Dialogue: 0,0:00:28.09,0:00:28.65,C,,0,0,0,,240.000 KÂR {\c&H4AC4E8&}EKLEDİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:28.67,0:00:29.33,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATICIYA{\c&HFFFFFF&} VE KEREM'E
-Dialogue: 0,0:00:29.33,0:00:29.55,C,,0,0,0,,SATICIYA {\c&H4AC4E8&}VE{\c&HFFFFFF&} KEREM'E
-Dialogue: 0,0:00:29.55,0:00:30.12,C,,0,0,0,,SATICIYA VE {\c&H4AC4E8&}KEREM'E{\c&HFFFFFF&}
-Dialogue: 0,0:00:30.14,0:00:30.65,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TOPLAM{\c&HFFFFFF&} 130.000 LİRA
-Dialogue: 0,0:00:30.65,0:00:31.24,C,,0,0,0,,TOPLAM {\c&H4AC4E8&}130.000{\c&HFFFFFF&} LİRA
-Dialogue: 0,0:00:31.24,0:00:31.59,C,,0,0,0,,TOPLAM 130.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&}
-Dialogue: 0,0:00:31.61,0:00:31.97,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORÇ{\c&HFFFFFF&} ANAPARASI ÖDEDİ.
-Dialogue: 0,0:00:31.97,0:00:32.70,C,,0,0,0,,BORÇ {\c&H4AC4E8&}ANAPARASI{\c&HFFFFFF&} ÖDEDİ.
-Dialogue: 0,0:00:32.70,0:00:33.47,C,,0,0,0,,BORÇ ANAPARASI {\c&H4AC4E8&}ÖDEDİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:33.69,0:00:33.98,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORÇ{\c&HFFFFFF&} ÖDEMEK GİDER
-Dialogue: 0,0:00:33.98,0:00:34.38,C,,0,0,0,,BORÇ {\c&H4AC4E8&}ÖDEMEK{\c&HFFFFFF&} GİDER
-Dialogue: 0,0:00:34.38,0:00:34.71,C,,0,0,0,,BORÇ ÖDEMEK {\c&H4AC4E8&}GİDER{\c&HFFFFFF&}
-Dialogue: 0,0:00:34.73,0:00:35.22,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:35.24,0:00:35.53,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂRI{\c&HFFFFFF&} AZALTMADI AMA
-Dialogue: 0,0:00:35.53,0:00:36.11,C,,0,0,0,,KÂRI {\c&H4AC4E8&}AZALTMADI{\c&HFFFFFF&} AMA
-Dialogue: 0,0:00:36.11,0:00:36.32,C,,0,0,0,,KÂRI AZALTMADI {\c&H4AC4E8&}AMA{\c&HFFFFFF&}
-Dialogue: 0,0:00:36.34,0:00:36.80,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADAN{\c&HFFFFFF&} ÇIKTI VE
-Dialogue: 0,0:00:36.80,0:00:37.15,C,,0,0,0,,KASADAN {\c&H4AC4E8&}ÇIKTI{\c&HFFFFFF&} VE
-Dialogue: 0,0:00:37.15,0:00:37.30,C,,0,0,0,,KASADAN ÇIKTI {\c&H4AC4E8&}VE{\c&HFFFFFF&}
-Dialogue: 0,0:00:37.32,0:00:37.66,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORCU{\c&HFFFFFF&} AZALTTI.
-Dialogue: 0,0:00:37.66,0:00:38.43,C,,0,0,0,,BORCU {\c&H4AC4E8&}AZALTTI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:38.65,0:00:38.96,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}YIL{\c&HFFFFFF&} SONUNDA KASADA
-Dialogue: 0,0:00:38.96,0:00:39.57,C,,0,0,0,,YIL {\c&H4AC4E8&}SONUNDA{\c&HFFFFFF&} KASADA
-Dialogue: 0,0:00:39.57,0:00:40.08,C,,0,0,0,,YIL SONUNDA {\c&H4AC4E8&}KASADA{\c&HFFFFFF&}
-Dialogue: 0,0:00:40.10,0:00:40.71,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}128.000{\c&HFFFFFF&} LİRA KALDI.
-Dialogue: 0,0:00:40.71,0:00:41.09,C,,0,0,0,,128.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} KALDI.
-Dialogue: 0,0:00:41.09,0:00:41.60,C,,0,0,0,,128.000 LİRA {\c&H4AC4E8&}KALDI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:41.62,0:00:42.06,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}CİRO,{\c&HFFFFFF&}
-Dialogue: 0,0:00:42.08,0:00:42.39,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂR{\c&HFFFFFF&} DEĞİLDİR.
-Dialogue: 0,0:00:42.39,0:00:43.55,C,,0,0,0,,KÂR {\c&H4AC4E8&}DEĞİLDİR.{\c&HFFFFFF&}
+Dialogue: 0,0:00:00.13,0:00:00.47,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TOPLAM{\c&HFFFFFF&} SATIŞ:
+Dialogue: 0,0:00:00.47,0:00:00.85,C,,0,0,0,,TOPLAM {\c&H4AC4E8&}SATIŞ:{\c&HFFFFFF&}
+Dialogue: 0,0:00:00.87,0:00:01.29,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}4{\c&HFFFFFF&} MİLYON LİRA.
+Dialogue: 0,0:00:01.29,0:00:01.65,C,,0,0,0,,4 {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&} LİRA.
+Dialogue: 0,0:00:01.65,0:00:02.70,C,,0,0,0,,4 MİLYON {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:02.75,0:00:03.02,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON!
+Dialogue: 0,0:00:03.02,0:00:03.72,C,,0,0,0,,DÖRT {\c&H4AC4E8&}MİLYON!{\c&HFFFFFF&}
+Dialogue: 0,0:00:04.02,0:00:04.35,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DUR,{\c&HFFFFFF&}
+Dialogue: 0,0:00:04.37,0:00:05.32,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}HEYECANLANMA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:05.34,0:00:05.90,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATILAN{\c&HFFFFFF&} ÜRÜNLERİN
+Dialogue: 0,0:00:05.90,0:00:06.58,C,,0,0,0,,SATILAN {\c&H4AC4E8&}ÜRÜNLERİN{\c&HFFFFFF&}
+Dialogue: 0,0:00:06.60,0:00:07.23,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}MALİYETİ{\c&HFFFFFF&} 3,2 MİLYON.
+Dialogue: 0,0:00:07.23,0:00:07.51,C,,0,0,0,,MALİYETİ {\c&H4AC4E8&}3,2{\c&HFFFFFF&} MİLYON.
+Dialogue: 0,0:00:07.51,0:00:08.05,C,,0,0,0,,MALİYETİ 3,2 {\c&H4AC4E8&}MİLYON.{\c&HFFFFFF&}
+Dialogue: 0,0:00:08.07,0:00:08.47,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KİRA,{\c&HFFFFFF&}
+Dialogue: 0,0:00:08.49,0:00:09.24,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}FATURALAR,{\c&HFFFFFF&}
+Dialogue: 0,0:00:09.26,0:00:09.94,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}GÜVENLİK,{\c&HFFFFFF&}
+Dialogue: 0,0:00:09.96,0:00:10.85,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KOMİSYONLAR,{\c&HFFFFFF&}
+Dialogue: 0,0:00:10.87,0:00:11.41,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}REKLAM,{\c&HFFFFFF&}
+Dialogue: 0,0:00:11.43,0:00:11.78,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}FAİZ{\c&HFFFFFF&} VE VERGİ:
+Dialogue: 0,0:00:11.78,0:00:11.99,C,,0,0,0,,FAİZ {\c&H4AC4E8&}VE{\c&HFFFFFF&} VERGİ:
+Dialogue: 0,0:00:11.99,0:00:12.46,C,,0,0,0,,FAİZ VE {\c&H4AC4E8&}VERGİ:{\c&HFFFFFF&}
+Dialogue: 0,0:00:12.48,0:00:13.29,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}560.000{\c&HFFFFFF&}
+Dialogue: 0,0:00:13.41,0:00:13.97,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NET{\c&HFFFFFF&} KÂR:
+Dialogue: 0,0:00:13.97,0:00:14.59,C,,0,0,0,,NET {\c&H4AC4E8&}KÂR:{\c&HFFFFFF&}
+Dialogue: 0,0:00:14.61,0:00:15.07,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}240.000{\c&HFFFFFF&} LİRA.
+Dialogue: 0,0:00:15.07,0:00:15.50,C,,0,0,0,,240.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:15.80,0:00:16.06,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON LİRALIK
+Dialogue: 0,0:00:16.06,0:00:16.42,C,,0,0,0,,DÖRT {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&} LİRALIK
+Dialogue: 0,0:00:16.42,0:00:16.81,C,,0,0,0,,DÖRT MİLYON {\c&H4AC4E8&}LİRALIK{\c&HFFFFFF&}
+Dialogue: 0,0:00:16.83,0:00:17.18,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATIŞ,{\c&HFFFFFF&}
+Dialogue: 0,0:00:17.20,0:00:17.61,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}EMİR'İN{\c&HFFFFFF&} DÖRT MİLYON
+Dialogue: 0,0:00:17.61,0:00:17.87,C,,0,0,0,,EMİR'İN {\c&H4AC4E8&}DÖRT{\c&HFFFFFF&} MİLYON
+Dialogue: 0,0:00:17.87,0:00:18.21,C,,0,0,0,,EMİR'İN DÖRT {\c&H4AC4E8&}MİLYON{\c&HFFFFFF&}
+Dialogue: 0,0:00:18.23,0:00:18.75,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KAZANDIĞI{\c&HFFFFFF&} ANLAMINA
+Dialogue: 0,0:00:18.75,0:00:19.19,C,,0,0,0,,KAZANDIĞI {\c&H4AC4E8&}ANLAMINA{\c&HFFFFFF&}
+Dialogue: 0,0:00:19.21,0:00:19.81,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}GELMİYORDU.{\c&HFFFFFF&}
+Dialogue: 0,0:00:19.83,0:00:20.04,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİR{\c&HFFFFFF&} YILIN KARŞILIĞI,
+Dialogue: 0,0:00:20.04,0:00:20.35,C,,0,0,0,,BİR {\c&H4AC4E8&}YILIN{\c&HFFFFFF&} KARŞILIĞI,
+Dialogue: 0,0:00:20.35,0:00:20.90,C,,0,0,0,,BİR YILIN {\c&H4AC4E8&}KARŞILIĞI,{\c&HFFFFFF&}
+Dialogue: 0,0:00:20.92,0:00:21.13,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}İKİ{\c&HFFFFFF&} YÜZ KIRK
+Dialogue: 0,0:00:21.13,0:00:21.34,C,,0,0,0,,İKİ {\c&H4AC4E8&}YÜZ{\c&HFFFFFF&} KIRK
+Dialogue: 0,0:00:21.34,0:00:21.57,C,,0,0,0,,İKİ YÜZ {\c&H4AC4E8&}KIRK{\c&HFFFFFF&}
+Dialogue: 0,0:00:21.59,0:00:21.80,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİN{\c&HFFFFFF&} LİRALIK KÂRDI.
+Dialogue: 0,0:00:21.80,0:00:22.21,C,,0,0,0,,BİN {\c&H4AC4E8&}LİRALIK{\c&HFFFFFF&} KÂRDI.
+Dialogue: 0,0:00:22.21,0:00:22.83,C,,0,0,0,,BİN LİRALIK {\c&H4AC4E8&}KÂRDI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:22.95,0:00:23.33,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NAKİT{\c&HFFFFFF&} TARAFINDA TABLO
+Dialogue: 0,0:00:23.33,0:00:23.95,C,,0,0,0,,NAKİT {\c&H4AC4E8&}TARAFINDA{\c&HFFFFFF&} TABLO
+Dialogue: 0,0:00:23.95,0:00:24.30,C,,0,0,0,,NAKİT TARAFINDA {\c&H4AC4E8&}TABLO{\c&HFFFFFF&}
+Dialogue: 0,0:00:24.32,0:00:24.74,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}NETTİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:24.76,0:00:25.07,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}YILI{\c&HFFFFFF&} 18.000 LİRAYLA
+Dialogue: 0,0:00:25.07,0:00:25.51,C,,0,0,0,,YILI {\c&H4AC4E8&}18.000{\c&HFFFFFF&} LİRAYLA
+Dialogue: 0,0:00:25.51,0:00:25.99,C,,0,0,0,,YILI 18.000 {\c&H4AC4E8&}LİRAYLA{\c&HFFFFFF&}
+Dialogue: 0,0:00:26.01,0:00:26.55,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AÇMIŞTI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:26.57,0:00:27.07,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}240.000{\c&HFFFFFF&} KÂR EKLEDİ.
+Dialogue: 0,0:00:27.07,0:00:27.32,C,,0,0,0,,240.000 {\c&H4AC4E8&}KÂR{\c&HFFFFFF&} EKLEDİ.
+Dialogue: 0,0:00:27.32,0:00:27.80,C,,0,0,0,,240.000 KÂR {\c&H4AC4E8&}EKLEDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:27.82,0:00:28.38,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}SATICIYA{\c&HFFFFFF&} VE KEREM'E
+Dialogue: 0,0:00:28.38,0:00:28.57,C,,0,0,0,,SATICIYA {\c&H4AC4E8&}VE{\c&HFFFFFF&} KEREM'E
+Dialogue: 0,0:00:28.57,0:00:29.05,C,,0,0,0,,SATICIYA VE {\c&H4AC4E8&}KEREM'E{\c&HFFFFFF&}
+Dialogue: 0,0:00:29.07,0:00:29.51,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TOPLAM{\c&HFFFFFF&} 130.000 LİRA
+Dialogue: 0,0:00:29.51,0:00:30.01,C,,0,0,0,,TOPLAM {\c&H4AC4E8&}130.000{\c&HFFFFFF&} LİRA
+Dialogue: 0,0:00:30.01,0:00:30.30,C,,0,0,0,,TOPLAM 130.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&}
+Dialogue: 0,0:00:30.32,0:00:30.63,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORÇ{\c&HFFFFFF&} ANAPARASI ÖDEDİ.
+Dialogue: 0,0:00:30.63,0:00:31.25,C,,0,0,0,,BORÇ {\c&H4AC4E8&}ANAPARASI{\c&HFFFFFF&} ÖDEDİ.
+Dialogue: 0,0:00:31.25,0:00:31.94,C,,0,0,0,,BORÇ ANAPARASI {\c&H4AC4E8&}ÖDEDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:32.07,0:00:32.39,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORÇ{\c&HFFFFFF&} ÖDEMEK GİDER
+Dialogue: 0,0:00:32.39,0:00:32.73,C,,0,0,0,,BORÇ {\c&H4AC4E8&}ÖDEMEK{\c&HFFFFFF&} GİDER
+Dialogue: 0,0:00:32.73,0:00:32.97,C,,0,0,0,,BORÇ ÖDEMEK {\c&H4AC4E8&}GİDER{\c&HFFFFFF&}
+Dialogue: 0,0:00:32.99,0:00:33.89,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:33.91,0:00:34.21,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂRI{\c&HFFFFFF&} AZALTMADI AMA
+Dialogue: 0,0:00:34.21,0:00:34.69,C,,0,0,0,,KÂRI {\c&H4AC4E8&}AZALTMADI{\c&HFFFFFF&} AMA
+Dialogue: 0,0:00:34.69,0:00:34.99,C,,0,0,0,,KÂRI AZALTMADI {\c&H4AC4E8&}AMA{\c&HFFFFFF&}
+Dialogue: 0,0:00:35.01,0:00:35.41,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADAN{\c&HFFFFFF&} ÇIKTI VE
+Dialogue: 0,0:00:35.41,0:00:35.61,C,,0,0,0,,KASADAN {\c&H4AC4E8&}ÇIKTI{\c&HFFFFFF&} VE
+Dialogue: 0,0:00:35.61,0:00:35.81,C,,0,0,0,,KASADAN ÇIKTI {\c&H4AC4E8&}VE{\c&HFFFFFF&}
+Dialogue: 0,0:00:35.83,0:00:36.11,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BORCU{\c&HFFFFFF&} AZALTTI.
+Dialogue: 0,0:00:36.11,0:00:37.18,C,,0,0,0,,BORCU {\c&H4AC4E8&}AZALTTI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:37.29,0:00:37.58,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}YIL{\c&HFFFFFF&} SONUNDA KASADA
+Dialogue: 0,0:00:37.58,0:00:38.17,C,,0,0,0,,YIL {\c&H4AC4E8&}SONUNDA{\c&HFFFFFF&} KASADA
+Dialogue: 0,0:00:38.17,0:00:38.66,C,,0,0,0,,YIL SONUNDA {\c&H4AC4E8&}KASADA{\c&HFFFFFF&}
+Dialogue: 0,0:00:38.68,0:00:39.26,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}128.000{\c&HFFFFFF&} LİRA KALDI.
+Dialogue: 0,0:00:39.26,0:00:39.62,C,,0,0,0,,128.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} KALDI.
+Dialogue: 0,0:00:39.62,0:00:40.11,C,,0,0,0,,128.000 LİRA {\c&H4AC4E8&}KALDI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:40.13,0:00:40.55,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}CİRO,{\c&HFFFFFF&}
+Dialogue: 0,0:00:40.57,0:00:40.86,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂR{\c&HFFFFFF&} DEĞİLDİR.
+Dialogue: 0,0:00:40.86,0:00:41.99,C,,0,0,0,,KÂR {\c&H4AC4E8&}DEĞİLDİR.{\c&HFFFFFF&}

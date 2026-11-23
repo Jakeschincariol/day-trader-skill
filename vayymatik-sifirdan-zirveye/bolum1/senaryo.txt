@@ -102,7 +102,7 @@
 7|N|Müşteri kaporayı veriyor, altın sipariş günü alınıyor, fiyat o gün kilitleniyordu. Böylece altın fiyatı riski azalıyordu.|H.altin2|-|0.4
 7|N|Reklam bütçesini kıstı, gereksiz harcamaları durdurdu. Her akşam kasayı değil; kârı, borcu ve nakdi ayrı ayrı saymaya başladı.|D.defter|-|0.5
 7|-|(montaj)|D.montaj1|ay4_sonu|3.0
-7|N|Dördüncü ay brüt marj yüzde on iki. Beşinci ay yüzde on sekiz. Ve beşinci ayda işletme ilk kez aylık kâra geçti.|D.montaj1|ay5_sonu|0.4
+7|N|Dördüncü ay brüt marj yüzde on iki. Beşinci ay yüzde on sekiz. Ve beşinci ayda işletme, ilk kez ayı kârla kapattı.|D.montaj1|ay5_sonu|0.4
 7|N|Altıncı ay yüzde yirmi bir. Sekizinci ayda kullanılabilir nakit yeniden artıya döndü.|D.montaj2|ay8_sonu|0.4
 7|N|O ay Kerem aradı.|D.telefon|-|0.3
 7|R|Kardeşim, o para bana yıl sonunda lazım. Unutmadın, değil mi?|O.kerem_tel|-|0.4

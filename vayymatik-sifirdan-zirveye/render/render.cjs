@@ -17,7 +17,7 @@ const name = f => path.join(OUT, String(f).padStart(5, '0') + '.jpg');
     const p = await b.newPage({ viewport: { width: W, height: HH } });
     p.on('console', m => { if (['error', 'warning'].includes(m.type())) console.log(`[w${k}]`, m.text().slice(0, 300)); }); p.on('pageerror', e => console.log(`[w${k}] HATA`, e.message));
     await p.goto(`http://127.0.0.1:${port}/render/index.html?w=${W}&ar=${AR}&fps=${FPS}&mod=${MOD}&bolum=${BOL}`); await p.waitForFunction(() => window.READY === true, null, { timeout: 180000 });
-    for (const f of ch) { const d = await p.evaluate(f => window.renderFrame(f), f); fs.writeFileSync(name(f) + '.tmp', Buffer.from(d.split(',')[1], 'base64')); fs.renameSync(name(f) + '.tmp', name(f));  // yarım kalan kare bırakmaz if (++done % 25 === 0) console.log(`${done}/${todo.length}  ${((Date.now() - t0) / done).toFixed(0)} ms/kare`); }
+    for (const f of ch) { const d = await p.evaluate(f => window.renderFrame(f), f); fs.writeFileSync(name(f) + '.tmp', Buffer.from(d.split(',')[1], 'base64')); fs.renameSync(name(f) + '.tmp', name(f)); if (++done % 25 === 0) console.log(`${done}/${todo.length}  ${((Date.now() - t0) / done).toFixed(0)} ms/kare`); }
     await b.close(); }));
   srv.close(); console.log('BİTTİ', done, 'kare,', ((Date.now() - t0) / 1000).toFixed(1), 's');
 })().catch(e => { console.error(e); process.exit(1); });

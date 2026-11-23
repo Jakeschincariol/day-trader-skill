@@ -11,60 +11,60 @@ Style: C,Montserrat ExtraBold,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.15,0:00:00.93,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÜKKÂNINI{\c&HFFFFFF&} AÇTIĞI GÜN,
-Dialogue: 0,0:00:00.93,0:00:01.47,C,,0,0,0,,DÜKKÂNINI {\c&H4AC4E8&}AÇTIĞI{\c&HFFFFFF&} GÜN,
-Dialogue: 0,0:00:01.47,0:00:01.84,C,,0,0,0,,DÜKKÂNINI AÇTIĞI {\c&H4AC4E8&}GÜN,{\c&HFFFFFF&}
-Dialogue: 0,0:00:01.86,0:00:02.48,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}620.000{\c&HFFFFFF&} LİRA BORCU
-Dialogue: 0,0:00:02.48,0:00:02.87,C,,0,0,0,,620.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} BORCU
-Dialogue: 0,0:00:02.87,0:00:03.31,C,,0,0,0,,620.000 LİRA {\c&H4AC4E8&}BORCU{\c&HFFFFFF&}
-Dialogue: 0,0:00:03.33,0:00:04.13,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}VARDI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:04.25,0:00:04.79,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADA{\c&HFFFFFF&} İSE YALNIZCA
-Dialogue: 0,0:00:04.79,0:00:05.10,C,,0,0,0,,KASADA {\c&H4AC4E8&}İSE{\c&HFFFFFF&} YALNIZCA
-Dialogue: 0,0:00:05.10,0:00:05.79,C,,0,0,0,,KASADA İSE {\c&H4AC4E8&}YALNIZCA{\c&HFFFFFF&}
-Dialogue: 0,0:00:05.80,0:00:06.35,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}18.000{\c&HFFFFFF&} LİRA.
-Dialogue: 0,0:00:06.35,0:00:07.07,C,,0,0,0,,18.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
-Dialogue: 0,0:00:07.29,0:00:07.75,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}VİTRİNDEKİ{\c&HFFFFFF&} ALTINLARIN
-Dialogue: 0,0:00:07.75,0:00:08.19,C,,0,0,0,,VİTRİNDEKİ {\c&H4AC4E8&}ALTINLARIN{\c&HFFFFFF&}
-Dialogue: 0,0:00:08.21,0:00:08.41,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ÇOĞU{\c&HFFFFFF&} BİLE ONUN
-Dialogue: 0,0:00:08.41,0:00:08.62,C,,0,0,0,,ÇOĞU {\c&H4AC4E8&}BİLE{\c&HFFFFFF&} ONUN
-Dialogue: 0,0:00:08.62,0:00:08.81,C,,0,0,0,,ÇOĞU BİLE {\c&H4AC4E8&}ONUN{\c&HFFFFFF&}
-Dialogue: 0,0:00:08.83,0:00:09.18,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:09.20,0:00:09.75,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TEDARİKÇİNİN{\c&HFFFFFF&} EMANETİYDİ.
-Dialogue: 0,0:00:09.75,0:00:10.49,C,,0,0,0,,TEDARİKÇİNİN {\c&H4AC4E8&}EMANETİYDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:00.13,0:00:00.78,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DÜKKÂNINI{\c&HFFFFFF&} AÇTIĞI GÜN,
+Dialogue: 0,0:00:00.78,0:00:01.24,C,,0,0,0,,DÜKKÂNINI {\c&H4AC4E8&}AÇTIĞI{\c&HFFFFFF&} GÜN,
+Dialogue: 0,0:00:01.24,0:00:01.54,C,,0,0,0,,DÜKKÂNINI AÇTIĞI {\c&H4AC4E8&}GÜN,{\c&HFFFFFF&}
+Dialogue: 0,0:00:01.56,0:00:02.08,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}620.000{\c&HFFFFFF&} LİRA BORCU
+Dialogue: 0,0:00:02.08,0:00:02.40,C,,0,0,0,,620.000 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} BORCU
+Dialogue: 0,0:00:02.40,0:00:02.77,C,,0,0,0,,620.000 LİRA {\c&H4AC4E8&}BORCU{\c&HFFFFFF&}
+Dialogue: 0,0:00:02.79,0:00:03.50,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}VARDI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:03.52,0:00:04.00,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADA{\c&HFFFFFF&} İSE YALNIZCA
+Dialogue: 0,0:00:04.00,0:00:04.28,C,,0,0,0,,KASADA {\c&H4AC4E8&}İSE{\c&HFFFFFF&} YALNIZCA
+Dialogue: 0,0:00:04.28,0:00:04.87,C,,0,0,0,,KASADA İSE {\c&H4AC4E8&}YALNIZCA{\c&HFFFFFF&}
+Dialogue: 0,0:00:04.89,0:00:05.37,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}18.000{\c&HFFFFFF&} LİRA.
+Dialogue: 0,0:00:05.37,0:00:06.03,C,,0,0,0,,18.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:06.16,0:00:06.74,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}VİTRİNDEKİ{\c&HFFFFFF&} ALTINLARIN
+Dialogue: 0,0:00:06.74,0:00:07.26,C,,0,0,0,,VİTRİNDEKİ {\c&H4AC4E8&}ALTINLARIN{\c&HFFFFFF&}
+Dialogue: 0,0:00:07.28,0:00:07.58,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ÇOĞU{\c&HFFFFFF&} BİLE ONUN
+Dialogue: 0,0:00:07.58,0:00:07.74,C,,0,0,0,,ÇOĞU {\c&H4AC4E8&}BİLE{\c&HFFFFFF&} ONUN
+Dialogue: 0,0:00:07.74,0:00:07.94,C,,0,0,0,,ÇOĞU BİLE {\c&H4AC4E8&}ONUN{\c&HFFFFFF&}
+Dialogue: 0,0:00:07.96,0:00:08.74,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:08.76,0:00:09.39,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TEDARİKÇİNİN{\c&HFFFFFF&} EMANETİYDİ.
+Dialogue: 0,0:00:09.39,0:00:10.59,C,,0,0,0,,TEDARİKÇİNİN {\c&H4AC4E8&}EMANETİYDİ.{\c&HFFFFFF&}
 Dialogue: 0,0:00:10.70,0:00:11.02,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KIZIMA{\c&HFFFFFF&} BİR BİLEZİK
 Dialogue: 0,0:00:11.02,0:00:11.18,C,,0,0,0,,KIZIMA {\c&H4AC4E8&}BİR{\c&HFFFFFF&} BİLEZİK
 Dialogue: 0,0:00:11.18,0:00:11.52,C,,0,0,0,,KIZIMA BİR {\c&H4AC4E8&}BİLEZİK{\c&HFFFFFF&}
-Dialogue: 0,0:00:11.54,0:00:12.62,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BAKIYORUM.{\c&HFFFFFF&}
-Dialogue: 0,0:00:12.64,0:00:12.82,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ŞU{\c&HFFFFFF&} YİRMİ İKİ
-Dialogue: 0,0:00:12.82,0:00:13.14,C,,0,0,0,,ŞU {\c&H4AC4E8&}YİRMİ{\c&HFFFFFF&} İKİ
-Dialogue: 0,0:00:13.14,0:00:13.49,C,,0,0,0,,ŞU YİRMİ {\c&H4AC4E8&}İKİ{\c&HFFFFFF&}
-Dialogue: 0,0:00:13.51,0:00:13.74,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AYAR{\c&HFFFFFF&} BURGU BİLEZİK
-Dialogue: 0,0:00:13.74,0:00:14.11,C,,0,0,0,,AYAR {\c&H4AC4E8&}BURGU{\c&HFFFFFF&} BİLEZİK
-Dialogue: 0,0:00:14.11,0:00:14.22,C,,0,0,0,,AYAR BURGU {\c&H4AC4E8&}BİLEZİK{\c&HFFFFFF&}
-Dialogue: 0,0:00:14.24,0:00:14.98,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ÇOK{\c&HFFFFFF&} YAKIŞIR.
-Dialogue: 0,0:00:14.98,0:00:15.07,C,,0,0,0,,ÇOK {\c&H4AC4E8&}YAKIŞIR.{\c&HFFFFFF&}
-Dialogue: 0,0:00:15.09,0:00:15.30,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}40.000{\c&HFFFFFF&} LİRA.
-Dialogue: 0,0:00:15.30,0:00:16.23,C,,0,0,0,,40.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:11.54,0:00:12.63,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BAKIYORUM.{\c&HFFFFFF&}
+Dialogue: 0,0:00:12.65,0:00:12.83,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ŞU{\c&HFFFFFF&} YİRMİ İKİ
+Dialogue: 0,0:00:12.83,0:00:13.15,C,,0,0,0,,ŞU {\c&H4AC4E8&}YİRMİ{\c&HFFFFFF&} İKİ
+Dialogue: 0,0:00:13.15,0:00:13.49,C,,0,0,0,,ŞU YİRMİ {\c&H4AC4E8&}İKİ{\c&HFFFFFF&}
+Dialogue: 0,0:00:13.51,0:00:13.75,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AYAR{\c&HFFFFFF&} BURGU BİLEZİK
+Dialogue: 0,0:00:13.75,0:00:14.11,C,,0,0,0,,AYAR {\c&H4AC4E8&}BURGU{\c&HFFFFFF&} BİLEZİK
+Dialogue: 0,0:00:14.11,0:00:14.23,C,,0,0,0,,AYAR BURGU {\c&H4AC4E8&}BİLEZİK{\c&HFFFFFF&}
+Dialogue: 0,0:00:14.25,0:00:14.99,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ÇOK{\c&HFFFFFF&} YAKIŞIR.
+Dialogue: 0,0:00:14.99,0:00:15.07,C,,0,0,0,,ÇOK {\c&H4AC4E8&}YAKIŞIR.{\c&HFFFFFF&}
+Dialogue: 0,0:00:15.09,0:00:15.31,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}40.000{\c&HFFFFFF&} LİRA.
+Dialogue: 0,0:00:15.31,0:00:16.24,C,,0,0,0,,40.000 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
 Dialogue: 0,0:00:16.54,0:00:16.83,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AMA{\c&HFFFFFF&} BU KIRK
-Dialogue: 0,0:00:16.83,0:00:17.05,C,,0,0,0,,AMA {\c&H4AC4E8&}BU{\c&HFFFFFF&} KIRK
-Dialogue: 0,0:00:17.05,0:00:17.41,C,,0,0,0,,AMA BU {\c&H4AC4E8&}KIRK{\c&HFFFFFF&}
+Dialogue: 0,0:00:16.83,0:00:17.06,C,,0,0,0,,AMA {\c&H4AC4E8&}BU{\c&HFFFFFF&} KIRK
+Dialogue: 0,0:00:17.06,0:00:17.41,C,,0,0,0,,AMA BU {\c&H4AC4E8&}KIRK{\c&HFFFFFF&}
 Dialogue: 0,0:00:17.43,0:00:17.87,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİNİN{\c&HFFFFFF&} TAMAMI KÂR
 Dialogue: 0,0:00:17.87,0:00:18.39,C,,0,0,0,,BİNİN {\c&H4AC4E8&}TAMAMI{\c&HFFFFFF&} KÂR
-Dialogue: 0,0:00:18.39,0:00:18.66,C,,0,0,0,,BİNİN TAMAMI {\c&H4AC4E8&}KÂR{\c&HFFFFFF&}
-Dialogue: 0,0:00:18.68,0:00:19.33,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:18.39,0:00:18.67,C,,0,0,0,,BİNİN TAMAMI {\c&H4AC4E8&}KÂR{\c&HFFFFFF&}
+Dialogue: 0,0:00:18.69,0:00:19.33,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}DEĞİLDİ.{\c&HFFFFFF&}
 Dialogue: 0,0:00:19.35,0:00:20.09,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BİLEZİĞİN{\c&HFFFFFF&} TEDARİKÇİYE
 Dialogue: 0,0:00:20.09,0:00:20.96,C,,0,0,0,,BİLEZİĞİN {\c&H4AC4E8&}TEDARİKÇİYE{\c&HFFFFFF&}
 Dialogue: 0,0:00:20.98,0:00:21.65,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}MALİYETİ{\c&HFFFFFF&} 35.200 LİRAYDI.
 Dialogue: 0,0:00:21.65,0:00:22.17,C,,0,0,0,,MALİYETİ {\c&H4AC4E8&}35.200{\c&HFFFFFF&} LİRAYDI.
 Dialogue: 0,0:00:22.17,0:00:23.09,C,,0,0,0,,MALİYETİ 35.200 {\c&H4AC4E8&}LİRAYDI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:23.21,0:00:23.56,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}İLK{\c&HFFFFFF&} AYIN SONUNDA
+Dialogue: 0,0:00:23.22,0:00:23.56,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}İLK{\c&HFFFFFF&} AYIN SONUNDA
 Dialogue: 0,0:00:23.56,0:00:23.99,C,,0,0,0,,İLK {\c&H4AC4E8&}AYIN{\c&HFFFFFF&} SONUNDA
 Dialogue: 0,0:00:23.99,0:00:24.66,C,,0,0,0,,İLK AYIN {\c&H4AC4E8&}SONUNDA{\c&HFFFFFF&}
-Dialogue: 0,0:00:24.68,0:00:25.11,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}EMİR{\c&HFFFFFF&} KASAYA BAKTI.
-Dialogue: 0,0:00:25.11,0:00:25.72,C,,0,0,0,,EMİR {\c&H4AC4E8&}KASAYA{\c&HFFFFFF&} BAKTI.
-Dialogue: 0,0:00:25.72,0:00:26.30,C,,0,0,0,,EMİR KASAYA {\c&H4AC4E8&}BAKTI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:26.32,0:00:27.02,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}183.500{\c&HFFFFFF&} LİRA.
-Dialogue: 0,0:00:27.02,0:00:27.78,C,,0,0,0,,183.500 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
+Dialogue: 0,0:00:24.68,0:00:25.12,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}EMİR{\c&HFFFFFF&} KASAYA BAKTI.
+Dialogue: 0,0:00:25.12,0:00:25.72,C,,0,0,0,,EMİR {\c&H4AC4E8&}KASAYA{\c&HFFFFFF&} BAKTI.
+Dialogue: 0,0:00:25.72,0:00:26.31,C,,0,0,0,,EMİR KASAYA {\c&H4AC4E8&}BAKTI.{\c&HFFFFFF&}
+Dialogue: 0,0:00:26.33,0:00:27.02,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}183.500{\c&HFFFFFF&} LİRA.
+Dialogue: 0,0:00:27.02,0:00:27.79,C,,0,0,0,,183.500 {\c&H4AC4E8&}LİRA.{\c&HFFFFFF&}
 Dialogue: 0,0:00:27.91,0:00:28.14,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}İLK{\c&HFFFFFF&} AYDA YÜZ
 Dialogue: 0,0:00:28.14,0:00:28.42,C,,0,0,0,,İLK {\c&H4AC4E8&}AYDA{\c&HFFFFFF&} YÜZ
 Dialogue: 0,0:00:28.42,0:00:28.63,C,,0,0,0,,İLK AYDA {\c&H4AC4E8&}YÜZ{\c&HFFFFFF&}
@@ -74,25 +74,25 @@ Dialogue: 0,0:00:29.22,0:00:29.49,C,,0,0,0,,SEKSEN ÜÇ {\c&H4AC4E8&}BİN!{\c&HF
 Dialogue: 0,0:00:29.51,0:00:29.68,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}BU{\c&HFFFFFF&} İŞ OLUYOR!
 Dialogue: 0,0:00:29.68,0:00:29.85,C,,0,0,0,,BU {\c&H4AC4E8&}İŞ{\c&HFFFFFF&} OLUYOR!
 Dialogue: 0,0:00:29.85,0:00:30.56,C,,0,0,0,,BU İŞ {\c&H4AC4E8&}OLUYOR!{\c&HFFFFFF&}
-Dialogue: 0,0:00:30.68,0:00:30.90,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AMA{\c&HFFFFFF&} TABLONUN DİĞER
-Dialogue: 0,0:00:30.90,0:00:31.38,C,,0,0,0,,AMA {\c&H4AC4E8&}TABLONUN{\c&HFFFFFF&} DİĞER
-Dialogue: 0,0:00:31.38,0:00:31.56,C,,0,0,0,,AMA TABLONUN {\c&H4AC4E8&}DİĞER{\c&HFFFFFF&}
-Dialogue: 0,0:00:31.58,0:00:31.98,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TARAFI{\c&HFFFFFF&} BAŞKA BİR
+Dialogue: 0,0:00:30.68,0:00:30.91,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AMA{\c&HFFFFFF&} TABLONUN DİĞER
+Dialogue: 0,0:00:30.91,0:00:31.39,C,,0,0,0,,AMA {\c&H4AC4E8&}TABLONUN{\c&HFFFFFF&} DİĞER
+Dialogue: 0,0:00:31.39,0:00:31.57,C,,0,0,0,,AMA TABLONUN {\c&H4AC4E8&}DİĞER{\c&HFFFFFF&}
+Dialogue: 0,0:00:31.59,0:00:31.98,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}TARAFI{\c&HFFFFFF&} BAŞKA BİR
 Dialogue: 0,0:00:31.98,0:00:32.16,C,,0,0,0,,TARAFI {\c&H4AC4E8&}BAŞKA{\c&HFFFFFF&} BİR
 Dialogue: 0,0:00:32.16,0:00:32.34,C,,0,0,0,,TARAFI BAŞKA {\c&H4AC4E8&}BİR{\c&HFFFFFF&}
-Dialogue: 0,0:00:32.36,0:00:32.50,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ŞEY{\c&HFFFFFF&} SÖYLÜYORDU.
-Dialogue: 0,0:00:32.50,0:00:33.32,C,,0,0,0,,ŞEY {\c&H4AC4E8&}SÖYLÜYORDU.{\c&HFFFFFF&}
+Dialogue: 0,0:00:32.37,0:00:32.51,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}ŞEY{\c&HFFFFFF&} SÖYLÜYORDU.
+Dialogue: 0,0:00:32.51,0:00:33.32,C,,0,0,0,,ŞEY {\c&H4AC4E8&}SÖYLÜYORDU.{\c&HFFFFFF&}
 Dialogue: 0,0:00:33.34,0:00:33.46,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AY,{\c&HFFFFFF&}
-Dialogue: 0,0:00:33.48,0:00:34.54,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}8.500{\c&HFFFFFF&} LİRA ZARARLA
-Dialogue: 0,0:00:34.54,0:00:34.72,C,,0,0,0,,8.500 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} ZARARLA
-Dialogue: 0,0:00:34.72,0:00:35.04,C,,0,0,0,,8.500 LİRA {\c&H4AC4E8&}ZARARLA{\c&HFFFFFF&}
+Dialogue: 0,0:00:33.48,0:00:34.55,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}8.500{\c&HFFFFFF&} LİRA ZARARLA
+Dialogue: 0,0:00:34.55,0:00:34.73,C,,0,0,0,,8.500 {\c&H4AC4E8&}LİRA{\c&HFFFFFF&} ZARARLA
+Dialogue: 0,0:00:34.73,0:00:35.04,C,,0,0,0,,8.500 LİRA {\c&H4AC4E8&}ZARARLA{\c&HFFFFFF&}
 Dialogue: 0,0:00:35.06,0:00:36.23,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KAPANMIŞTI.{\c&HFFFFFF&}
-Dialogue: 0,0:00:36.37,0:00:36.94,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADAKİ{\c&HFFFFFF&} PARANIN 174.000
-Dialogue: 0,0:00:36.94,0:00:37.44,C,,0,0,0,,KASADAKİ {\c&H4AC4E8&}PARANIN{\c&HFFFFFF&} 174.000
-Dialogue: 0,0:00:37.44,0:00:37.93,C,,0,0,0,,KASADAKİ PARANIN {\c&H4AC4E8&}174.000{\c&HFFFFFF&}
-Dialogue: 0,0:00:37.95,0:00:38.39,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}LİRASI{\c&HFFFFFF&} TEDARİKÇİYE
-Dialogue: 0,0:00:38.39,0:00:39.13,C,,0,0,0,,LİRASI {\c&H4AC4E8&}TEDARİKÇİYE{\c&HFFFFFF&}
-Dialogue: 0,0:00:39.15,0:00:39.57,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AİTTİ.{\c&HFFFFFF&}
-Dialogue: 0,0:00:39.59,0:00:39.95,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASA,{\c&HFFFFFF&}
-Dialogue: 0,0:00:39.98,0:00:40.23,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂR{\c&HFFFFFF&} DEĞİLDİR.
-Dialogue: 0,0:00:40.23,0:00:41.26,C,,0,0,0,,KÂR {\c&H4AC4E8&}DEĞİLDİR.{\c&HFFFFFF&}
+Dialogue: 0,0:00:36.35,0:00:37.00,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASADAKİ{\c&HFFFFFF&} PARANIN 174.000
+Dialogue: 0,0:00:37.00,0:00:37.58,C,,0,0,0,,KASADAKİ {\c&H4AC4E8&}PARANIN{\c&HFFFFFF&} 174.000
+Dialogue: 0,0:00:37.58,0:00:38.14,C,,0,0,0,,KASADAKİ PARANIN {\c&H4AC4E8&}174.000{\c&HFFFFFF&}
+Dialogue: 0,0:00:38.16,0:00:38.66,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}LİRASI{\c&HFFFFFF&} TEDARİKÇİYE
+Dialogue: 0,0:00:38.66,0:00:39.51,C,,0,0,0,,LİRASI {\c&H4AC4E8&}TEDARİKÇİYE{\c&HFFFFFF&}
+Dialogue: 0,0:00:39.53,0:00:40.02,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}AİTTİ.{\c&HFFFFFF&}
+Dialogue: 0,0:00:40.04,0:00:40.45,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KASA,{\c&HFFFFFF&}
+Dialogue: 0,0:00:40.47,0:00:40.76,C,,0,0,0,,{\fscx106\fscy106\t(0,90,\fscx100\fscy100)}{\c&H4AC4E8&}KÂR{\c&HFFFFFF&} DEĞİLDİR.
+Dialogue: 0,0:00:40.76,0:00:41.89,C,,0,0,0,,KÂR {\c&H4AC4E8&}DEĞİLDİR.{\c&HFFFFFF&}

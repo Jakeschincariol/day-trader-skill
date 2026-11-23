@@ -1,1 +1,50 @@
-[]
+[
+{
+"t": 0.13,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p85.wav",
+"kon": "M",
+"cek": "F.ahmet_yakin"
+},
+{
+"t": 2.746,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p86.wav",
+"kon": "E",
+"cek": "F.emir_yakin"
+},
+{
+"t": 4.016,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p87.wav",
+"kon": "M",
+"cek": "F.ahmet_belge"
+},
+{
+"t": 13.407,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p88.wav",
+"kon": "M",
+"cek": "F.ahmet_yakin"
+},
+{
+"t": 15.797,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p89.wav",
+"kon": "N",
+"cek": "H.yil"
+},
+{
+"t": 22.952,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p90.wav",
+"kon": "N",
+"cek": "H.kopru"
+},
+{
+"t": 32.072,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/parca/p91.wav",
+"kon": "N",
+"cek": "H.kopru"
+},
+{
+"t": 37.292,
+"wav": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/ses/kisa_parca/p11.wav",
+"kon": "N",
+"cek": "D.yil_sonu"
+}
+]

@@ -10,7 +10,7 @@ def coz(f):  # tam kod çözme + yükseklik ölçümü
     hatalar = [l for l in e.splitlines() if l.strip() and not l.startswith(('[Parsed_ebur128', '  ', 'Summary')) and 'ebur128' not in l and not re.match(r'^\s*(Integrated|I:|Threshold|LRA|Loudness range|True peak|Peak|LRA low|LRA high)', l)]
     I = re.findall(r'I:\s+(-?[\d.]+) LUFS', e); P = re.findall(r'Peak:\s+(-?[\d.]+) dBFS', e)
     return r.returncode, hatalar, float(I[-1]) if I else None, float(P[-1]) if P else None
-BEK = [('Sifirdan_Zirveye_Bolum1.mp4', 1920, 1080, 24, 12 * 60, 15 * 60)] + [(f'Shorts_0{n}.mp4', 1080, 1920, 30, 30, 55) for n in range(1, 7)]
+BEK = [('Sifirdan_Zirveye_Bolum1.mp4', 1920, 1080, 24, 12 * 60, 15 * 60), ('Sifirdan_Zirveye_Bolum1_github.mp4', 1920, 1080, 24, 12 * 60, 15 * 60)] + [(f'Shorts_0{n}.mp4', 1080, 1920, 30, 30, 55) for n in range(1, 7)]
 for ad, W, H, fps, s0, s1 in BEK:
     f = os.path.join(D, ad)
     if not os.path.exists(f): hata.append(f'{ad}: YOK'); print(f'✘ {ad}: dosya yok'); continue
