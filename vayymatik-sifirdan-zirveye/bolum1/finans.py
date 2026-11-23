@@ -35,7 +35,13 @@ TEKLIF = 2500000; KALAN = {'Satıcı (Hasan Usta)': 360000 - sum(a[5] for a in A
 final = dict(teklif=TEKLIF, kalan_borc=sum(KALAN.values()), kalan_borc_detay=KALAN, kasa=yil['kasa'], ele_gecen=TEKLIF - sum(KALAN.values()) + yil['kasa'], belirsiz_talep=240000)
 final['ele_gecen_talep_ile'] = final['ele_gecen'] - final['belirsiz_talep']
 yatirimci = dict(tutar=400000, pay=50, degerleme=800000, ozkaynak=an['ay3_sonu']['ozkaynak'], belirsiz_talep=240000)
-out = dict(kaynak=KAYNAK, kullanim=KULLANIM, acilis_borcu=BORC0, ozkaynak_acilis=ozk0, anlar=an, aylar=aylar, gider_kalem=GIDER_KALEM, yatirimci=yatirimci, final=final,
+SIPARIS = dict(fiyat=100000, maliyet=104000)  # 2. ayda sabit fiyatla alınan düğün seti siparişi (2. ay ciro/SMM içinde)
+ozet = dict(devir_bedeli=KULLANIM['Devir peşinatı'] + BORC0['Satıcı (Hasan Usta)'], devir_pesinat=KULLANIM['Devir peşinatı'], satici_borcu=BORC0['Satıcı (Hasan Usta)'], satici_ilk_taksit=BORC0['Satıcı (Hasan Usta)'] // 6,
+            toplam_kaynak=sum(KAYNAK.values()), oz_para=SERMAYE, borc_kaynak=KAYNAK['Arkadaş borcu (Kerem)'] + KAYNAK['Aile borcu'], acilis_kasasi=KULLANIM['Açılış kasası'], acilis_borcu=sum(BORC0.values()),
+            ilk_satis=an['ilk_satis']['satis'], ilk_satis_maliyet=an['ilk_satis']['maliyet'], ilk_satis_brut=an['ilk_satis']['satis'] - an['ilk_satis']['maliyet'], tabela_dekor_reklam=AY[1][2], gecikme_cezasi=AY[2][3],
+            siparis_fiyat=SIPARIS['fiyat'], siparis_maliyet=SIPARIS['maliyet'], siparis_zarar=SIPARIS['maliyet'] - SIPARIS['fiyat'], yeni_taksit_4_8=AY[3][5], yeni_taksit_9_12=AY[8][5], aylik_faiz=AY[4][3],
+            yil1_anapara=sum(a[5] + a[6] for a in AY), yil1_anapara_satici=sum(a[5] for a in AY), yil1_anapara_kerem=sum(a[6] for a in AY))
+out = dict(ozet=ozet, kaynak=KAYNAK, kullanim=KULLANIM, acilis_borcu=BORC0, ozkaynak_acilis=ozk0, anlar=an, aylar=aylar, gider_kalem=GIDER_KALEM, yatirimci=yatirimci, final=final,
            yeniden_odeme=dict(satici='4.–8. ay: 10.000 TL/ay, 9.–12. ay: 15.000 TL/ay; faiz 2.750 TL/ay (5.–12. ay)', satici_ilk_taksit='6 × 60.000 TL/ay', vadesi_gecen_3ay=180000),
            notlar=['Kurgu: kişiler ve işletme hayalidir.', 'Borç almak gelir, anapara ödemek gider değildir; finansman hareketidir.', 'Emanet ürünler Emir’in stoğu değildir; satılınca bedeli tedarikçiye ödenir.', 'Amortisman ve tahakkuklar gösterilmemiştir (sadeleştirilmiş model).'])
 # ---------- kontroller ----------
@@ -56,5 +62,14 @@ ok(an['ay3_sonu']['net'] == -74900 and an['ay3_sonu']['kasa'] == 159100 and an['
 ok(an['ay1_sonu']['kasa'] == 183500 and an['ay2_sonu']['ciro'] == 450000, '1. ay kasa 183.500; 2. ay ciro 450.000')
 ok(final['ele_gecen'] == 2138000 and final['ele_gecen_talep_ile'] == 1898000, 'Final: 2.500.000 − 490.000 + 128.000 = 2.138.000')
 ok(yil['ozkaynak'] == 530000, 'Yıl sonu özkaynak 530.000')
+ok((ozet['devir_bedeli'], ozet['toplam_kaynak'], ozet['oz_para'], ozet['borc_kaynak'], ozet['satici_ilk_taksit']) == (660000, 575000, 315000, 260000, 60000), 'Özet: devir 660.000, kaynak 575.000 = 315.000 öz para + 260.000 borç; taksit 60.000')
+ok((ozet['yil1_anapara'], ozet['yil1_anapara_satici'], ozet['yil1_anapara_kerem']) == (130000, 110000, 20000) and final['kalan_borc_detay']['Kerem'] == 160000, 'Yıl 1 anapara 130.000 = satıcı 110.000 + Kerem 20.000; Kerem kalan 160.000')
+ok(ozet['ilk_satis_brut'] == 4800 and ozet['siparis_zarar'] == 4000 and ozet['gecikme_cezasi'] == 8000, 'İlk satış brüt 4.800; sipariş zararı 4.000; gecikme cezası 8.000')
 out['kontroller'] = H
 json.dump(out, open(f'{D}/finans.json', 'w'), ensure_ascii=False, indent=1); print('\n'.join(H[:3] + [f'... {len(H)} kontrol geçti'] + H[-8:]))
+# aylık tablo (tablolama programında açmak için)
+import csv
+with open(f'{D}/finans_aylik.csv', 'w', newline='', encoding='utf-8-sig') as f:
+    w = csv.writer(f, delimiter=';'); w.writerow(['Ay', 'Ciro (satış)', 'Satılan ürün maliyeti', 'Brüt kâr', 'Brüt marj %', 'İşletme giderleri', 'Net kâr/zarar', 'Borç anaparası ödemesi (gider değil)', 'Kasa (ay sonu)', 'Tedarikçiye ödenecek', 'Kullanılabilir nakit', 'Toplam borç', 'Özkaynak'])
+    for a in aylar: y = an[f"ay{a['ay']}_sonu"]; w.writerow([a['ay'], a['ciro'], a['smm'], a['brut'], str(a['marj']).replace('.', ','), a['gider'], a['net'], a['anapara'], y['kasa'], y['tedarikci'], y['kullanilabilir'], y['borc'], y['ozkaynak']])
+    w.writerow(['Yıl', yil['ciro'], yil['smm'], yil['ciro'] - yil['smm'], str(round((yil['ciro'] - yil['smm']) / yil['ciro'] * 100, 1)).replace('.', ','), yil['gider'], yil['net'], sum(a['anapara'] for a in aylar), yil['kasa'], yil['tedarikci'], yil['kullanilabilir'], yil['borc'], yil['ozkaynak']])

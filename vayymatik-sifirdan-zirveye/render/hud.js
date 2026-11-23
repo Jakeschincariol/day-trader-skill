@@ -29,9 +29,13 @@ export function liste(c, o) { // o: {x,y,w,s,a,baslik, satirlar:[[ad, deger, ren
   const { x, y, w, s = 1, a } = o; if (a <= .003) return; const N = o.satirlar.length, h = (130 + N * 62 + (o.toplam ? 80 : 0) + (o.not ? 50 : 0)) * s; kart(c, x, y, w, h, a);
   c.save(); c.globalAlpha = a; baslik(c, x + 34 * s, y + 48 * s, o.baslik, 1, s);
   o.satirlar.forEach(([ad, v, renk, et], i) => { const g = cl((o.n ?? N) - i); if (g <= 0) return; const yy = y + (115 + i * 62) * s; c.globalAlpha = a * g;
-    c.font = `600 ${26 * s}px Mont`; c.fillStyle = '#dfe6ee'; c.textAlign = 'left'; c.fillText(ad, x + 34 * s + (1 - g) * 30, yy);
-    if (et) { c.font = `800 ${16 * s}px Mont`; const tw = c.measureText(et).width + 22 * s; c.fillStyle = renk || '#ffb46a'; rr(c, x + w * .5, yy - 22 * s, tw, 28 * s, 14 * s); c.globalAlpha = a * g * .2; c.fill(); c.globalAlpha = a * g; c.fillText(et, x + w * .5 + 11 * s, yy - 2 * s); }
-    c.font = `800 ${29 * s}px Mont`; c.textAlign = 'right'; c.fillStyle = renk || '#fff'; c.fillText(typeof v === 'number' ? TL(v) : v, x + w - 34 * s, yy); });
+    const vt = typeof v === 'number' ? TL(v) : v; c.font = `800 ${29 * s}px Mont`; const vx = x + w - 34 * s - c.measureText(vt).width;  // etiket ve rozet değerle çakışmasın
+    let tw = 0; if (et) { c.font = `800 ${16 * s}px Mont`; tw = c.measureText(et).width + 22 * s; }
+    let fs = 26 * s, lw; const sig = () => { c.font = `600 ${fs}px Mont`; lw = c.measureText(ad).width; return x + 34 * s + lw + (et ? 14 * s + tw : 0) + 14 * s <= vx; };
+    while (!sig() && fs > 15 * s) fs -= 1;
+    c.fillStyle = '#dfe6ee'; c.textAlign = 'left'; c.fillText(ad, x + 34 * s + (1 - g) * 30, yy);
+    if (et) { const ex = Math.min(Math.max(x + w * .5, x + 34 * s + lw + 14 * s), vx - 14 * s - tw); c.font = `800 ${16 * s}px Mont`; c.fillStyle = renk || '#ffb46a'; rr(c, ex, yy - 22 * s, tw, 28 * s, 14 * s); c.globalAlpha = a * g * .2; c.fill(); c.globalAlpha = a * g; c.fillText(et, ex + 11 * s, yy - 2 * s); }
+    c.font = `800 ${29 * s}px Mont`; c.textAlign = 'right'; c.fillStyle = renk || '#fff'; c.fillText(vt, x + w - 34 * s, yy); });
   c.globalAlpha = a; if (o.toplam) { const yy = y + (130 + N * 62 + 40) * s, g = cl((o.n ?? N) - N + 1); c.globalAlpha = a * g; c.fillStyle = 'rgba(232,196,106,.5)'; c.fillRect(x + 30 * s, yy - 50 * s, w - 60 * s, 2);
     c.font = `900 ${32 * s}px Mont`; c.textAlign = 'left'; c.fillStyle = '#e8c46a'; c.fillText(o.toplam[0], x + 34 * s, yy); c.textAlign = 'right'; c.fillStyle = o.toplam[2] || '#e8c46a'; c.fillText(typeof o.toplam[1] === 'number' ? TL(o.toplam[1]) : o.toplam[1], x + w - 34 * s, yy); }
   if (o.not) { c.globalAlpha = a; c.font = `600 ${20 * s}px Mont`; c.textAlign = 'left'; c.fillStyle = '#9fb3c8'; c.fillText(o.not, x + 34 * s, y + h - 26 * s); }
@@ -44,7 +48,7 @@ export function selale(c, o) { // o: {x,y,w,h,s,a,baslik, adimlar:[[ad, deger, t
   A.forEach(([ad, v, tip], i) => { const g = ease(k * n - i); if (g <= 0) return; let a1, a2; if (tip === 'bas' || tip === 'son') { a1 = 0; a2 = v; run = v; } else { a1 = run; a2 = run + v; run = a2; }
     const yA = y0 - a1 / max * ph, yB = y0 - (a1 + (a2 - a1) * g) / max * ph, col = tip === 'eksi' ? '#ff6a5a' : tip === 'arti' ? '#5ff2a0' : '#e8c46a';
     const gr = c.createLinearGradient(0, Math.min(yA, yB), 0, Math.max(yA, yB) + 1); gr.addColorStop(0, col); gr.addColorStop(1, col + '88'); c.fillStyle = gr; rr(c, x0 + i * bw + bw * .14, Math.min(yA, yB), bw * .72, Math.max(3, Math.abs(yB - yA)), 8 * s); c.fill();
-    c.globalAlpha = a * cl(g * 2 - 1); c.font = `800 ${24 * s}px Mont`; c.textAlign = 'center'; c.fillStyle = col; c.fillText((tip === 'eksi' ? '' : tip === 'arti' ? '+' : '') + TL(v), x0 + i * bw + bw / 2, Math.min(yA, yB) - 14 * s);
+    c.globalAlpha = a * cl(g * 2 - 1); const vt = (tip === 'eksi' ? '' : tip === 'arti' ? '+' : '') + TL(v); let fs = 24 * s; c.font = `800 ${fs}px Mont`; while (c.measureText(vt).width > bw * .97 && fs > 11) { fs -= 1; c.font = `800 ${fs}px Mont`; } c.textAlign = 'center'; c.fillStyle = col; c.fillText(vt, x0 + i * bw + bw / 2, Math.min(yA, yB) - 14 * s);
     c.font = `600 ${20 * s}px Mont`; c.fillStyle = '#dfe6ee'; const satir = ad.split('\n'); satir.forEach((t, j) => c.fillText(t, x0 + i * bw + bw / 2, y0 + 36 * s + j * 24 * s)); c.globalAlpha = a; });
   c.textAlign = 'left'; if (o.not) { c.font = `600 ${20 * s}px Mont`; c.fillStyle = '#9fb3c8'; c.fillText(o.not, x + 34 * s, y + h - 24 * s); } c.restore();
 }

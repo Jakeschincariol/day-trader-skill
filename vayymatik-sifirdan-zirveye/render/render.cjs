@@ -2,7 +2,7 @@
 const { chromium } = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const A = Object.fromEntries(process.argv.slice(2).map(a => { const [k, v] = a.replace(/^--/, '').split('='); return [k, v ?? '1']; }));
-const AR = A.ar || '16:9', W = +(A.w || (AR === '16:9' ? 1920 : 1080)), HH = AR === '16:9' ? Math.round(W * 9 / 16) : Math.round(W * 16 / 9), FPS = +(A.fps || 24), MOD = A.mod || 'ana', OUT = path.resolve(A.out || path.join(ROOT, 'frames')), N = +(A.workers || 2);
+const AR = A.ar || '16:9', W = +(A.w || (AR === '16:9' ? 1920 : 1080)), HH = AR === '16:9' ? Math.round(W * 9 / 16) : Math.round(W * 16 / 9), FPS = +(A.fps || 24), MOD = A.mod || 'ana', BOL = A.bolum || 'bolum1', OUT = path.resolve(A.out || path.join(ROOT, 'frames')), N = +(A.workers || 2);
 const list = A.frames ? A.frames.split(',').map(Number) : Array.from({ length: Math.floor((+(A.to ?? 1349) - +(A.from ?? 0)) / +(A.step || 1)) + 1 }, (_, i) => +(A.from ?? 0) + i * +(A.step || 1));
 fs.mkdirSync(OUT, { recursive: true });
 const MIME = { '.js': 'text/javascript', '.html': 'text/html', '.jpg': 'image/jpeg', '.png': 'image/png', '.ttf': 'font/ttf', '.json': 'application/json' };
@@ -16,8 +16,8 @@ const name = f => path.join(OUT, String(f).padStart(5, '0') + '.jpg');
     const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
     const p = await b.newPage({ viewport: { width: W, height: HH } });
     p.on('console', m => { if (['error', 'warning'].includes(m.type())) console.log(`[w${k}]`, m.text().slice(0, 300)); }); p.on('pageerror', e => console.log(`[w${k}] HATA`, e.message));
-    await p.goto(`http://127.0.0.1:${port}/render/index.html?w=${W}&ar=${AR}&fps=${FPS}&mod=${MOD}`); await p.waitForFunction(() => window.READY === true, null, { timeout: 180000 });
-    for (const f of ch) { const d = await p.evaluate(f => window.renderFrame(f), f); fs.writeFileSync(name(f), Buffer.from(d.split(',')[1], 'base64')); if (++done % 25 === 0) console.log(`${done}/${todo.length}  ${((Date.now() - t0) / done).toFixed(0)} ms/kare`); }
+    await p.goto(`http://127.0.0.1:${port}/render/index.html?w=${W}&ar=${AR}&fps=${FPS}&mod=${MOD}&bolum=${BOL}`); await p.waitForFunction(() => window.READY === true, null, { timeout: 180000 });
+    for (const f of ch) { const d = await p.evaluate(f => window.renderFrame(f), f); fs.writeFileSync(name(f) + '.tmp', Buffer.from(d.split(',')[1], 'base64')); fs.renameSync(name(f) + '.tmp', name(f));  // yarım kalan kare bırakmaz if (++done % 25 === 0) console.log(`${done}/${todo.length}  ${((Date.now() - t0) / done).toFixed(0)} ms/kare`); }
     await b.close(); }));
   srv.close(); console.log('BİTTİ', done, 'kare,', ((Date.now() - t0) / 1000).toFixed(1), 's');
 })().catch(e => { console.error(e); process.exit(1); });
