@@ -94,6 +94,7 @@ CALENDAR_YEARS = (2026, 2027)
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
 EARLY = datetime.time(13, 0)
+FLAT_BY = "15:55"
 
 
 class AlertError(Exception):
@@ -129,6 +130,81 @@ def eastern_to_utc(local):
         if eastern_offset(utc) == off:
             return utc
     return local + datetime.timedelta(hours=5)
+
+
+# ---------------------------------------------------------------- India (NSE)
+# "market": "IN" in trader/config.json (or TRADER_MARKET=IN in the environment)
+# moves the clock to the NSE: 9:15 to 15:30 India time (UTC+5:30, no daylight
+# saving), the NSE holiday list, no early closes, day trades flat by 15:15.
+# Amounts in the config are then rupees. Symbols ending in .NS are never rewritten.
+
+def _market():
+    m = os.environ.get("TRADER_MARKET")
+    if not m:
+        try:
+            with open(os.path.join("trader", "config.json"), encoding="utf-8") as fh:
+                m = json.load(fh).get("market")
+        except (OSError, ValueError, AttributeError):
+            m = None
+    return "IN" if str(m or "").strip().upper() in ("IN", "INDIA", "NSE") else "US"
+
+
+def _ysym(sym):
+    """Yahoo's form of a symbol: BRK.B -> BRK-B. An NSE symbol (RELIANCE.NS) stays as it is."""
+    s = str(sym).upper()
+    return s if s.endswith(".NS") else s.replace(".", "-")
+
+
+_SAY = ((re.compile(r"New York time"), "India time"), (re.compile(r"New York \(ET\)"), "India (IST)"),
+        (re.compile(r"New York"), "IST"), (re.compile(r"\bET\b"), "IST"),
+        (re.compile(r"\bNYSE\b"), "NSE"), (re.compile(r"\bnyse\.com\b"), "nseindia.com"),
+        (re.compile(r"\$(?=-?\d)"), "\u20b9"))
+
+
+class _Say(object):
+    """India mode: what the tool prints says IST, NSE and rupees."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        for pat, word in _SAY:
+            text = pat.sub(word, text)
+        return self._out.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+NSE_HOLIDAYS = {  # capital market segment, 2026 (NSE circulars NSE/CMTR/71775 and 72260)
+    "2026-01-15": "Municipal Corporation election in Maharashtra",
+    "2026-01-26": "Republic Day",
+    "2026-03-03": "Holi",
+    "2026-03-26": "Shri Ram Navami",
+    "2026-03-31": "Shri Mahavir Jayanti",
+    "2026-04-03": "Good Friday",
+    "2026-04-14": "Dr. Baba Saheb Ambedkar Jayanti",
+    "2026-05-01": "Maharashtra Day",
+    "2026-05-28": "Bakri Id",
+    "2026-06-26": "Muharram",
+    "2026-09-14": "Ganesh Chaturthi",
+    "2026-10-02": "Mahatma Gandhi Jayanti",
+    "2026-10-20": "Dussehra",
+    "2026-11-10": "Diwali Balipratipada",
+    "2026-11-24": "Prakash Gurpurb Sri Guru Nanak Dev",
+    "2026-12-25": "Christmas",
+}
+MARKET = _market()
+if MARKET == "IN":
+    NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, CALENDAR_YEARS = NSE_HOLIDAYS, {}, (2026,)
+    OPEN, CLOSE = datetime.time(9, 15), datetime.time(15, 30)
+    FLAT_BY = "15:15"
+
+    def eastern_offset(utc):  # noqa: F811
+        return 5.5
+
+    def eastern_to_utc(local):  # noqa: F811
+        return local - datetime.timedelta(hours=5.5)
 
 
 def parse_now(text):
@@ -185,7 +261,7 @@ def market_status(now_utc):
     nd = d if (s and local.time() < s[0]) else d + datetime.timedelta(days=1)
     for _ in range(15):
         if session(nd):
-            st["next_open"] = "%s 09:30" % nd.isoformat()
+            st["next_open"] = "%s %s" % (nd.isoformat(), OPEN.strftime("%H:%M"))
             break
         nd += datetime.timedelta(days=1)
     return st
@@ -198,7 +274,7 @@ def stooq_url(sym):
 
 
 def yahoo_url(sym, host=YAHOO_HOSTS[0]):
-    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, sym.upper().replace(".", "-"))
+    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, _ysym(sym))
 
 
 def parse_stooq(text, sym):
@@ -510,7 +586,7 @@ def rules_from_plan(plan, cfg_flat_by=None):
         label = plan.get("%s_label" % key)
         out.append({"id": "%s-plan-%s" % (sym.lower(), key), "symbol": sym, "type": typ, "price": float(v),
                     "note": word + (": " + label if label else "")})
-    flat = plan.get("flat_by") or cfg_flat_by or "15:55"
+    flat = plan.get("flat_by") or cfg_flat_by or FLAT_BY
     if _hhmm(flat) is None:
         raise AlertError("the plan's flat_by %r is not a time like 15:55" % flat)
     out.append({"id": "%s-flat-by" % sym.lower(), "symbol": sym, "type": "time", "at": flat,
@@ -784,4 +860,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if MARKET == "IN":
+        sys.stdout, sys.stderr = _Say(sys.stdout), _Say(sys.stderr)
     sys.exit(main())

@@ -116,6 +116,56 @@ def to_eastern(utc):
     return utc.replace(tzinfo=None) + _dt.timedelta(hours=eastern_offset(utc))
 
 
+# ---------------------------------------------------------------- India (NSE)
+# "market": "IN" in trader/config.json (or TRADER_MARKET=IN in the environment)
+# moves the clock to the NSE: 9:15 to 15:30 India time (UTC+5:30, no daylight
+# saving), the NSE holiday list, no early closes, day trades flat by 15:15.
+# Amounts in the config are then rupees. Symbols ending in .NS are never rewritten.
+
+def _market():
+    m = os.environ.get("TRADER_MARKET")
+    if not m:
+        try:
+            with open(os.path.join("trader", "config.json"), encoding="utf-8") as fh:
+                m = json.load(fh).get("market")
+        except (OSError, ValueError, AttributeError):
+            m = None
+    return "IN" if str(m or "").strip().upper() in ("IN", "INDIA", "NSE") else "US"
+
+
+def _ysym(sym):
+    """Yahoo's form of a symbol: BRK.B -> BRK-B. An NSE symbol (RELIANCE.NS) stays as it is."""
+    s = str(sym).upper()
+    return s if s.endswith(".NS") else s.replace(".", "-")
+
+
+_SAY = ((re.compile(r"New York time"), "India time"), (re.compile(r"New York \(ET\)"), "India (IST)"),
+        (re.compile(r"New York"), "IST"), (re.compile(r"\bET\b"), "IST"),
+        (re.compile(r"\bNYSE\b"), "NSE"), (re.compile(r"\bnyse\.com\b"), "nseindia.com"),
+        (re.compile(r"\$(?=-?\d)"), "\u20b9"))
+
+
+class _Say(object):
+    """India mode: what the tool prints says IST, NSE and rupees."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        for pat, word in _SAY:
+            text = pat.sub(word, text)
+        return self._out.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+MARKET = _market()
+if MARKET == "IN":
+    def eastern_offset(utc):  # noqa: F811
+        return 5.5
+
+
 # ---------------------------------------------------------------- inputs
 
 def load_json(path):
@@ -192,7 +242,7 @@ class Fetcher(object):
 
 
 def yahoo_symbol(ticker):
-    return ticker.upper().replace(".", "-")
+    return _ysym(ticker)
 
 
 def cik_map(fetcher, state):
@@ -543,4 +593,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if MARKET == "IN":
+        sys.stdout, sys.stderr = _Say(sys.stdout), _Say(sys.stderr)
     sys.exit(main())

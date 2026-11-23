@@ -139,6 +139,65 @@ def eastern_to_utc(local):
     return local + datetime.timedelta(hours=5)
 
 
+# ---------------------------------------------------------------- India (NSE)
+# "market": "IN" in trader/config.json (or TRADER_MARKET=IN in the environment)
+# moves the clock to the NSE: 9:15 to 15:30 India time (UTC+5:30, no daylight
+# saving), the NSE holiday list, no early closes, day trades flat by 15:15.
+# Amounts in the config are then rupees. Symbols ending in .NS are never rewritten.
+
+def _market():
+    m = os.environ.get("TRADER_MARKET")
+    if not m:
+        try:
+            with open(os.path.join("trader", "config.json"), encoding="utf-8") as fh:
+                m = json.load(fh).get("market")
+        except (OSError, ValueError, AttributeError):
+            m = None
+    return "IN" if str(m or "").strip().upper() in ("IN", "INDIA", "NSE") else "US"
+
+
+def _ysym(sym):
+    """Yahoo's form of a symbol: BRK.B -> BRK-B. An NSE symbol (RELIANCE.NS) stays as it is."""
+    s = str(sym).upper()
+    return s if s.endswith(".NS") else s.replace(".", "-")
+
+
+_SAY = ((re.compile(r"New York time"), "India time"), (re.compile(r"New York \(ET\)"), "India (IST)"),
+        (re.compile(r"New York"), "IST"), (re.compile(r"\bET\b"), "IST"),
+        (re.compile(r"\bNYSE\b"), "NSE"), (re.compile(r"\bnyse\.com\b"), "nseindia.com"),
+        (re.compile(r"\$(?=-?\d)"), "\u20b9"))
+
+
+class _Say(object):
+    """India mode: what the tool prints says IST, NSE and rupees."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        for pat, word in _SAY:
+            text = pat.sub(word, text)
+        return self._out.write(text)
+
+    def __getattr__(self, name):
+        return getattr(self._out, name)
+
+
+MARKET = _market()
+if MARKET == "IN":
+    # Replays run 9:15 to 15:15, the flat-by time: every day trade is closed by then, and
+    # Yahoo's 5-minute NSE data has no 15:20 bar (and often no 15:25), so no session is whole to 15:30.
+    SESSION_BARS = 72    # 9:15 to 15:15 in 5-minute bars
+    OPEN_MIN, CLOSE_MIN = 9 * 60 + 15, 15 * 60 + 15
+    NYSE_EARLY_CLOSE = {}
+
+    def eastern_offset(utc):  # noqa: F811
+        return 5.5
+
+    def eastern_to_utc(local):  # noqa: F811
+        return local - datetime.timedelta(hours=5.5)
+
+
 def parse_now(text):
     """ISO time -> naive UTC. A time without an offset is taken as New York time."""
     if not text:
@@ -187,7 +246,7 @@ def clock24(minutes):
 
 def chart_url(sym, host="query2"):
     return "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=60d&interval=5m" % (
-        host, urllib.parse.quote(sym.upper().replace(".", "-")))
+        host, urllib.parse.quote(_ysym(sym)))
 
 
 def _sleep(seconds):
@@ -531,7 +590,7 @@ def load_plan(a, now_utc):
 def normalize_plan(raw, src="flags"):
     """A plan dict (trader/plan.json shape) -> the checked plan the time machine runs."""
     sym = str(raw.get("symbol") or "").strip().upper()
-    if not re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$", sym):
+    if not re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$|^[A-Z0-9][A-Z0-9&\-]{0,19}\.NS$", sym):
         raise TMError("the plan needs a ticker symbol, got %r" % raw.get("symbol"))
     side = str(raw.get("side") or "buy").lower()
     if side not in ("buy", "sell"):
@@ -569,15 +628,15 @@ def normalize_plan(raw, src="flags"):
     if k is None:
         raise TMError("the plan needs entry_time (the entry bar's close, e.g. 10:15 AM) or entry_bar")
     if not 0 <= k <= SESSION_BARS - 2:
-        raise TMError("the entry must close between 9:35 AM and 3:55 PM to leave bars to replay "
-                      "(got %s)" % clock12(OPEN_MIN + 5 * (k + 1)))
+        raise TMError("the entry must close between %s and %s to leave bars to replay "
+                      "(got %s)" % (clock12(OPEN_MIN + 5), clock12(CLOSE_MIN - 5), clock12(OPEN_MIN + 5 * (k + 1))))
     orng = raw.get("opening_range") or {}
     or_min = orng.get("minutes", 15) if isinstance(orng, dict) else 15
     try:
         or_min = int(or_min)
     except (TypeError, ValueError):
         raise TMError("opening_range.minutes must be a number")
-    if or_min < 5 or or_min % 5 or or_min >= 390:
+    if or_min < 5 or or_min % 5 or or_min >= SESSION_BARS * 5:
         raise TMError("opening_range.minutes must be a multiple of 5 (got %s)" % or_min)
     risk = (entry - stop) if long else (stop - entry)
     return {
@@ -624,7 +683,7 @@ def resolve_rule(plan, entry_day):
 # ---------------------------------------------------------------- the run
 
 def _until12(mc):
-    t = mc.get("until") or "16:00"
+    t = mc.get("until") or clock24(CLOSE_MIN)
     return clock12(int(t[:2]) * 60 + int(t[3:]))
 
 
@@ -686,7 +745,7 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     result = chart_result(text, sym)
     meta, bars, dropped = parse_bars(result, now_utc)
     msym = str(meta.get("symbol") or "").upper()
-    if msym and msym != sym.replace(".", "-"):
+    if msym and msym != _ysym(sym):
         raise TMError("the data is for %s but the plan is for %s" % (msym, sym))
     gran = meta.get("dataGranularity")
     if gran and gran != "5m":
@@ -953,4 +1012,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if MARKET == "IN":
+        sys.stdout, sys.stderr = _Say(sys.stdout), _Say(sys.stderr)
     sys.exit(main())
