@@ -1,0 +1,64 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,Montserrat ExtraBold,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,6,3,5,70,70,10,1
+Style: Big,Montserrat Black,200,&H00FFE34F,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,40,40,10,1
+Style: Sub,Montserrat ExtraBold,46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,4,2,5,60,60,10,1
+Style: Src,Montserrat SemiBold,30,&H00C4CCD4,&H00FFFFFF,&H00000000,&H96000000,0,0,0,0,100,100,0,0,1,3,0,5,60,60,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 2,0:00:00.23,0:00:01.15,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}İnternetin {\c&H003FD2FF&}uzaydan{\c&H00FFFFFF&}
+Dialogue: 2,0:00:01.15,0:00:01.81,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}geldiğini mi
+Dialogue: 2,0:00:01.81,0:00:02.77,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}sanıyorsun?
+Dialogue: 2,0:00:03.53,0:00:04.42,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Aslında {\c&H003FD2FF&}okyanusun{\c&H00FFFFFF&}
+Dialogue: 2,0:00:04.42,0:00:05.53,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}dibinde,{\c&H00FFFFFF&} {\c&H003FD2FF&}binlerce{\c&H00FFFFFF&}
+Dialogue: 2,0:00:05.53,0:00:06.46,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}kilometrelik{\c&H00FFFFFF&} {\c&H003FD2FF&}fiber{\c&H00FFFFFF&}
+Dialogue: 2,0:00:06.46,0:00:07.22,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}optik{\c&H00FFFFFF&} kablolar
+Dialogue: 2,0:00:07.22,0:00:08.10,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}uzanıyor.
+Dialogue: 2,0:00:09.63,0:00:10.53,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}Uluslararası{\c&H00FFFFFF&} veri
+Dialogue: 2,0:00:10.53,0:00:11.40,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}trafiğinin {\c&H003FD2FF&}yüzde{\c&H00FFFFFF&}
+Dialogue: 2,0:00:11.40,0:00:12.31,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}doksan{\c&H00FFFFFF&} {\c&H003FD2FF&}dokuzundan{\c&H00FFFFFF&}
+Dialogue: 2,0:00:12.31,0:00:13.44,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}fazlası bu kablolardan
+Dialogue: 2,0:00:13.44,0:00:14.29,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}geçiyor.
+Dialogue: 2,0:00:16.63,0:00:17.63,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Kablonun içindeki cam
+Dialogue: 2,0:00:17.63,0:00:18.56,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}liflerde veri,
+Dialogue: 2,0:00:18.56,0:00:19.52,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}ışık{\c&H00FFFFFF&} olarak saniyede
+Dialogue: 2,0:00:19.52,0:00:20.49,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}yaklaşık {\c&H003FD2FF&}iki{\c&H00FFFFFF&} {\c&H003FD2FF&}yüz{\c&H00FFFFFF&} {\c&H003FD2FF&}bin{\c&H00FFFFFF&}
+Dialogue: 2,0:00:20.49,0:00:21.85,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}kilometre{\c&H00FFFFFF&} yol alıyor.
+Dialogue: 2,0:00:23.53,0:00:24.33,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Peki ya bir {\c&H003FD2FF&}gemi{\c&H00FFFFFF&}
+Dialogue: 2,0:00:24.33,0:00:25.04,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}çapası{\c&H00FFFFFF&} kabloyu
+Dialogue: 2,0:00:25.04,0:00:25.94,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}koparırsa?{\c&H00FFFFFF&}
+Dialogue: 2,0:00:26.43,0:00:27.43,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Arızaların yaklaşık
+Dialogue: 2,0:00:27.43,0:00:28.11,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}üçte{\c&H00FFFFFF&} {\c&H003FD2FF&}ikisine{\c&H00FFFFFF&}
+Dialogue: 2,0:00:28.11,0:00:29.20,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}balıkçılık{\c&H00FFFFFF&} ve {\c&H003FD2FF&}çapalar{\c&H00FFFFFF&}
+Dialogue: 2,0:00:29.20,0:00:30.19,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}yol açıyor.
+Dialogue: 2,0:00:30.83,0:00:31.85,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}Onarım{\c&H00FFFFFF&} {\c&H003FD2FF&}gemisi{\c&H00FFFFFF&} kabloyu
+Dialogue: 2,0:00:31.85,0:00:32.87,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}yüzeye{\c&H00FFFFFF&} çekip yeni bir
+Dialogue: 2,0:00:32.87,0:00:34.02,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}parçayla onarır.
+Dialogue: 2,0:00:34.83,0:00:35.73,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Bu sırada veri,
+Dialogue: 2,0:00:35.73,0:00:36.44,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}diğer{\c&H00FFFFFF&} {\c&H003FD2FF&}kablolara{\c&H00FFFFFF&}
+Dialogue: 2,0:00:36.44,0:00:37.45,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}yönlendirilir.
+Dialogue: 2,0:00:38.03,0:00:39.00,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}Yani hatırla:
+Dialogue: 2,0:00:39.00,0:00:39.75,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}kıtalar{\c&H00FFFFFF&} arası
+Dialogue: 2,0:00:39.75,0:00:40.92,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}internet, {\c&H003FD2FF&}uzaydan{\c&H00FFFFFF&}
+Dialogue: 2,0:00:40.92,0:00:41.94,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}değil, {\c&H003FD2FF&}denizin{\c&H00FFFFFF&}
+Dialogue: 2,0:00:41.94,0:00:43.05,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}altından{\c&H00FFFFFF&} geçiyor!
+Dialogue: 2,0:00:43.13,0:00:44.49,Cap,,0,0,0,,{\an5\pos(540,1300)\fad(60,40)\fscx86\fscy86\t(0,110,\fscx100\fscy100)}{\c&H003FD2FF&}Takip{\c&H00FFFFFF&} etmeyi unutma!
+Dialogue: 0,0:00:11.05,0:00:16.25,Big,,0,0,0,,{\an5\pos(540,380)\fs210\blur14\alpha&H70&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}%99+
+Dialogue: 1,0:00:11.05,0:00:16.25,Big,,0,0,0,,{\an5\pos(540,380)\fs210\bord3\3c&H00301808&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}%99+
+Dialogue: 1,0:00:11.20,0:00:16.25,Sub,,0,0,0,,{\an5\pos(540,520)\fad(200,250)}uluslararası veri trafiği
+Dialogue: 1,0:00:11.35,0:00:16.25,Src,,0,0,0,,{\an5\pos(540,576)\fad(200,250)}Kaynak: ITU
+Dialogue: 0,0:00:19.15,0:00:23.15,Big,,0,0,0,,{\an5\pos(540,380)\fs116\blur14\alpha&H70&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}≈200.000 km/sn
+Dialogue: 1,0:00:19.15,0:00:23.15,Big,,0,0,0,,{\an5\pos(540,380)\fs116\bord3\3c&H00301808&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}≈200.000 km/sn
+Dialogue: 1,0:00:19.30,0:00:23.15,Sub,,0,0,0,,{\an5\pos(540,462)\fad(200,250)}ışığın cam lifteki hızı
+Dialogue: 0,0:00:27.45,0:00:30.45,Big,,0,0,0,,{\an5\pos(540,380)\fs210\blur14\alpha&H70&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}2/3
+Dialogue: 1,0:00:27.45,0:00:30.45,Big,,0,0,0,,{\an5\pos(540,380)\fs210\bord3\3c&H00301808&\fad(150,250)\fscx70\fscy70\t(0,180,\fscx100\fscy100)}2/3
+Dialogue: 1,0:00:27.60,0:00:30.45,Sub,,0,0,0,,{\an5\pos(540,520)\fad(200,250)}arızanın nedeni: balıkçılık ve çapa
+Dialogue: 1,0:00:27.75,0:00:30.45,Src,,0,0,0,,{\an5\pos(540,576)\fad(200,250)}Kaynak: TeleGeography (ICPC verisi)

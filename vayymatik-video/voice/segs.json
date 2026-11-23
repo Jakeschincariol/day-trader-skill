@@ -1,0 +1,62 @@
+[
+ {
+  "id": "s1",
+  "t": 0.2,
+  "text": "İnternetin uzaydan geldiğini mi sanıyorsun?",
+  "dur": 2.327
+ },
+ {
+  "id": "s2",
+  "t": 3.5,
+  "text": "Aslında okyanusun dibinde, binlerce kilometrelik fiber optik kablolar uzanıyor.",
+  "dur": 4.357
+ },
+ {
+  "id": "s3",
+  "t": 9.6,
+  "text": "Uluslararası veri trafiğinin yüzde doksan dokuzundan fazlası bu kablolardan geçiyor.",
+  "dur": 4.448
+ },
+ {
+  "id": "s4",
+  "t": 16.6,
+  "text": "Kablonun içindeki cam liflerde veri, ışık olarak saniyede yaklaşık iki yüz bin kilometre yol alıyor.",
+  "dur": 5.002
+ },
+ {
+  "id": "s5",
+  "t": 23.5,
+  "text": "Peki ya bir gemi çapası kabloyu koparırsa?",
+  "dur": 2.198
+ },
+ {
+  "id": "s6",
+  "t": 26.4,
+  "text": "Arızaların yaklaşık üçte ikisine balıkçılık ve çapalar yol açıyor.",
+  "dur": 3.547
+ },
+ {
+  "id": "s7",
+  "t": 30.8,
+  "text": "[[ onaɾˈɯm ]] gemisi kabloyu yüzeye çekip yeni bir parçayla onarır.",
+  "dur": 2.977
+ },
+ {
+  "id": "s8",
+  "t": 34.8,
+  "text": "Bu sırada veri, diğer kablolara yönlendirilir.",
+  "dur": 2.409
+ },
+ {
+  "id": "s9",
+  "t": 38.0,
+  "text": "Yani hatırla: kıtalar arası internet, uzaydan değil, [[ denizˈɪn ]] altından geçiyor!",
+  "dur": 4.98
+ },
+ {
+  "id": "s10",
+  "t": 43.1,
+  "text": "Takip etmeyi unutma!",
+  "dur": 1.145
+ }
+]

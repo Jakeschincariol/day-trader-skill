@@ -1,0 +1,52 @@
+1
+00:00:00,230 --> 00:00:02,777
+İnternetin uzaydan
+geldiğini mi sanıyorsun?
+
+2
+00:00:03,530 --> 00:00:08,107
+Aslında okyanusun dibinde, binlerce
+kilometrelik fiber optik kablolar uzanıyor.
+
+3
+00:00:09,630 --> 00:00:14,298
+Uluslararası veri trafiğinin yüzde doksan
+dokuzundan fazlası bu kablolardan geçiyor.
+
+4
+00:00:16,630 --> 00:00:19,528
+Kablonun içindeki cam liflerde
+veri, ışık olarak saniyede
+
+5
+00:00:19,528 --> 00:00:21,852
+yaklaşık iki yüz bin kilometre yol alıyor.
+
+6
+00:00:23,530 --> 00:00:25,948
+Peki ya bir gemi çapası kabloyu koparırsa?
+
+7
+00:00:26,430 --> 00:00:30,197
+Arızaların yaklaşık üçte ikisine
+balıkçılık ve çapalar yol açıyor.
+
+8
+00:00:30,830 --> 00:00:34,027
+Onarım gemisi kabloyu yüzeye
+çekip yeni bir parçayla onarır.
+
+9
+00:00:34,830 --> 00:00:37,459
+Bu sırada veri, diğer
+kablolara yönlendirilir.
+
+10
+00:00:38,030 --> 00:00:43,050
+Yani hatırla: kıtalar arası internet,
+uzaydan değil, denizin altından geçiyor!
+
+11
+00:00:43,130 --> 00:00:44,495
+Takip etmeyi unutma!
+
