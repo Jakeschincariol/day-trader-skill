@@ -10,7 +10,7 @@ VAYYMATİK0 kurgusal finans dizisi **Sıfırdan Zirveye**'nin ilk bölümü.
 
 | Dosya | Biçim | İçerik |
 |---|---|---|
-| Sifirdan_Zirveye_Bolum1.mp4 | 1920×1080, 24 fps, H.264 CRF 18 + AAC 256k, 12:24 | Ana bölüm |
+| Sifirdan_Zirveye_Bolum1.mp4 | 1920×1080, 24 fps, H.264 (2 geçiş, ~5 Mbps) + AAC 256k, 12:24, ~490 MB | Ana bölüm |
 | Shorts_01.mp4 | 1080×1920, 30 fps | 85 Bin TL ile Kuyumcu Açtı! |
 | Shorts_02.mp4 | 1080×1920, 30 fps | İlk Gün 620 Bin TL Borcu Vardı! |
 | Shorts_03.mp4 | 1080×1920, 30 fps | 180 Bin TL Bulmak İçin 4 Günü Kaldı! |
