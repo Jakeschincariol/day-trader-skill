@@ -5,9 +5,9 @@ def bilgi(f):
     p = json.loads(subprocess.run(['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', f], capture_output=True, text=True).stdout)
     v = next(s for s in p['streams'] if s['codec_type'] == 'video'); a = [s for s in p['streams'] if s['codec_type'] == 'audio']
     return v, a, float(p['format']['duration']), int(p['format']['size'])
-def coz(f):  # tam kod çözme + yükseklik ölçümü
-    r = subprocess.run(['ffmpeg', '-v', 'error', '-i', f, '-af', 'ebur128=peak=true', '-f', 'null', '-'], capture_output=True, text=True); e = r.stderr
-    hatalar = [l for l in e.splitlines() if l.strip() and not l.startswith(('[Parsed_ebur128', '  ', 'Summary')) and 'ebur128' not in l and not re.match(r'^\s*(Integrated|I:|Threshold|LRA|Loudness range|True peak|Peak|LRA low|LRA high)', l)]
+def coz(f):  # 1) tam kod çözme (yalnız hata kaydı)  2) ses yüksekliği: ayrı, yalnız ses geçişi (EBU R128 özeti info düzeyinde yazılır)
+    r = subprocess.run(['ffmpeg', '-v', 'error', '-i', f, '-f', 'null', '-'], capture_output=True, text=True); hatalar = [l for l in r.stderr.splitlines() if l.strip()]
+    e = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', f, '-vn', '-af', 'ebur128=peak=true', '-f', 'null', '-'], capture_output=True, text=True).stderr
     I = re.findall(r'I:\s+(-?[\d.]+) LUFS', e); P = re.findall(r'Peak:\s+(-?[\d.]+) dBFS', e)
     return r.returncode, hatalar, float(I[-1]) if I else None, float(P[-1]) if P else None
 BEK = [('Sifirdan_Zirveye_Bolum1.mp4', 1920, 1080, 24, 12 * 60, 15 * 60)] + [(f'Shorts_0{n}.mp4', 1080, 1920, 30, 30, 55) for n in range(1, 7)]
