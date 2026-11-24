@@ -5,5 +5,5 @@ node_modules/
 *.log
 __pycache__/
 ortak/sesler/
-bolum1/cikti/Sifirdan_Zirveye_Bolum1.mp4
+bolum1/cikti/*.mp4
 render.log
