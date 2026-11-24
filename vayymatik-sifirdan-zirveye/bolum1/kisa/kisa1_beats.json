@@ -1,0 +1,123 @@
+{
+ "baslik": "85 Bin TL ile Kuyumcu Açtı!",
+ "kanca": [
+  "CEBİNDE 85.000 TL",
+  "DÜKKÂN 660.000 TL"
+ ],
+ "son": [
+  "BÖLÜMÜN TAMAMI KANALDA",
+  "SIFIRDAN ZİRVEYE · BÖLÜM 1"
+ ],
+ "beats": [
+  {
+   "i": 0,
+   "sahne": 2,
+   "kon": "N",
+   "cek": "C.aksam_yuru",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Cebinde 85.000 lira vardı. Aldığı dükkân ise 660.000 liraydı.",
+   "say": "Cebinde seksen beş bin lira vardı. Aldığı dükkân ise altı yüz altmış bin liraydı.",
+   "wav": "ses/kisa_parca/p00"
+  },
+  {
+   "i": 1,
+   "sahne": 2,
+   "kon": "H",
+   "cek": "D.hasan_yakin",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "660 bine devrederim.",
+   "say": "Altı yüz altmış bine devrederim.",
+   "wav": "ses/parca/p13"
+  },
+  {
+   "i": 2,
+   "sahne": 2,
+   "kon": "E",
+   "cek": "D.emir_yakin",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "660 bin mi? Benim 85.000 var...",
+   "say": "Altı yüz altmış bin mi? Benim seksen beş binim var...",
+   "wav": "ses/parca/p14"
+  },
+  {
+   "i": 3,
+   "sahne": 2,
+   "kon": "N",
+   "cek": "O.satis",
+   "panel": "kaynak2",
+   "ara": 0.3,
+   "cap": "Ertesi sabah en sevdiği şeyi, arabasını sattı. 230.000 lira.",
+   "say": "Ertesi sabah en sevdiği şeyi, arabasını sattı. İki yüz otuz bin lira.",
+   "wav": "ses/parca/p17"
+  },
+  {
+   "i": 4,
+   "sahne": 2,
+   "kon": "R",
+   "cek": "O.kerem_tel",
+   "panel": "kaynak3",
+   "ara": 0.3,
+   "cap": "Sana güveniyorum kardeşim. 180.000 Ama bir yıl içinde bana lazım olacak, haberin olsun.",
+   "say": "Sana güveniyorum kardeşim. Yüz seksen bin. Ama bir yıl içinde bana lazım olacak, haberin olsun.",
+   "wav": "ses/parca/p19"
+  },
+  {
+   "i": 5,
+   "sahne": 2,
+   "kon": "N",
+   "cek": "V.aile_genis",
+   "panel": "kaynak4",
+   "ara": 0.3,
+   "cap": "Babası da 80.000 lira borç verdi.",
+   "say": "Babası da seksen bin lira borç verdi.",
+   "wav": "ses/kisa_parca/p01"
+  },
+  {
+   "i": 6,
+   "sahne": 2,
+   "kon": "N",
+   "cek": "H.kaynak",
+   "panel": "kaynak_toplam",
+   "ara": 0.4,
+   "cap": "Toplam kaynak: 575.000 lira. Ama bunun neredeyse yarısı, 260.000 lirası borçtu.",
+   "say": "Toplam kaynak: beş yüz yetmiş beş bin lira. Ama bunun neredeyse yarısı, iki yüz altmış bin lirası borçtu.",
+   "wav": "ses/parca/p24"
+  },
+  {
+   "i": 7,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "H.kullanim",
+   "panel": "kullanim2",
+   "ara": 0.3,
+   "cap": "300.000 lirayı peşin ödedi. Kalan 360.000 lira, satıcıya borç olarak yazıldı.",
+   "say": "Üç yüz bin lirayı peşin ödedi. Kalan üç yüz altmış bin lira, satıcıya borç olarak yazıldı.",
+   "wav": "ses/kisa_parca/p02"
+  },
+  {
+   "i": 8,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.acilis_kapi",
+   "panel": "acilis",
+   "ara": 0.3,
+   "cap": "Açılış sabahı kasada yalnızca 18.000 lira vardı. Toplam borcu ise 620.000 liraydı.",
+   "say": "Açılış sabahı kasada yalnızca on sekiz bin lira vardı. Toplam borcu ise altı yüz yirmi bin liraydı.",
+   "wav": "ses/parca/p29"
+  },
+  {
+   "i": 9,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.vitrin",
+   "panel": "-",
+   "ara": 0.4,
+   "cap": "Peki bu borçla ayakta kalabilecek mi?",
+   "say": "Peki bu borçla ayakta kalabilecek mi?",
+   "wav": "ses/kisa_parca/p03"
+  }
+ ]
+}

@@ -1,0 +1,255 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: N,Montserrat SemiBold,46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H8C000000,0,0,0,0,100,100,0.3,0,1,3,1.2,2,120,120,46,1
+Style: K,Montserrat SemiBold,46,&H008BD9F5,&H008BD9F5,&H00000000,&H8C000000,0,0,0,0,100,100,0.3,0,1,3,1.2,2,120,120,46,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:03.35,0:00:07.21,N,,0,0,0,,Bir yıl önce, bu dükkânın camında\N“Devren Satılık” yazıyordu.
+Dialogue: 0,0:00:07.78,0:00:09.92,K,,0,0,0,,Emir Bey... Lafı uzatmayacağım.
+Dialogue: 0,0:00:10.47,0:00:13.73,K,,0,0,0,,Bu dükkân için sana 2,5\Nmilyon lira teklif ediyorum.
+Dialogue: 0,0:00:14.78,0:00:19.31,N,,0,0,0,,2,5 milyon lira. Bir yıl önce cebinde\Nyalnızca 85.000 lira olan biri için...
+Dialogue: 0,0:00:19.35,0:00:20.90,N,,0,0,0,,inanılmaz bir rakam.
+Dialogue: 0,0:00:21.37,0:00:22.83,K,,0,0,0,,Nakit. Bu hafta. Düşün...
+Dialogue: 0,0:00:22.87,0:00:24.47,K,,0,0,0,,ama çok düşünme.
+Dialogue: 0,0:00:25.14,0:00:26.34,N,,0,0,0,,Emir cevap vermedi.
+Dialogue: 0,0:00:26.38,0:00:29.92,N,,0,0,0,,Çünkü bu rakamın arkasında,\Nkimsenin görmediği bir hesap vardı.
+Dialogue: 0,0:00:35.79,0:00:38.30,N,,0,0,0,,On iki ay önce. Emir\Nyirmi dört yaşındaydı.
+Dialogue: 0,0:00:38.34,0:00:40.95,N,,0,0,0,,İşsizdi ve ailesinin yanında yaşıyordu.
+Dialogue: 0,0:00:41.43,0:00:43.95,N,,0,0,0,,Gittiği her iş görüşmesi\Naynı cümleyle bitiyordu:
+Dialogue: 0,0:00:43.99,0:00:45.35,N,,0,0,0,,Sizi ararız.
+Dialogue: 0,0:00:45.82,0:00:47.42,N,,0,0,0,,Hiçbiri aramadı.
+Dialogue: 0,0:00:47.99,0:00:49.63,N,,0,0,0,,Ama Emir'in bir hayali vardı.
+Dialogue: 0,0:00:49.67,0:00:51.29,N,,0,0,0,,Kendi işini kurmak.
+Dialogue: 0,0:00:51.84,0:00:53.60,N,,0,0,0,,Babası emekli bir tornacıydı.
+Dialogue: 0,0:00:53.64,0:00:55.36,N,,0,0,0,,Her akşam aynı cümleyi kurardı:
+Dialogue: 0,0:00:55.40,0:00:57.62,N,,0,0,0,,Garanti bir iş bul oğlum, garanti.
+Dialogue: 0,0:00:58.09,0:01:00.94,N,,0,0,0,,Yıllardır kuruş kuruş\Nbiriktirdiği 85.000 lira,
+Dialogue: 0,0:01:00.98,0:01:03.09,N,,0,0,0,,hesabındaki tek güvencesiydi.
+Dialogue: 0,0:01:06.76,0:01:10.16,N,,0,0,0,,Bir akşam çarşıda yürürken, camında\Ndevren satılık yazan küçük bir
+Dialogue: 0,0:01:10.20,0:01:11.74,N,,0,0,0,,kuyumcu gördü.
+Dialogue: 0,0:01:12.39,0:01:15.25,K,,0,0,0,,Kırk yıl bu tezgâhın\Narkasında durdum evladım.
+Dialogue: 0,0:01:15.29,0:01:17.01,K,,0,0,0,,Artık yoruldum.
+Dialogue: 0,0:01:17.46,0:01:20.30,K,,0,0,0,,660 bine devrederim.
+Dialogue: 0,0:01:20.95,0:01:24.43,K,,0,0,0,,660 bin mi? Benim 85.000 var...
+Dialogue: 0,0:01:24.82,0:01:29.42,K,,0,0,0,,300 peşin verirsen, kalanını\Naltı ay taksitle konuşuruz.
+Dialogue: 0,0:01:30.17,0:01:31.45,K,,0,0,0,,Usta, ben bu işi bilmiyorum.
+Dialogue: 0,0:01:31.49,0:01:33.05,K,,0,0,0,,Ama öğrenirim.
+Dialogue: 0,0:01:33.41,0:01:35.79,K,,0,0,0,,Devirden sonra iki hafta yanında dururum.
+Dialogue: 0,0:01:35.83,0:01:38.29,K,,0,0,0,,Ayarı, gramı, işçiliği öğretirim.
+Dialogue: 0,0:01:38.87,0:01:40.43,N,,0,0,0,,Emir o gece uyuyamadı.
+Dialogue: 0,0:01:40.47,0:01:44.09,N,,0,0,0,,Kâğıda rakamlar yazdı,\Nsildi, yeniden yazdı.
+Dialogue: 0,0:01:44.61,0:01:47.91,N,,0,0,0,,Ertesi sabah en sevdiği\Nşeyi, arabasını sattı.
+Dialogue: 0,0:01:47.95,0:01:49.25,N,,0,0,0,,230.000 lira.
+Dialogue: 0,0:01:50.43,0:01:53.27,N,,0,0,0,,Sonra çocukluk arkadaşı Kerem'i aradı.
+Dialogue: 0,0:01:53.72,0:01:55.22,K,,0,0,0,,Sana güveniyorum kardeşim.
+Dialogue: 0,0:01:55.26,0:01:59.04,K,,0,0,0,,180.000 Ama bir yıl içinde bana\Nlazım olacak, haberin olsun.
+Dialogue: 0,0:01:59.61,0:02:02.83,N,,0,0,0,,Geriye en zor konuşma kalmıştı.
+Dialogue: 0,0:02:03.20,0:02:06.02,K,,0,0,0,,Araban gitti, şimdi de borç mu istiyorsun?
+Dialogue: 0,0:02:06.06,0:02:08.22,K,,0,0,0,,Sen altın işinden ne anlarsın?
+Dialogue: 0,0:02:08.59,0:02:11.35,K,,0,0,0,,Baba... denemezsem bir ömür pişman olurum.
+Dialogue: 0,0:02:12.13,0:02:13.35,N,,0,0,0,,Annesi araya girdi.
+Dialogue: 0,0:02:13.39,0:02:14.86,N,,0,0,0,,Babası uzun süre sustu.
+Dialogue: 0,0:02:14.90,0:02:17.97,N,,0,0,0,,Ertesi sabah, 80.000\Nlirayı masaya bıraktı.
+Dialogue: 0,0:02:18.57,0:02:20.79,N,,0,0,0,,Toplam kaynak: 575.000 lira.
+Dialogue: 0,0:02:20.83,0:02:25.09,N,,0,0,0,,Ama bunun neredeyse yarısı,\N260.000 lirası borçtu.
+Dialogue: 0,0:02:26.56,0:02:28.69,N,,0,0,0,,Devir bedeli 660.000 liraydı.
+Dialogue: 0,0:02:28.73,0:02:31.42,N,,0,0,0,,Emir 300.000 lirayı peşin ödedi.
+Dialogue: 0,0:02:31.79,0:02:35.71,N,,0,0,0,,Kalan 360.000 lira, altı ay\Nboyunca ayda 60.000 lira taksitle
+Dialogue: 0,0:02:35.75,0:02:38.85,N,,0,0,0,,ödenmek üzere satıcıya\Nborç olarak yazıldı.
+Dialogue: 0,0:02:39.31,0:02:41.84,N,,0,0,0,,Ama devir bedeli, tek masraf değildi.
+Dialogue: 0,0:02:44.81,0:02:49.54,N,,0,0,0,,Güvenlik ve ekipman 95.000 Kira ve\Ndepozito 75.000 Tadilat ve tabela
+Dialogue: 0,0:02:49.58,0:02:52.17,N,,0,0,0,,55.000 Tedarikçi teminatı 32.000
+Dialogue: 0,0:02:52.64,0:02:54.18,N,,0,0,0,,Hasan Usta sözünü tuttu.
+Dialogue: 0,0:02:54.22,0:02:56.64,N,,0,0,0,,İki hafta boyunca her sabah dükkâna geldi.
+Dialogue: 0,0:02:57.00,0:02:59.12,K,,0,0,0,,Altının fiyatını gram belirler evladım.
+Dialogue: 0,0:02:59.16,0:03:03.14,K,,0,0,0,,Ama müşteriyi geri getiren, işçiliktir.
+Dialogue: 0,0:03:06.33,0:03:08.54,N,,0,0,0,,Kepengi kaldırdığında elleri titriyordu.
+Dialogue: 0,0:03:08.58,0:03:10.85,N,,0,0,0,,Tabelada artık kendi adı yazıyordu.
+Dialogue: 0,0:03:11.32,0:03:14.22,N,,0,0,0,,Açılış sabahı kasada\Nyalnızca 18.000 lira vardı.
+Dialogue: 0,0:03:14.26,0:03:16.61,N,,0,0,0,,Toplam borcu ise 620.000 liraydı.
+Dialogue: 0,0:03:17.37,0:03:20.23,N,,0,0,0,,Vitrindeki altınların çoğu\Nda aslında Emir'in değildi.
+Dialogue: 0,0:03:20.27,0:03:21.71,N,,0,0,0,,Tedarikçinin emanetiydi.
+Dialogue: 0,0:03:21.75,0:03:23.95,N,,0,0,0,,Satılınca bedeli tedarikçiye ödenecekti.
+Dialogue: 0,0:03:24.53,0:03:26.82,N,,0,0,0,,Karşılığında 32.000 lira teminat vermişti.
+Dialogue: 0,0:03:26.86,0:03:30.69,N,,0,0,0,,Satılan her ürünün bedelini ise\Nbir ay içinde ödemek zorundaydı.
+Dialogue: 0,0:03:31.25,0:03:32.89,N,,0,0,0,,İlk saatler sessiz geçti.
+Dialogue: 0,0:03:32.93,0:03:36.37,N,,0,0,0,,Önünden geçenler vitrine\Nbakıyor, ama içeri girmiyordu.
+Dialogue: 0,0:03:36.94,0:03:38.46,N,,0,0,0,,Öğleye doğru babası geldi.
+Dialogue: 0,0:03:38.50,0:03:41.54,N,,0,0,0,,Hiçbir şey söylemeden\Nvitrinlere uzun uzun baktı.
+Dialogue: 0,0:03:42.03,0:03:43.31,K,,0,0,0,,Hayırlı olsun oğlum.
+Dialogue: 0,0:03:43.35,0:03:45.77,K,,0,0,0,,Ama unutma; borç, borçtur.
+Dialogue: 0,0:03:46.44,0:03:48.82,N,,0,0,0,,İlk müşteri öğleden sonra geldi.
+Dialogue: 0,0:03:49.10,0:03:51.08,K,,0,0,0,,Kızıma bir bilezik bakıyorum.
+Dialogue: 0,0:03:51.35,0:03:53.75,K,,0,0,0,,Şu yirmi iki ayar burgu\Nbilezik çok yakışır.
+Dialogue: 0,0:03:53.79,0:03:54.99,K,,0,0,0,,40.000 lira.
+Dialogue: 0,0:03:55.64,0:03:57.03,N,,0,0,0,,Kasaya 40.000 lira girdi.
+Dialogue: 0,0:03:57.06,0:03:59.12,N,,0,0,0,,Emir'in kalbi hızla çarpıyordu.
+Dialogue: 0,0:03:59.48,0:04:02.26,N,,0,0,0,,Ama bu kırk binin tamamı kâr değildi.
+Dialogue: 0,0:04:02.30,0:04:06.08,N,,0,0,0,,Bileziğin tedarikçiye\Nmaliyeti 35.200 liraydı.
+Dialogue: 0,0:04:06.46,0:04:09.16,N,,0,0,0,,Brüt kâr yalnızca 4.800 lira.
+Dialogue: 0,0:04:09.20,0:04:13.38,N,,0,0,0,,Üstelik kira, fatura ve güvenlik\Ngiderleri henüz düşülmemişti.
+Dialogue: 0,0:04:13.84,0:04:15.60,K,,0,0,0,,Olsun... İlk satış bu.
+Dialogue: 0,0:04:15.64,0:04:18.20,K,,0,0,0,,Gerisi gelir.
+Dialogue: 0,0:04:19.47,0:04:22.54,N,,0,0,0,,İlk ayın sonunda Emir kasaya baktı.
+Dialogue: 0,0:04:22.58,0:04:24.09,N,,0,0,0,,183.500 lira.
+Dialogue: 0,0:04:24.46,0:04:26.02,K,,0,0,0,,İlk ayda yüz seksen üç bin!
+Dialogue: 0,0:04:26.06,0:04:27.16,K,,0,0,0,,Bu iş oluyor!
+Dialogue: 0,0:04:27.64,0:04:30.26,N,,0,0,0,,Ama tablonun diğer tarafı\Nbaşka bir şey söylüyordu.
+Dialogue: 0,0:04:30.30,0:04:33.24,N,,0,0,0,,Ay, 8.500 lira zararla kapanmıştı.
+Dialogue: 0,0:04:33.60,0:04:38.36,N,,0,0,0,,Kasadaki paranın 174.000 lirası,\Ntedarikçiye ödenecek emanet bedeliydi.
+Dialogue: 0,0:04:39.11,0:04:41.51,N,,0,0,0,,Emir kasadaki parayı kendi kazancı sandı.
+Dialogue: 0,0:04:41.55,0:04:45.67,N,,0,0,0,,Oysa işletmenin gerçek sonucu\Nkasada değil, gelir tablosundaydı.
+Dialogue: 0,0:04:46.24,0:04:49.10,N,,0,0,0,,Emir bunu görmedi. Dükkâna\Nışıklı yeni bir tabela,
+Dialogue: 0,0:04:49.14,0:04:53.26,N,,0,0,0,,şık bir dekor ve sosyal medya\Nreklamları için 30.000 lira harcadı.
+Dialogue: 0,0:04:53.98,0:04:56.52,K,,0,0,0,,İşler iyi gidiyor. Biraz yatırım şart.
+Dialogue: 0,0:04:57.27,0:04:58.71,N,,0,0,0,,Sonra ikinci hata geldi.
+Dialogue: 0,0:04:58.75,0:05:02.28,N,,0,0,0,,Bir müşteri, düğün seti için\N100.000 liralık sipariş verdi.
+Dialogue: 0,0:05:02.32,0:05:05.41,N,,0,0,0,,Emir fiyatı o günün altın\Nfiyatıyla sabitledi.
+Dialogue: 0,0:05:05.96,0:05:08.36,N,,0,0,0,,Teslim günü geldiğinde altın yükselmişti.
+Dialogue: 0,0:05:08.40,0:05:10.51,N,,0,0,0,,Setin maliyeti 104.000 liraya çıktı.
+Dialogue: 0,0:05:10.55,0:05:13.18,N,,0,0,0,,Emir bu satıştan 4.000 lira zarar etti.
+Dialogue: 0,0:05:13.75,0:05:16.75,N,,0,0,0,,Ders basitti: Altın\Nfiyatı her gün değişir.
+Dialogue: 0,0:05:16.79,0:05:19.03,N,,0,0,0,,Fiyatı bugünden sabitleyip\Naltını yarın alırsan,
+Dialogue: 0,0:05:19.07,0:05:20.77,N,,0,0,0,,riski sen taşırsın.
+Dialogue: 0,0:05:21.34,0:05:25.13,N,,0,0,0,,İkinci ayın sonunda ciro\N450.000 liraya ulaştı.
+Dialogue: 0,0:05:25.17,0:05:27.62,N,,0,0,0,,Kasada 194.500 lira vardı.
+Dialogue: 0,0:05:28.00,0:05:32.70,N,,0,0,0,,Ama tedarikçiye ödenecek\Nborç 232.500 liraydı.
+Dialogue: 0,0:05:33.35,0:05:35.09,K,,0,0,0,,Ciro artıyor, kasada para var...
+Dialogue: 0,0:05:35.13,0:05:37.93,K,,0,0,0,,Ama neden hiçbir şeye yetmiyor?
+Dialogue: 0,0:05:38.49,0:05:40.17,N,,0,0,0,,Çünkü ciro, kazanç değildi.
+Dialogue: 0,0:05:40.21,0:05:43.09,N,,0,0,0,,Ve kasadaki para, Emir'in parası değildi.
+Dialogue: 0,0:05:44.74,0:05:46.42,N,,0,0,0,,Üçüncü ay daha da zor geçti.
+Dialogue: 0,0:05:46.46,0:05:51.84,N,,0,0,0,,Altın fiyatları dalgalandı,\Nkâr marjı eridi.
+Dialogue: 0,0:05:51.88,0:05:55.28,N,,0,0,0,,Üç ayın toplam zararı\N74.900 liraya ulaştı.
+Dialogue: 0,0:05:55.75,0:05:58.23,N,,0,0,0,,Ve bir pazartesi sabahı telefon çaldı.
+Dialogue: 0,0:05:58.68,0:06:00.32,K,,0,0,0,,Emir, üç taksit geçti.
+Dialogue: 0,0:06:00.36,0:06:05.34,K,,0,0,0,,180.000 lira. Cumaya kadar\Nödemezsen, noterden ihtar çekeceğim.
+Dialogue: 0,0:06:06.09,0:06:08.41,N,,0,0,0,,Emir'in dört günü vardı.
+Dialogue: 0,0:06:09.98,0:06:11.34,N,,0,0,0,,Salı günü bankaya gitti.
+Dialogue: 0,0:06:11.38,0:06:15.04,N,,0,0,0,,Kredi başvurusu, teminat\Nyetersizliği nedeniyle reddedildi.
+Dialogue: 0,0:06:15.51,0:06:17.11,N,,0,0,0,,Tedarikçiden süre istemeyi düşündü.
+Dialogue: 0,0:06:17.15,0:06:21.53,N,,0,0,0,,Ama emanet bedelini geciktirirse,\Nvitrine bir daha mal gelmeyecekti.
+Dialogue: 0,0:06:21.99,0:06:24.27,N,,0,0,0,,Kerem'i aramayı düşündü, vazgeçti.
+Dialogue: 0,0:06:24.31,0:06:26.87,N,,0,0,0,,Ona zaten 180.000 lira borçluydu.
+Dialogue: 0,0:06:27.34,0:06:29.56,N,,0,0,0,,Kasada 159.100 lira görünüyordu.
+Dialogue: 0,0:06:29.60,0:06:33.32,N,,0,0,0,,Ama tedarikçiye 216.000\Nlira ödemesi gerekiyordu.
+Dialogue: 0,0:06:33.68,0:06:37.30,N,,0,0,0,,Gerçekte kullanılabilir\Nparası, eksi 56.900 liraydı.
+Dialogue: 0,0:06:37.34,0:06:41.36,N,,0,0,0,,Gecikme cezası olarak 8.000\Nlira da gider yazılmıştı.
+Dialogue: 0,0:06:41.93,0:06:43.32,K,,0,0,0,,Dükkânı kaybedersem...
+Dialogue: 0,0:06:43.36,0:06:45.29,K,,0,0,0,,Babama, Kerem'e ne derim?
+Dialogue: 0,0:06:46.24,0:06:48.20,N,,0,0,0,,Emir o gece ilk kez anladı.
+Dialogue: 0,0:06:48.24,0:06:50.92,N,,0,0,0,,Bir işletmeyi batıran çoğu\Nzaman satışların azlığı değil,
+Dialogue: 0,0:06:50.96,0:06:52.22,N,,0,0,0,,nakdin bitmesiydi.
+Dialogue: 0,0:06:54.10,0:06:56.82,N,,0,0,0,,Çarşamba günü kapıdan\Nbeklenmedik biri girdi.
+Dialogue: 0,0:06:57.08,0:06:59.56,K,,0,0,0,,Murat Aydın. Bu çarşıda üç dükkânım var.
+Dialogue: 0,0:06:59.60,0:07:01.66,K,,0,0,0,,Seni izliyorum delikanlı.
+Dialogue: 0,0:07:02.11,0:07:03.93,K,,0,0,0,,Beni mi? Neden?
+Dialogue: 0,0:07:04.35,0:07:06.77,K,,0,0,0,,Dükkânın yeri iyi, sen de çalışkansın.
+Dialogue: 0,0:07:06.81,0:07:09.77,K,,0,0,0,,Ama paran bitiyor. Bunu\Nbütün çarşı biliyor.
+Dialogue: 0,0:07:10.23,0:07:11.47,K,,0,0,0,,400.000 lira koyarım.
+Dialogue: 0,0:07:11.51,0:07:14.01,K,,0,0,0,,Karşılığında işletmenin yarısı benim.
+Dialogue: 0,0:07:14.58,0:07:16.00,N,,0,0,0,,Dört yüz bine yüzde elli.
+Dialogue: 0,0:07:16.04,0:07:19.09,N,,0,0,0,,Yani Murat Bey işletmeye\N800.000 lira değer biçiyordu.
+Dialogue: 0,0:07:19.13,0:07:22.40,N,,0,0,0,,Defterlerdeki özkaynak ise\Nyalnızca 215.100 liraydı.
+Dialogue: 0,0:07:23.15,0:07:24.79,N,,0,0,0,,Teklif kurtarıcı görünüyordu.
+Dialogue: 0,0:07:24.83,0:07:26.14,N,,0,0,0,,Emir kalemi eline aldı.
+Dialogue: 0,0:07:26.18,0:07:29.45,N,,0,0,0,,Ama imzalamadan önce\Nmuhasebecisi Ahmet Bey'i aradı.
+Dialogue: 0,0:07:29.81,0:07:32.29,K,,0,0,0,,Emir, belgeleri incelerken bir şey buldum.
+Dialogue: 0,0:07:32.33,0:07:36.03,K,,0,0,0,,Eski işletmeye ait olduğu iddia\Nedilen 240.000 liralık bir borç
+Dialogue: 0,0:07:36.07,0:07:37.07,K,,0,0,0,,talebi var.
+Dialogue: 0,0:07:37.44,0:07:39.68,K,,0,0,0,,Ne? Bu borç bana mı geçti?
+Dialogue: 0,0:07:40.04,0:07:43.88,K,,0,0,0,,Henüz bilmiyoruz. Devir sözleşmesine\Nve hukuki belgelere bakmamız gerek.
+Dialogue: 0,0:07:43.92,0:07:46.08,K,,0,0,0,,Bu belirsizken hiçbir şey imzalama.
+Dialogue: 0,0:07:46.56,0:07:48.91,N,,0,0,0,,Bu borcun Emir'e geçip\Ngeçmediği belirsizdi.
+Dialogue: 0,0:07:48.95,0:07:52.38,N,,0,0,0,,Bu yüzden tabloya eklenmedi;\Nayrı bir not olarak tutuldu.
+Dialogue: 0,0:07:52.85,0:07:54.09,K,,0,0,0,,Murat Bey, teşekkür ederim.
+Dialogue: 0,0:07:54.13,0:07:56.15,K,,0,0,0,,Ama şimdi imzalayamam.
+Dialogue: 0,0:07:56.70,0:07:59.36,K,,0,0,0,,Kapı her zaman açık kalmaz delikanlı.
+Dialogue: 0,0:08:00.31,0:08:02.23,N,,0,0,0,,O akşam Emir bir şeyi anladı:
+Dialogue: 0,0:08:02.27,0:08:05.15,N,,0,0,0,,Kurtarıcı görünen her\Nparanın, bir bedeli vardı.
+Dialogue: 0,0:08:06.61,0:08:08.93,N,,0,0,0,,Perşembe gecesi Emir\Nsabaha kadar hesap yaptı.
+Dialogue: 0,0:08:08.97,0:08:11.79,N,,0,0,0,,Ve iş modelini değiştirmeye karar verdi.
+Dialogue: 0,0:08:12.34,0:08:15.48,N,,0,0,0,,Cuma sabahı, son gün,\NHasan Usta'yla oturdu.
+Dialogue: 0,0:08:15.76,0:08:16.92,K,,0,0,0,,Usta, ben kaçmıyorum.
+Dialogue: 0,0:08:16.96,0:08:19.06,K,,0,0,0,,Ama bu taksitleri bu hâliyle ödeyemem.
+Dialogue: 0,0:08:19.10,0:08:21.22,K,,0,0,0,,Bana bir takvim ver, her ay ödeyeyim.
+Dialogue: 0,0:08:21.77,0:08:24.83,K,,0,0,0,,Peki evladım. Beş ay onar\Nbin, sonra on beşer bin.
+Dialogue: 0,0:08:24.87,0:08:26.75,K,,0,0,0,,Ama gecikmeye faiz işler.
+Dialogue: 0,0:08:27.32,0:08:30.10,K,,0,0,0,,Söz usta. Her ay, gününde.
+Dialogue: 0,0:08:30.66,0:08:32.60,N,,0,0,0,,Sonra işin kendisini değiştirdi.
+Dialogue: 0,0:08:32.64,0:08:35.42,N,,0,0,0,,Vitrinde bekleyen emanet ürün\Nyerine, sipariş üzerine özel
+Dialogue: 0,0:08:35.46,0:08:37.26,N,,0,0,0,,tasarımlar yapmaya başladı.
+Dialogue: 0,0:08:37.64,0:08:39.94,N,,0,0,0,,Geceleri tasarım programlarını öğrendi.
+Dialogue: 0,0:08:39.98,0:08:42.76,N,,0,0,0,,Bir atölye ustasıyla\Nanlaştı; müşteri ne isterse,
+Dialogue: 0,0:08:42.80,0:08:44.92,N,,0,0,0,,ölçüsüyle üretmeye başladılar.
+Dialogue: 0,0:08:47.80,0:08:51.20,N,,0,0,0,,Müşteri kaporayı veriyor,\Naltın sipariş günü alınıyor,
+Dialogue: 0,0:08:51.24,0:08:52.95,N,,0,0,0,,fiyat o gün kilitleniyordu.
+Dialogue: 0,0:08:52.99,0:08:55.72,N,,0,0,0,,Böylece altın fiyatı riski azalıyordu.
+Dialogue: 0,0:08:56.10,0:08:59.20,N,,0,0,0,,Reklam bütçesini kıstı,\Ngereksiz harcamaları durdurdu.
+Dialogue: 0,0:08:59.24,0:09:04.58,N,,0,0,0,,Her akşam kasayı değil; kârı, borcu\Nve nakdi ayrı ayrı saymaya başladı.
+Dialogue: 0,0:09:08.04,0:09:10.05,N,,0,0,0,,Dördüncü ay brüt marj yüzde on iki.
+Dialogue: 0,0:09:10.09,0:09:11.58,N,,0,0,0,,Beşinci ay yüzde on sekiz.
+Dialogue: 0,0:09:11.62,0:09:14.88,N,,0,0,0,,Ve beşinci ayda işletme,\Nilk kez ayı kârla kapattı.
+Dialogue: 0,0:09:15.24,0:09:16.74,N,,0,0,0,,Altıncı ay yüzde yirmi bir.
+Dialogue: 0,0:09:16.77,0:09:20.24,N,,0,0,0,,Sekizinci ayda kullanılabilir\Nnakit yeniden artıya döndü.
+Dialogue: 0,0:09:20.62,0:09:23.18,N,,0,0,0,,O ay Kerem aradı.
+Dialogue: 0,0:09:23.44,0:09:25.84,K,,0,0,0,,Kardeşim, o para bana yıl sonunda lazım.
+Dialogue: 0,0:09:25.88,0:09:27.26,K,,0,0,0,,Unutmadın, değil mi?
+Dialogue: 0,0:09:27.64,0:09:30.12,K,,0,0,0,,Unutmadım Kerem. Elimden geleni yapacağım.
+Dialogue: 0,0:09:30.78,0:09:33.10,N,,0,0,0,,Artık her müşteriye\Ntek bir soru soruyordu:
+Dialogue: 0,0:09:33.14,0:09:35.40,N,,0,0,0,,Hayalinizdeki parça nasıl olmalı?
+Dialogue: 0,0:09:38.88,0:09:42.41,N,,0,0,0,,Bir müşteri, nişan yüzüğünün\Nfotoğrafını paylaştı.
+Dialogue: 0,0:09:42.45,0:09:45.48,N,,0,0,0,,Sonra bir başkası. Siparişler çoğaldı.
+Dialogue: 0,0:09:46.03,0:09:47.30,N,,0,0,0,,Emir hâlâ borçluydu.
+Dialogue: 0,0:09:47.34,0:09:51.77,N,,0,0,0,,Ama artık neyin kâr, neyin borç,\Nneyin emanet olduğunu biliyordu.
+Dialogue: 0,0:09:56.24,0:10:00.48,N,,0,0,0,,On ikinci ayın sonunda Emir,\Nmuhasebecisiyle yılın hesabını kapattı.
+Dialogue: 0,0:10:00.86,0:10:03.47,K,,0,0,0,,Toplam satış: 4 milyon lira.
+Dialogue: 0,0:10:03.77,0:10:04.79,K,,0,0,0,,Dört milyon!
+Dialogue: 0,0:10:05.24,0:10:09.26,K,,0,0,0,,Dur, heyecanlanma. Satılan\Nürünlerin maliyeti 3,2 milyon.
+Dialogue: 0,0:10:09.30,0:10:12.61,K,,0,0,0,,Kira, faturalar, güvenlik,\Nkomisyonlar, reklam,
+Dialogue: 0,0:10:12.65,0:10:14.56,K,,0,0,0,,faiz ve vergi: 560.000
+Dialogue: 0,0:10:14.93,0:10:17.07,K,,0,0,0,,Net kâr: 240.000 lira.
+Dialogue: 0,0:10:17.82,0:10:21.82,N,,0,0,0,,Dört milyon liralık satış, Emir'in dört\Nmilyon kazandığı anlamına gelmiyordu.
+Dialogue: 0,0:10:21.86,0:10:24.90,N,,0,0,0,,Bir yılın karşılığı, iki\Nyüz kırk bin liralık kârdı.
+Dialogue: 0,0:10:25.38,0:10:27.15,N,,0,0,0,,Nakit tarafında tablo netti.
+Dialogue: 0,0:10:27.19,0:10:28.96,N,,0,0,0,,Yılı 18.000 lirayla açmıştı.
+Dialogue: 0,0:10:29.00,0:10:30.21,N,,0,0,0,,240.000 kâr ekledi.
+Dialogue: 0,0:10:30.25,0:10:34.42,N,,0,0,0,,Satıcıya ve Kerem'e toplam\N130.000 lira borç anaparası ödedi.
+Dialogue: 0,0:10:34.80,0:10:36.60,N,,0,0,0,,Borç ödemek gider değildi.
+Dialogue: 0,0:10:36.64,0:10:39.96,N,,0,0,0,,Kârı azaltmadı ama kasadan\Nçıktı ve borcu azalttı.
+Dialogue: 0,0:10:40.32,0:10:42.98,N,,0,0,0,,Yıl sonunda kasada 128.000 lira vardı.
+Dialogue: 0,0:10:43.02,0:10:45.41,N,,0,0,0,,Kalan toplam borç 490.000 liraydı.
+Dialogue: 0,0:10:45.45,0:10:49.50,N,,0,0,0,,İşletmedeki özkaynağı ise\N530.000 liraya yükselmişti.
+Dialogue: 0,0:10:50.07,0:10:53.93,N,,0,0,0,,Kalan borcun 250.000 lirası\Nsatıcıya, 160.000 lirası Kerem'e,
+Dialogue: 0,0:10:53.97,0:10:55.62,N,,0,0,0,,80.000 lirası ailesineydi.
+Dialogue: 0,0:10:55.66,0:10:59.17,N,,0,0,0,,Kerem'e bu yıl yalnızca\N20.000 lira ödeyebilmişti.
+Dialogue: 0,0:10:59.75,0:11:02.91,N,,0,0,0,,Ahmet Bey dosyayı kapatmadan\Nönce bir şey daha söyledi.
+Dialogue: 0,0:11:03.36,0:11:06.38,K,,0,0,0,,O 240.000 liralık talep hâlâ duruyor Emir.
+Dialogue: 0,0:11:06.42,0:11:10.06,K,,0,0,0,,Avukat inceliyor. Ama\Nhenüz kimse dava açmadı.
+Dialogue: 0,0:11:10.91,0:11:15.37,N,,0,0,0,,Bir yıl önce kasaya bakıp sevinen\NEmir, artık önce defterine bakıyordu.
+Dialogue: 0,0:11:15.93,0:11:19.59,N,,0,0,0,,Basit bir tablo. Ama bir yıl önce\Nbilmediği her şeyi anlatıyordu.
+Dialogue: 0,0:11:23.26,0:11:24.89,K,,0,0,0,,Teklifim hâlâ geçerli.
+Dialogue: 0,0:11:24.93,0:11:26.46,K,,0,0,0,,2,5 milyon lira.
+Dialogue: 0,0:11:27.12,0:11:32.83,N,,0,0,0,,Emir hesap yaptı. Satış gerçekleşirse\Nönce kalan 490.000 lira borcu kapatacaktı.
+Dialogue: 0,0:11:33.38,0:11:35.70,N,,0,0,0,,Kasadaki 128.000 lira da onundu.
+Dialogue: 0,0:11:35.74,0:11:41.75,N,,0,0,0,,Vergi, komisyon ve masraflardan önce\Neline yaklaşık 2.138.000 lira geçebilirdi.
+Dialogue: 0,0:11:42.11,0:11:46.16,N,,0,0,0,,Ama o 240.000 liralık\Nbelirsiz talep haklı çıkarsa,
+Dialogue: 0,0:11:46.20,0:11:48.87,N,,0,0,0,,bu rakam 1.898.000 düşecekti.
+Dialogue: 0,0:11:49.47,0:11:51.71,N,,0,0,0,,Satarsa bütün borçlarından kurtulacaktı.
+Dialogue: 0,0:11:51.75,0:11:54.50,N,,0,0,0,,Satmazsa, bir yılda kurduğu\Ndüzeni büyütebilirdi.
+Dialogue: 0,0:11:54.54,0:11:57.90,N,,0,0,0,,Ama Kerem'in 160.000 lirası\Nda yakında lazım olacaktı.
+Dialogue: 0,0:11:58.55,0:12:00.32,N,,0,0,0,,Bir yıl önce 85.000 lirası vardı.
+Dialogue: 0,0:12:00.36,0:12:02.77,N,,0,0,0,,Şimdi önünde iki yol duruyordu.
+Dialogue: 0,0:12:03.24,0:12:04.48,K,,0,0,0,,Ne diyorsun Emir?
+Dialogue: 0,0:12:05.25,0:12:06.59,N,,0,0,0,,Emir dükkâna baktı.
+Dialogue: 0,0:12:06.63,0:12:08.77,N,,0,0,0,,Vitrinlere, borç defterine, kasaya...
+Dialogue: 0,0:12:08.81,0:12:11.13,N,,0,0,0,,Ve camdaki kendi yansımasına.
+Dialogue: 0,0:12:12.09,0:12:12.85,K,,0,0,0,,Ben...

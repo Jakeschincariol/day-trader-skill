@@ -1,0 +1,11 @@
+@baslik|Bir Yılda 4 Milyon TL Satış Yaptı!
+@kanca|1 YILDA|4.000.000 TL SATIŞ
+@son|BÖLÜMÜN TAMAMI KANALDA|SIFIRDAN ZİRVEYE · BÖLÜM 1
+8|M|Toplam satış: {4|dört} milyon lira.|F.ahmet_yakin|-|0.2
+8|E|Dört milyon!|F.emir_yakin|-|0.3
+8|M|Dur, heyecanlanma. Satılan ürünlerin maliyeti {3,2|üç} {milyon.|milyon iki yüz bin.} Kira, faturalar, güvenlik, komisyonlar, reklam, faiz ve vergi: {560.000|beş yüz altmış bin.}|F.ahmet_belge|yil_gider|0.3
+8|M|Net kâr: {240.000|iki yüz kırk bin} lira.|F.ahmet_yakin|yil_net|0.3
+8|N|Dört milyon liralık satış, Emir'in dört milyon kazandığı anlamına gelmiyordu. Bir yılın karşılığı, iki yüz kırk bin liralık kârdı.|H.yil|yil_net|0.3
+8|N|Nakit tarafında tablo netti. Yılı {18.000|on sekiz bin} lirayla açmıştı. {240.000|İki yüz kırk bin} kâr ekledi. Satıcıya ve Kerem'e toplam {130.000|yüz otuz bin} lira borç anaparası ödedi.|H.kopru|kopru|0.3
+8|N|Borç ödemek gider değildi. Kârı azaltmadı ama kasadan çıktı ve borcu azalttı.|H.kopru|kopru|0.3
+8|N|Yıl sonunda kasada {128.000|yüz yirmi sekiz bin} lira kaldı. Ciro, kâr değildir.|D.yil_sonu|yil_sonu|0.4

@@ -1,0 +1,123 @@
+{
+ "baslik": "İlk Gün 620 Bin TL Borcu Vardı!",
+ "kanca": [
+  "AÇILIŞ GÜNÜ",
+  "620.000 TL BORÇ"
+ ],
+ "son": [
+  "BÖLÜMÜN TAMAMI KANALDA",
+  "SIFIRDAN ZİRVEYE · BÖLÜM 1"
+ ],
+ "beats": [
+  {
+   "i": 0,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.acilis_kapi",
+   "panel": "-",
+   "ara": 0.2,
+   "cap": "Dükkânını açtığı gün, 620.000 lira borcu vardı.",
+   "say": "Dükkânını açtığı gün, altı yüz yirmi bin lira borcu vardı.",
+   "wav": "ses/kisa_parca/p04"
+  },
+  {
+   "i": 1,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.acilis_kapi",
+   "panel": "acilis",
+   "ara": 0.3,
+   "cap": "Kasada ise yalnızca 18.000 lira.",
+   "say": "Kasada ise yalnızca on sekiz bin lira.",
+   "wav": "ses/kisa_parca/p05"
+  },
+  {
+   "i": 2,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.vitrin",
+   "panel": "emanet",
+   "ara": 0.3,
+   "cap": "Vitrindeki altınların çoğu bile onun değildi. Tedarikçinin emanetiydi.",
+   "say": "Vitrindeki altınların çoğu bile onun değildi. Tedarikçinin emanetiydi.",
+   "wav": "ses/kisa_parca/p06"
+  },
+  {
+   "i": 3,
+   "sahne": 3,
+   "kon": "C",
+   "cek": "D.musteri",
+   "panel": "-",
+   "ara": 0.2,
+   "cap": "Kızıma bir bilezik bakıyorum.",
+   "say": "Kızıma bir bilezik bakıyorum.",
+   "wav": "ses/parca/p33"
+  },
+  {
+   "i": 4,
+   "sahne": 3,
+   "kon": "E",
+   "cek": "D.tezgah_satis",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Şu yirmi iki ayar burgu bilezik çok yakışır. 40.000 lira.",
+   "say": "Şu yirmi iki ayar burgu bilezik çok yakışır. Kırk bin lira.",
+   "wav": "ses/parca/p34"
+  },
+  {
+   "i": 5,
+   "sahne": 3,
+   "kon": "N",
+   "cek": "D.kasa",
+   "panel": "ilk_satis",
+   "ara": 0.3,
+   "cap": "Ama bu kırk binin tamamı kâr değildi. Bileziğin tedarikçiye maliyeti 35.200 liraydı.",
+   "say": "Ama bu kırk binin tamamı kâr değildi. Bileziğin tedarikçiye maliyeti otuz beş bin iki yüz liraydı.",
+   "wav": "ses/parca/p36"
+  },
+  {
+   "i": 6,
+   "sahne": 4,
+   "kon": "N",
+   "cek": "D.kasa_aksam",
+   "panel": "ay1_sonu",
+   "ara": 0.3,
+   "cap": "İlk ayın sonunda Emir kasaya baktı. 183.500 lira.",
+   "say": "İlk ayın sonunda Emir kasaya baktı. Yüz seksen üç bin beş yüz lira.",
+   "wav": "ses/parca/p38"
+  },
+  {
+   "i": 7,
+   "sahne": 4,
+   "kon": "E",
+   "cek": "D.emir_sevinc",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "İlk ayda yüz seksen üç bin! Bu iş oluyor!",
+   "say": "İlk ayda yüz seksen üç bin! Bu iş oluyor!",
+   "wav": "ses/parca/p39"
+  },
+  {
+   "i": 8,
+   "sahne": 4,
+   "kon": "N",
+   "cek": "H.panel",
+   "panel": "ay1_sonu",
+   "ara": 0.3,
+   "cap": "Ama tablonun diğer tarafı başka bir şey söylüyordu. Ay, 8.500 lira zararla kapanmıştı.",
+   "say": "Ama tablonun diğer tarafı başka bir şey söylüyordu. Ay, sekiz bin beş yüz lira zararla kapanmıştı.",
+   "wav": "ses/parca/p40"
+  },
+  {
+   "i": 9,
+   "sahne": 4,
+   "kon": "N",
+   "cek": "H.panel",
+   "panel": "ay1_sonu",
+   "ara": 0.4,
+   "cap": "Kasadaki paranın 174.000 lirası tedarikçiye aitti. Kasa, kâr değildir.",
+   "say": "Kasadaki paranın yüz yetmiş dört bin lirası tedarikçiye aitti. Kasa, kâr değildir.",
+   "wav": "ses/kisa_parca/p07"
+  }
+ ]
+}

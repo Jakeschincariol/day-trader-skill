@@ -1,0 +1,101 @@
+{
+ "baslik": "2,5 Milyonluk Teklifi Kabul Edecek Mi?",
+ "kanca": [
+  "TEKLİF",
+  "2.500.000 TL"
+ ],
+ "son": [
+  "YORUMLARA YAZ",
+  "SATMALI MI, BÜYÜTMELİ Mİ?"
+ ],
+ "beats": [
+  {
+   "i": 0,
+   "sahne": 1,
+   "kon": "K",
+   "cek": "G.kenan_yakin",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Bu dükkân için sana 2,5 milyon lira teklif ediyorum.",
+   "say": "Bu dükkân için sana iki buçuk milyon lira teklif ediyorum.",
+   "wav": "ses/parca/p02"
+  },
+  {
+   "i": 1,
+   "sahne": 1,
+   "kon": "N",
+   "cek": "G.emir_push",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Bir yıl önce cebinde yalnızca 85.000 lira vardı.",
+   "say": "Bir yıl önce cebinde yalnızca seksen beş bin lira vardı.",
+   "wav": "ses/kisa_parca/p12"
+  },
+  {
+   "i": 2,
+   "sahne": 9,
+   "kon": "N",
+   "cek": "H.final",
+   "panel": "final1",
+   "ara": 0.3,
+   "cap": "Emir hesap yaptı. Satış gerçekleşirse önce kalan 490.000 lira borcu kapatacaktı.",
+   "say": "Emir hesap yaptı. Satış gerçekleşirse önce kalan dört yüz doksan bin lira borcu kapatacaktı.",
+   "wav": "ses/parca/p98"
+  },
+  {
+   "i": 3,
+   "sahne": 9,
+   "kon": "N",
+   "cek": "H.final",
+   "panel": "final2",
+   "ara": 0.3,
+   "cap": "Kasadaki 128.000 lira da onundu. Vergi, komisyon ve masraflardan önce eline yaklaşık 2.138.000 lira geçebilirdi.",
+   "say": "Kasadaki yüz yirmi sekiz bin lira da onundu. Vergi, komisyon ve masraflardan önce eline yaklaşık iki milyon yüz otuz sekiz bin lira geçebilirdi.",
+   "wav": "ses/parca/p99"
+  },
+  {
+   "i": 4,
+   "sahne": 9,
+   "kon": "N",
+   "cek": "H.final",
+   "panel": "final3",
+   "ara": 0.4,
+   "cap": "Ama o 240.000 liralık belirsiz talep haklı çıkarsa, bu rakam 1.898.000 düşecekti.",
+   "say": "Ama o iki yüz kırk bin liralık belirsiz talep haklı çıkarsa, bu rakam bir milyon sekiz yüz doksan sekiz bine düşecekti.",
+   "wav": "ses/parca/p100"
+  },
+  {
+   "i": 5,
+   "sahne": 9,
+   "kon": "K",
+   "cek": "G.kenan_omuz",
+   "panel": "-",
+   "ara": 0.6,
+   "cap": "Ne diyorsun Emir?",
+   "say": "Ne diyorsun Emir?",
+   "wav": "ses/parca/p102"
+  },
+  {
+   "i": 6,
+   "sahne": 9,
+   "kon": "E",
+   "cek": "G.emir_push",
+   "panel": "-",
+   "ara": 1.2,
+   "cap": "Ben...",
+   "say": "Ben...",
+   "wav": "ses/parca/p104"
+  },
+  {
+   "i": 7,
+   "sahne": 9,
+   "kon": "N",
+   "cek": "G.emir_yansima",
+   "panel": "-",
+   "ara": 0.4,
+   "cap": "Satacak mı, büyütecek mi? Sen olsan ne yapardın? Yorumlara yaz.",
+   "say": "Satacak mı, büyütecek mi? Sen olsan ne yapardın? Yorumlara yaz.",
+   "wav": "ses/kisa_parca/p13"
+  }
+ ]
+}

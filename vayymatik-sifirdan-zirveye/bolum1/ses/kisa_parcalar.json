@@ -1,0 +1,128 @@
+[
+ {
+  "seg": "k1_00",
+  "t": 0,
+  "gap": 0,
+  "say": "Cebinde seksen beş bin lira vardı. Aldığı dükkân ise altı yüz altmış bin liraydı.",
+  "cap": "Cebinde 85.000 lira vardı. Aldığı dükkân ise 660.000 liraydı.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k1_05",
+  "t": 0,
+  "gap": 0,
+  "say": "Babası da seksen bin lira borç verdi.",
+  "cap": "Babası da 80.000 lira borç verdi.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k1_07",
+  "t": 0,
+  "gap": 0,
+  "say": "Üç yüz bin lirayı peşin ödedi. Kalan üç yüz altmış bin lira, satıcıya borç olarak yazıldı.",
+  "cap": "300.000 lirayı peşin ödedi. Kalan 360.000 lira, satıcıya borç olarak yazıldı.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k1_09",
+  "t": 0,
+  "gap": 0,
+  "say": "Peki bu borçla ayakta kalabilecek mi?",
+  "cap": "Peki bu borçla ayakta kalabilecek mi?",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k2_00",
+  "t": 0,
+  "gap": 0,
+  "say": "Dükkânını açtığı gün, altı yüz yirmi bin lira borcu vardı.",
+  "cap": "Dükkânını açtığı gün, 620.000 lira borcu vardı.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k2_01",
+  "t": 0,
+  "gap": 0,
+  "say": "Kasada ise yalnızca on sekiz bin lira.",
+  "cap": "Kasada ise yalnızca 18.000 lira.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k2_02",
+  "t": 0,
+  "gap": 0,
+  "say": "Vitrindeki altınların çoğu bile onun değildi. Tedarikçinin emanetiydi.",
+  "cap": "Vitrindeki altınların çoğu bile onun değildi. Tedarikçinin emanetiydi.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k2_09",
+  "t": 0,
+  "gap": 0,
+  "say": "Kasadaki paranın yüz yetmiş dört bin lirası tedarikçiye aitti. Kasa, kâr değildir.",
+  "cap": "Kasadaki paranın 174.000 lirası tedarikçiye aitti. Kasa, kâr değildir.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k3_07",
+  "t": 0,
+  "gap": 0,
+  "say": "Dört gün. Yüz seksen bin lira. Sence Emir bu parayı nasıl bulmalı? Yorumlara yaz.",
+  "cap": "Dört gün. Yüz seksen bin lira. Sence Emir bu parayı nasıl bulmalı? Yorumlara yaz.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k4_02",
+  "t": 0,
+  "gap": 0,
+  "say": "Emir kalemi eline aldı. Ama imzalamadan önce muhasebecisini aradı.",
+  "cap": "Emir kalemi eline aldı. Ama imzalamadan önce muhasebecisini aradı.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k4_08",
+  "t": 0,
+  "gap": 0,
+  "say": "Sen olsan imzalar mıydın? Yorumlara yaz.",
+  "cap": "Sen olsan imzalar mıydın? Yorumlara yaz.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k5_07",
+  "t": 0,
+  "gap": 0,
+  "say": "Yıl sonunda kasada yüz yirmi sekiz bin lira kaldı. Ciro, kâr değildir.",
+  "cap": "Yıl sonunda kasada 128.000 lira kaldı. Ciro, kâr değildir.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k6_01",
+  "t": 0,
+  "gap": 0,
+  "say": "Bir yıl önce cebinde yalnızca seksen beş bin lira vardı.",
+  "cap": "Bir yıl önce cebinde yalnızca 85.000 lira vardı.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ },
+ {
+  "seg": "k6_07",
+  "t": 0,
+  "gap": 0,
+  "say": "Satacak mı, büyütecek mi? Sen olsan ne yapardın? Yorumlara yaz.",
+  "cap": "Satacak mı, büyütecek mi? Sen olsan ne yapardın? Yorumlara yaz.",
+  "ex": 0.45,
+  "ref": "/home/user/day-trader-skill/vayymatik-sifirdan-zirveye/bolum1/../ortak/sesler/N.wav"
+ }
+]

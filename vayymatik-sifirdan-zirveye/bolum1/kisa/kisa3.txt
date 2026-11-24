@@ -1,0 +1,11 @@
+@baslik|180 Bin TL Bulmak İçin 4 Günü Kaldı!
+@kanca|4 GÜN İÇİNDE|180.000 TL
+@son|YORUMLARA YAZ|EMİR BU PARAYI NASIL BULMALI?
+5|H|Emir, üç taksit geçti. {180.000|Yüz seksen bin} lira. Cumaya kadar ödemezsen, noterden ihtar çekeceğim.|D.tel_yakin|-|0.4
+5|N|Emir'in dört günü vardı.|X.takvim|kriz|1.2
+5|N|Salı günü bankaya gitti. Kredi başvurusu, teminat yetersizliği nedeniyle reddedildi.|C.aksam_yuru|-|0.3
+5|N|Kerem'i aramayı düşündü, vazgeçti. Ona zaten {180.000|yüz seksen bin} lira borçluydu.|G.emir_yalniz|-|0.3
+5|N|Kasada {159.100|yüz elli dokuz bin yüz} lira görünüyordu. Ama tedarikçiye {216.000|iki yüz on altı bin} lira ödemesi gerekiyordu.|D.kasa_gece|ay3_sonu|0.3
+5|N|Gerçekte kullanılabilir parası, eksi {56.900|elli altı bin dokuz yüz} liraydı. Gecikme cezası olarak {8.000|sekiz bin} lira da gider yazılmıştı.|H.panel|kullanilabilir|0.4
+5|E|Dükkânı kaybedersem... Babama, Kerem'e ne derim?|G.emir_yalniz|-|0.4
+5|N|Dört gün. Yüz seksen bin lira. Sence Emir bu parayı nasıl bulmalı? Yorumlara yaz.|G.emir_push|-|0.4

@@ -1,0 +1,101 @@
+{
+ "baslik": "Bir Yılda 4 Milyon TL Satış Yaptı!",
+ "kanca": [
+  "1 YILDA",
+  "4.000.000 TL SATIŞ"
+ ],
+ "son": [
+  "BÖLÜMÜN TAMAMI KANALDA",
+  "SIFIRDAN ZİRVEYE · BÖLÜM 1"
+ ],
+ "beats": [
+  {
+   "i": 0,
+   "sahne": 8,
+   "kon": "M",
+   "cek": "F.ahmet_yakin",
+   "panel": "-",
+   "ara": 0.2,
+   "cap": "Toplam satış: 4 milyon lira.",
+   "say": "Toplam satış: dört milyon lira.",
+   "wav": "ses/parca/p85"
+  },
+  {
+   "i": 1,
+   "sahne": 8,
+   "kon": "E",
+   "cek": "F.emir_yakin",
+   "panel": "-",
+   "ara": 0.3,
+   "cap": "Dört milyon!",
+   "say": "Dört milyon!",
+   "wav": "ses/parca/p86"
+  },
+  {
+   "i": 2,
+   "sahne": 8,
+   "kon": "M",
+   "cek": "F.ahmet_belge",
+   "panel": "yil_gider",
+   "ara": 0.3,
+   "cap": "Dur, heyecanlanma. Satılan ürünlerin maliyeti 3,2 milyon. Kira, faturalar, güvenlik, komisyonlar, reklam, faiz ve vergi: 560.000",
+   "say": "Dur, heyecanlanma. Satılan ürünlerin maliyeti üç milyon iki yüz bin. Kira, faturalar, güvenlik, komisyonlar, reklam, faiz ve vergi: beş yüz altmış bin.",
+   "wav": "ses/parca/p87"
+  },
+  {
+   "i": 3,
+   "sahne": 8,
+   "kon": "M",
+   "cek": "F.ahmet_yakin",
+   "panel": "yil_net",
+   "ara": 0.3,
+   "cap": "Net kâr: 240.000 lira.",
+   "say": "Net kâr: iki yüz kırk bin lira.",
+   "wav": "ses/parca/p88"
+  },
+  {
+   "i": 4,
+   "sahne": 8,
+   "kon": "N",
+   "cek": "H.yil",
+   "panel": "yil_net",
+   "ara": 0.3,
+   "cap": "Dört milyon liralık satış, Emir'in dört milyon kazandığı anlamına gelmiyordu. Bir yılın karşılığı, iki yüz kırk bin liralık kârdı.",
+   "say": "Dört milyon liralık satış, Emir'in dört milyon kazandığı anlamına gelmiyordu. Bir yılın karşılığı, iki yüz kırk bin liralık kârdı.",
+   "wav": "ses/parca/p89"
+  },
+  {
+   "i": 5,
+   "sahne": 8,
+   "kon": "N",
+   "cek": "H.kopru",
+   "panel": "kopru",
+   "ara": 0.3,
+   "cap": "Nakit tarafında tablo netti. Yılı 18.000 lirayla açmıştı. 240.000 kâr ekledi. Satıcıya ve Kerem'e toplam 130.000 lira borç anaparası ödedi.",
+   "say": "Nakit tarafında tablo netti. Yılı on sekiz bin lirayla açmıştı. İki yüz kırk bin kâr ekledi. Satıcıya ve Kerem'e toplam yüz otuz bin lira borç anaparası ödedi.",
+   "wav": "ses/parca/p90"
+  },
+  {
+   "i": 6,
+   "sahne": 8,
+   "kon": "N",
+   "cek": "H.kopru",
+   "panel": "kopru",
+   "ara": 0.3,
+   "cap": "Borç ödemek gider değildi. Kârı azaltmadı ama kasadan çıktı ve borcu azalttı.",
+   "say": "Borç ödemek gider değildi. Kârı azaltmadı ama kasadan çıktı ve borcu azalttı.",
+   "wav": "ses/parca/p91"
+  },
+  {
+   "i": 7,
+   "sahne": 8,
+   "kon": "N",
+   "cek": "D.yil_sonu",
+   "panel": "yil_sonu",
+   "ara": 0.4,
+   "cap": "Yıl sonunda kasada 128.000 lira kaldı. Ciro, kâr değildir.",
+   "say": "Yıl sonunda kasada yüz yirmi sekiz bin lira kaldı. Ciro, kâr değildir.",
+   "wav": "ses/kisa_parca/p11"
+  }
+ ]
+}

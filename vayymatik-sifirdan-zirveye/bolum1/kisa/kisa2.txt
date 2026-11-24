@@ -1,0 +1,13 @@
+@baslik|İlk Gün 620 Bin TL Borcu Vardı!
+@kanca|AÇILIŞ GÜNÜ|620.000 TL BORÇ
+@son|BÖLÜMÜN TAMAMI KANALDA|SIFIRDAN ZİRVEYE · BÖLÜM 1
+3|N|Dükkânını açtığı gün, {620.000|altı yüz yirmi bin} lira borcu vardı.|D.acilis_kapi|-|0.2
+3|N|Kasada ise yalnızca {18.000|on sekiz bin} lira.|D.acilis_kapi|acilis|0.3
+3|N|Vitrindeki altınların çoğu bile onun değildi. Tedarikçinin emanetiydi.|D.vitrin|emanet|0.3
+3|C|Kızıma bir bilezik bakıyorum.|D.musteri|-|0.2
+3|E|Şu yirmi iki ayar burgu bilezik çok yakışır. {40.000|Kırk bin} lira.|D.tezgah_satis|-|0.3
+3|N|Ama bu kırk binin tamamı kâr değildi. Bileziğin tedarikçiye maliyeti {35.200|otuz beş bin iki yüz} liraydı.|D.kasa|ilk_satis|0.3
+4|N|İlk ayın sonunda Emir kasaya baktı. {183.500|Yüz seksen üç bin beş yüz} lira.|D.kasa_aksam|ay1_sonu|0.3
+4|E|İlk ayda yüz seksen üç bin! Bu iş oluyor!|D.emir_sevinc|-|0.3
+4|N|Ama tablonun diğer tarafı başka bir şey söylüyordu. Ay, {8.500|sekiz bin beş yüz} lira zararla kapanmıştı.|H.panel|ay1_sonu|0.3
+4|N|Kasadaki paranın {174.000|yüz yetmiş dört bin} lirası tedarikçiye aitti. Kasa, kâr değildir.|H.panel|ay1_sonu|0.4

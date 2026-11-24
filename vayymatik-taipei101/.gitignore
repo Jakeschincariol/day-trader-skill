@@ -1,0 +1,5 @@
+node_modules/
+frames/
+voice/models/
+audio/*.wav
+render.log

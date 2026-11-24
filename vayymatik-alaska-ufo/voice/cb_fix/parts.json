@@ -1,0 +1,20 @@
+[
+ {
+  "seg": "s2",
+  "t": 4.15,
+  "text": "Ve bu görüntüler uzaylı tartışmalarını yeniden başlattı.",
+  "ex": 0.5,
+  "cfg": 0.5,
+  "dur": 4.317,
+  "file": "p00.wav"
+ },
+ {
+  "seg": "s3",
+  "t": 7.4,
+  "text": "On beş Haziran iki bin yirmi altı.",
+  "ex": 0.45,
+  "cfg": 0.5,
+  "dur": 2.118,
+  "file": "p01.wav"
+ }
+]
