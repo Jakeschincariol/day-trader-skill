@@ -49,10 +49,12 @@ STRING_FIELDS = ("qty", "notional", "limit_price", "stop_price", "trail_price", 
                  "take_profit_limit_price", "stop_loss_stop_price", "stop_loss_limit_price")
 TIF_WORDS = {"day": "good for today", "gtc": "good until canceled", "opg": "at the open",
              "cls": "at the close", "ioc": "immediate or cancel", "fok": "fill or kill"}
-YES_WORDS = ("yes", "y")
-BATCH_WORDS = {"all", "every", "everything", "rest", "remaining", "them", "both", "batch", "each"}
+YES_WORDS = ("yes", "y", "نعم", "موافق", "اعتمد")
+BATCH_WORDS = {"all", "every", "everything", "rest", "remaining", "them", "both", "batch", "each",
+               "الكل", "جميع", "كل", "الباقي", "كلاهما", "دفعة"}
 DOUBT_WORDS = {"no", "not", "dont", "don't", "wait", "cancel", "stop", "but", "maybe", "later",
-               "hold", "unless", "if"}
+               "hold", "unless", "if", "لا", "انتظر", "إلغاء", "الغاء", "توقف", "لكن", "ربما",
+               "لاحقا", "لاحقاً", "إلا", "إذا", "لو"}
 
 
 class TicketError(Exception):
@@ -273,9 +275,9 @@ def parse_yes(reply, order, batch_symbols=()):
     raw = (reply or "").strip()
     if not raw:
         return False, "the reply is empty"
-    if "?" in raw:
+    if "?" in raw or "؟" in raw:
         return False, "the reply is a question, not a yes"
-    words = re.findall(r"[a-z']+", raw.lower())
+    words = re.findall(r"[a-z'\u0600-\u06ff]+", raw.lower())
     if not words or words[0] not in YES_WORDS:
         return False, "only a reply that starts with \"yes\" counts (not ok, sure, go, do it)"
     if BATCH_WORDS & set(words):
