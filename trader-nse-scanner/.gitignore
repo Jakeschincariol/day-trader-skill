@@ -1,0 +1,3 @@
+__pycache__/
+*.py[cod]
+nse_signal_history.json
