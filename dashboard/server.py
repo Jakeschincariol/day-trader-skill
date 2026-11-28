@@ -3803,6 +3803,159 @@ def company_figures(sym):
     return fa
 
 
+# ---------------------------------------------------------------- pie optimizer: weights for a group of stocks
+
+PIE_SPEC_SLICE = 2.0   # % for each speculative stock (long-term score under 45 or "Speculative" zone)
+PIE_SPEC_TOTAL = 12.0  # all speculative stocks together get at most this much
+
+
+def pie_weights(items, cap=14.0):
+    """items: [{symbol, score (0-100 or None), vol (yearly swing in %), speculative}] -> {symbol: whole-number %} summing to 100.
+    Rule: weight ~ (score/100)^2 / swing, so steady quality gets more; speculative names get a small fixed slice;
+    no stock above `cap` %."""
+    items = [x for x in items if x.get("symbol")]
+    n = len(items)
+    if not n:
+        return {}
+    if n == 1:
+        return {items[0]["symbol"]: 100}
+    cap = max(float(cap), 100.0 / n + 0.01)
+    spec = [x for x in items if x.get("speculative")]
+    core = [x for x in items if not x.get("speculative")]
+    w = {}
+    if spec and core:
+        each = min(PIE_SPEC_SLICE, PIE_SPEC_TOTAL / len(spec))
+        for x in spec:
+            w[x["symbol"]] = each
+    else:
+        core, spec = items, []
+    left = 100.0 - sum(w.values())
+    raw = {x["symbol"]: ((x.get("score") if x.get("score") is not None else 50) / 100.0) ** 2 / max(10.0, x.get("vol") or 60.0) for x in core}
+    free, fixed = dict(raw), {}
+    for _ in range(len(core) + 1):  # cap the biggest, share the rest again
+        tot = sum(free.values()) or 1.0
+        room = left - sum(fixed.values())
+        over = [k for k, v in free.items() if room * v / tot > cap]
+        if not over:
+            break
+        for k in over:
+            fixed[k] = cap
+            del free[k]
+    tot = sum(free.values()) or 1.0
+    room = left - sum(fixed.values())
+    for k, v in free.items():
+        w[k] = room * v / tot
+    w.update(fixed)
+    # whole numbers, at least 1% each, summing to exactly 100 (largest remainders first)
+    base = {k: max(1, int(v)) for k, v in w.items()}
+    diff = 100 - sum(base.values())
+    order = sorted(w, key=lambda k: -(w[k] - int(w[k])))
+    i = 0
+    while diff > 0:
+        base[order[i % len(order)]] += 1
+        diff -= 1
+        i += 1
+    order = sorted(base, key=lambda k: -base[k])
+    i = 0
+    while diff < 0 and i < 10 * len(order):
+        k = order[i % len(order)]
+        if base[k] > 1:
+            base[k] -= 1
+            diff += 1
+        i += 1
+    return base
+
+
+def _pie_stats(sym):
+    """Yearly swing, worst fall in a year and weekly returns by ISO week, from 2 years of weekly closes."""
+    try:
+        rows = _rows(_chart(sym, "range=2y&interval=1wk", 3600))
+    except Exception as e:
+        return sym, {"error": str(e)[:80]}
+    rows = rows[-54:]
+    if len(rows) < 12:
+        return sym, {"error": "not enough history"}
+    c = [r_[4] for r_ in rows]
+    rets = {}
+    for i in range(1, len(rows)):
+        if c[i - 1] > 0 and c[i] > 0:
+            rets[datetime.date.fromtimestamp(rows[i][0]).isocalendar()[:2]] = math.log(c[i] / c[i - 1])
+    vals = list(rets.values())
+    m = sum(vals) / len(vals)
+    vol = math.sqrt(sum((x - m) ** 2 for x in vals) / max(1, len(vals) - 1)) * math.sqrt(52) * 100
+    peak, mdd = c[0], 0.0
+    for x in c:
+        peak = max(peak, x)
+        mdd = min(mdd, x / peak - 1)
+    return sym, {"vol": vol, "maxdd": 100 * mdd, "ret1y": 100 * (c[-1] / c[0] - 1), "weeks": len(vals), "rets": rets}
+
+
+def pie_optimize(symbols, cap=14.0):
+    syms = [x for x in dict.fromkeys(symbols) if x][:50]
+    stats = dict(KP_POOL.map(_pie_stats, syms))
+
+    def prof(sym):
+        try:
+            return sym, lt_profile(sym)
+        except Exception:
+            return sym, {}
+    profs = dict(KP_POOL.map(prof, syms))
+    ok = [x for x in syms if not stats[x].get("error")]
+    # how much each stock moves with the rest of the group (weekly returns, same weeks)
+    for x in ok:
+        mine = stats[x]["rets"]
+        a, b = [], []
+        for wk, r_ in mine.items():
+            others = [stats[y]["rets"][wk] for y in ok if y != x and wk in stats[y]["rets"]]
+            if others:
+                a.append(r_)
+                b.append(sum(others) / len(others))
+        corr = None
+        if len(a) >= 12:
+            ma, mb = sum(a) / len(a), sum(b) / len(b)
+            da, db = math.sqrt(sum((v - ma) ** 2 for v in a)), math.sqrt(sum((v - mb) ** 2 for v in b))
+            corr = sum((u - ma) * (v - mb) for u, v in zip(a, b)) / (da * db) if da and db else None
+        stats[x]["corr"] = corr
+    items = []
+    for x in ok:
+        pr = profs.get(x) or {}
+        sc = pr.get("score")
+        items.append({"symbol": x, "score": sc, "vol": stats[x]["vol"],
+                      "speculative": pr.get("zone") == "Speculative" or (sc is not None and sc < 45) or stats[x]["weeks"] < 40})
+    w = pie_weights(items, cap)
+    rows = []
+    for it in items:
+        x, st, pr = it["symbol"], stats[it["symbol"]], profs.get(it["symbol"]) or {}
+        why = []
+        if it["speculative"]:
+            why.append("less than a year of prices: small fixed slice" if st["weeks"] < 40 else "speculative (low long-term score): small fixed slice")
+        else:
+            if it["score"] is None:
+                why.append("no long-term score: treated as average")
+            elif it["score"] >= 75:
+                why.append("high quality")
+            elif it["score"] < 60:
+                why.append("fair quality")
+            if st["vol"] < 45:
+                why.append("steady")
+            elif st["vol"] >= 85:
+                why.append("very big swings")
+            elif st["vol"] >= 65:
+                why.append("big swings")
+            if w.get(x, 0) >= int(max(float(cap), 100.0 / len(items) + 0.01)):
+                why.append("at the cap")
+        if st.get("corr") is not None and st["corr"] < 0.5:
+            why.append("moves partly on its own")
+        rows.append({"symbol": x, "name": pr.get("name"), "weight": w.get(x, 0), "score": it["score"], "band": pr.get("band"),
+                     "vol": round(st["vol"]), "maxdd": round(st["maxdd"]), "ret1y": round(st["ret1y"]),
+                     "corr": None if st.get("corr") is None else round(st["corr"], 2), "speculative": it["speculative"], "why": ", ".join(why)})
+    rows.sort(key=lambda r_: -r_["weight"])
+    wsum = sum(r_["weight"] for r_ in rows) or 1
+    mix_vol = sum(r_["weight"] * r_["vol"] for r_ in rows) / wsum
+    return {"rows": rows, "cap": cap, "skipped": [{"symbol": x, "why": stats[x]["error"]} for x in syms if stats[x].get("error")],
+            "avgSwing": round(mix_vol), "equalSwing": round(sum(r_["vol"] for r_ in rows) / len(rows)) if rows else None, "at": int(time.time())}
+
+
 # ---------------------------------------------------------------- momentum waves scanner (WaveTrend 10/21 + MACD 12/26/9)
 
 MOM_TF = {  # Yahoo query, bars ahead used to judge past signals, unit name
@@ -4698,6 +4851,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
         if path == "/api/ltentry":
             return self.send_json(lt_entry(q.get("symbol", "SPY")))
+        if path == "/api/pie":
+            try:
+                cap = min(50.0, max(5.0, float(q.get("cap", 14))))
+            except ValueError:
+                cap = 14.0
+            return self.send_json(pie_optimize(syms(q.get("symbols")), cap))
         if path == "/api/momentum":
             return self.send_json(momentum_scan(syms(q.get("symbols")), q.get("tf", "d") if q.get("tf") in ("h", "d", "w") else "d"))
         if path == "/api/deep":

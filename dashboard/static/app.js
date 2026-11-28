@@ -963,6 +963,7 @@
         <div class="card"><div class="card-head"><h2><i data-lucide="pie-chart"></i>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
       </div>
       ${lt ? `<div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="scale"></i>Rebalancing tracker</h2><span class="muted" style="font-size:12.5px">your target mix and how to get there with new money</span></div><div id="rebalBox">${skeleton(5)}</div></div>` : ""}
+      ${lt ? `<details class="card fold" style="margin-top:16px" id="pieCard" ${store.get("pieOpen", false) ? "open" : ""}><summary class="card-head"><h2><i data-lucide="pie-chart"></i>Pie optimizer</h2><span class="muted" style="font-size:12.5px">a percentage for each stock of a pie</span></summary><div id="pieBox"></div></details>` : ""}
       ${lt ? `<div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
         <div class="card"><div class="card-head"><h2><i data-lucide="coins"></i>Dividends</h2>${rf("divs")}</div><div id="divBox"><p class="muted">Link Trading 212 to see the dividends you receive.</p></div></div></div>` : ""}
@@ -1085,6 +1086,7 @@
       (rv ? rv.ppl || 0 : 0) + positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
     if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
+    if (lt && window.LT && $("#pieBox")) { window.LT.pie($("#pieBox"), positions); $("#pieCard").addEventListener("toggle", (e) => store.set("pieOpen", e.target.open)); }
     if (lt && window.LT && positions.length && $("#rebalBox")) window.LT.rebalance($("#rebalBox"), positions, acctR, ltMap).catch((e) => { $("#rebalBox").innerHTML = `<p class="error">${esc(e.message)}</p>`; });
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
     const costBasis = total - ppl;

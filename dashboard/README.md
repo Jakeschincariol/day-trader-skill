@@ -89,6 +89,15 @@ ETF count as "everything else"). For each part: where you are now, the target, a
 It shows how many months of buying get you to the target without selling (prices assumed flat, parts above target get nothing).
 Includes a list of UCITS ETF ideas per part, alternatives to VWCE included (Xetra tickers; FWRA in London).
 
+## Pie optimizer (Portfolio page, long-term mode)
+
+Type the tickers of a pie (or press **Use my stocks**) and get a whole-number percentage for each, summing to 100%: weight follows
+(long-term score)² divided by the yearly swing of the last 12 months, so steady quality gets more; stocks with a score under 45 or
+less than 40 weeks of prices get a small fixed slice (2% each, 12% together at most); nothing goes above the maximum you set
+(default 14%). The table shows the score, yearly swing, your current share and the reason for each weight, plus the pie's average
+swing against equal slices. **Copy the list** puts "TICKER %" lines on the clipboard. The site never changes your Trading 212 pie:
+type the percentages in the app yourself and avoid its Rebalance button, which sells shares.
+
 ## Momentum (menu: Find stocks → Momentum)
 
 Momentum waves (WaveTrend 10/21) and MACD (12/26/9) for your holdings and watchlist (or both), plus any ticker you add, on hourly,

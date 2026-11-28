@@ -544,5 +544,52 @@
     draw();
   }
 
-  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, rebalance, rebalPlan, bucketOf, zoneBadge, bandBadge, cache };
+
+  // ------------------------------------------------------------ pie optimizer: suggested % for a group of stocks
+  async function pie(el, positions) {
+    const td = T();
+    const val = (p) => p.valueAcct || p.mv || 0;
+    const held = {};
+    positions.forEach((p) => { held[p.symbol] = (held[p.symbol] || 0) + val(p); });
+    const isFundName = (p) => /\bETF\b|UCITS|\bfund\b/i.test(p.name || "") || /ETF|FUND/i.test((p.q && p.q.type) || "");
+    const mine = [...new Set(positions.filter((p) => !isFundName(p)).map((p) => p.symbol))];
+    const saved = td.store.get("pieList", null);
+    el.innerHTML = `<p class="muted" style="margin:0 0 10px;font-size:13.5px">Type the stocks of a pie and get a percentage for each: steadier, higher-quality companies get more, very jumpy ones less, speculative ones a small fixed slice. Type the result into your Trading 212 pie yourself: this site never changes your account.</p>
+      <form id="pieForm" class="pie-form" autocomplete="off">
+        <label class="field" style="flex:1 1 320px">Stocks (tickers separated by commas)<textarea id="pieSyms" rows="2" spellcheck="false" placeholder="TSM, ASML, NVDA, AMD">${td.esc((saved && saved.length ? saved : mine).join(", "))}</textarea></label>
+        <label class="field">Most for one stock %<input id="pieCap" type="number" min="5" max="50" step="1" value="${+td.store.get("pieCap", 14)}"></label>
+        <span class="pie-btns"><button class="btn primary" type="submit">Calculate</button><button class="btn" type="button" id="pieMine">Use my stocks</button></span>
+      </form>
+      <div id="pieOut"></div>`;
+    const out = $("#pieOut", el);
+    const run = async () => {
+      const syms = [...new Set($("#pieSyms", el).value.toUpperCase().split(/[\s,;]+/).filter((x) => /^[A-Z0-9.\-^=]{1,15}$/.test(x)))].slice(0, 50);
+      const cap = Math.max(5, Math.min(50, +$("#pieCap", el).value || 14));
+      if (syms.length < 2) { out.innerHTML = `<p class="muted">Type at least two tickers.</p>`; return; }
+      td.store.set("pieList", syms); td.store.set("pieCap", cap);
+      out.innerHTML = td.skeleton(6) + `<p class="muted" style="font-size:13px">Scoring ${syms.length} stocks (the first time can take a minute)…</p>`;
+      let d;
+      try { d = await td.api(`/api/pie?symbols=${encodeURIComponent(syms.join(","))}&cap=${cap}`); }
+      catch (e) { out.innerHTML = `<p class="error">${td.esc(e.message)}</p>`; return; }
+      if (!out.isConnected) return;
+      if (!d.rows.length) { out.innerHTML = `<p class="muted">No price history found for these tickers.</p>`; return; }
+      const grp = d.rows.reduce((a, r) => a + (held[r.symbol] || 0), 0);
+      const max = Math.max(...d.rows.map((r) => r.weight));
+      out.innerHTML = `<div class="table-wrap"><table class="pie-tbl"><thead><tr><th>Stock</th><th class="r">Suggested</th><th></th>${grp ? `<th class="r">You hold now</th>` : ""}<th class="r">Score</th><th class="r">Yearly swing</th><th>Why</th></tr></thead><tbody>
+        ${d.rows.map((r) => { const now = grp ? 100 * (held[r.symbol] || 0) / grp : null; return `<tr>
+          <td><a class="sym" href="#/stock/${encodeURIComponent(r.symbol)}">${td.esc(r.symbol)}</a><small>${td.esc(r.name || "")}</small></td>
+          <td class="r num"><b>${r.weight}%</b></td><td class="pie-barc"><span class="pie-bar"><i class="${r.speculative ? "spec" : ""}" style="width:${(100 * r.weight / max).toFixed(0)}%"></i></span></td>
+          ${grp ? `<td class="r num ${now != null && now > r.weight + 3 ? "down" : ""}">${held[r.symbol] ? now.toFixed(0) + "%" : "–"}</td>` : ""}
+          <td class="r num">${r.score ?? "–"}</td><td class="r num">${r.vol}%</td><td class="why">${td.esc(r.why)}</td></tr>`; }).join("")}</tbody></table></div>
+        <div class="rb-out">With these percentages the pie's average yearly swing is about <b>${d.avgSwing}%</b>, against <b>${d.equalSwing}%</b> with equal slices. ${grp ? `"You hold now" is each stock's share of what you own in this list; red means well above the suggestion. ` : ""}Change the percentages in your pie and let new money fill the gaps: the <b>Rebalance</b> button in Trading 212 sells shares, which can mean tax.</div>
+        ${d.skipped.length ? `<p class="muted" style="font-size:12.5px">Left out (no price history): ${d.skipped.map((x) => td.esc(x.symbol)).join(", ")}. Non-US shares need the exchange ending, for example ASM.AS, 000660.KS, 6857.T.</p>` : ""}
+        <p style="margin:10px 0 0"><button class="btn sm" type="button" id="pieCopy"><i data-lucide="copy"></i> Copy the list</button></p>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Rule: weight follows (long-term score)² divided by the yearly swing of the last 12 months; stocks with a score under 45 or less than 40 weeks of prices get ${2}% each; nothing above your maximum. A better mix lowers the risk from one stock, not the risk of the whole theme. Past swings don't predict the next ones. Not advice.</p>`;
+      $("#pieCopy", el).addEventListener("click", () => td.copyText(d.rows.map((r) => `${r.symbol} ${r.weight}%`).join("\n")).then(() => td.toast("List copied")).catch(() => td.toast("Could not copy")));
+    };
+    $("#pieForm", el).addEventListener("submit", (e) => { e.preventDefault(); run(); });
+    $("#pieMine", el).addEventListener("click", () => { $("#pieSyms", el).value = mine.join(", "); });
+  }
+
+  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, rebalance, rebalPlan, bucketOf, pie, zoneBadge, bandBadge, cache };
 })();

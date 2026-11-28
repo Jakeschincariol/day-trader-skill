@@ -1399,3 +1399,28 @@ class MomentumWaves(unittest.TestCase):
             self.assertEqual(out["rows"][0]["weekly"]["setup"], "rising-low")
         finally:
             srv.momentum_one = saved
+
+
+class PieOptimizer(unittest.TestCase):
+    def test_weights_sum_to_100_and_respect_cap_and_quality(self):
+        items = [{"symbol": "A", "score": 85, "vol": 30}, {"symbol": "B", "score": 80, "vol": 40}, {"symbol": "C", "score": 60, "vol": 80},
+                 {"symbol": "D", "score": 55, "vol": 120}, {"symbol": "E", "score": 30, "vol": 80, "speculative": True},
+                 {"symbol": "F", "score": 70, "vol": 60}, {"symbol": "G", "score": 75, "vol": 50}, {"symbol": "H", "score": 65, "vol": 45}]
+        w = srv.pie_weights(items, cap=25)
+        self.assertEqual(sum(w.values()), 100)
+        self.assertLessEqual(max(w.values()), 25)
+        self.assertEqual(w["E"], 2)
+        self.assertGreater(w["A"], w["B"])
+        self.assertGreater(w["C"], w["D"])
+        self.assertTrue(all(v >= 1 for v in w.values()))
+
+    def test_small_groups_and_impossible_caps(self):
+        self.assertEqual(srv.pie_weights([{"symbol": "A", "score": 80, "vol": 30}]), {"A": 100})
+        w = srv.pie_weights([{"symbol": "A", "score": 80, "vol": 30}, {"symbol": "B", "score": 80, "vol": 30}], cap=14)
+        self.assertEqual(sum(w.values()), 100)  # a cap that cannot add up to 100 is raised
+        w = srv.pie_weights([{"symbol": "A", "score": None, "vol": None, "speculative": True}, {"symbol": "B", "score": 20, "vol": 90, "speculative": True}])
+        self.assertEqual(sum(w.values()), 100)  # all speculative: shared by the normal rule
+        many = [{"symbol": "S%d" % i, "score": 30, "vol": 90, "speculative": True} for i in range(10)] + [{"symbol": "Q", "score": 85, "vol": 30}, {"symbol": "R", "score": 80, "vol": 35}]
+        w = srv.pie_weights(many, cap=50)
+        self.assertEqual(sum(w.values()), 100)
+        self.assertLessEqual(sum(v for k, v in w.items() if k.startswith("S")), 14)

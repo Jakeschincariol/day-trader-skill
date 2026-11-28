@@ -949,3 +949,19 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
 .rb-etfs li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--grid); font-size: 13.5px; color: var(--text-secondary); }
 .rb-etfs li a { font-family: var(--mono); font-weight: 600; }
 .rb-etfs li b { color: var(--text-primary); margin-right: 4px; }
+
+/* ---------- pie optimizer */
+.pie-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+.pie-form textarea { width: 100%; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(255,255,255,.22); background: var(--surface-2); color: var(--text-primary); font: 14px var(--mono); resize: vertical; }
+.pie-form input { width: 110px; }
+.pie-btns { display: flex; gap: 8px; }
+.pie-tbl td, .pie-tbl th { padding: 8px 8px; }
+.pie-tbl .r { text-align: right; }
+.pie-tbl td small { display: block; font-size: 12px; color: var(--text-muted); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pie-tbl td.why { font-size: 13px; color: var(--text-secondary); }
+.pie-tbl td.down { color: var(--bad-text); }
+.pie-barc { width: 120px; }
+.pie-bar { display: block; height: 8px; border-radius: 999px; background: var(--surface-3); }
+.pie-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.pie-bar i.spec { background: var(--warning); }
+@media (max-width: 760px) { .pie-barc, .pie-tbl td.why, .pie-tbl th:last-child { display: none; } .pie-form input { width: 90px; } }
