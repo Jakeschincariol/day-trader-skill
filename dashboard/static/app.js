@@ -332,8 +332,12 @@
   async function homeHero() {
     const my = routeId;
     const t212 = await getT212().catch(() => null);
+    // manual holdings at today's price, like the Portfolio page (not at what you paid)
+    const man = manual();
+    const mq = man.length ? (await api("/api/spark?symbols=" + encodeURIComponent([...new Set(man.map((m) => m.symbol))].join(","))).catch(() => [])).filter((r) => r && r.price) : [];
+    const px = Object.fromEntries(mq.map((r) => [r.symbol, r.price]));
     if (my !== routeId || !$("#heroValue")) return;
-    const pf = portfolioSummary(t212, []);
+    const pf = portfolioSummary(t212, mq);
     const boxV = $("#heroValue"), boxP = $("#heroPlan");
     if (!pf) {
       boxV.innerHTML = `<div class="hero-k">My portfolio</div><p style="margin:12px 0 4px;font-size:16px">Link your broker to see your money here.</p><p class="muted" style="margin:0 0 14px">Trading 212 is read only: this site never places orders. Revolut users can import a statement.</p><a class="btn primary" href="#/portfolio">Link Trading 212 or Revolut</a>`;
@@ -351,7 +355,7 @@
       <div class="hero-legend"><span><i></i>Value</span><span><i class="dash"></i>Money you put in</span></div>`;
     // positions with a value in the account currency, for themes and the entry list
     const pos = brokerPositions().map((p) => Object.assign({}, p, { acct: !!(p.valueAcct || p.value), mv: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
-      .concat(manual().map((m) => Object.assign({ mv: m.qty * m.avgPrice }, m)));
+      .concat(man.map((m) => Object.assign({ mv: m.qty * (px[m.symbol] || m.avgPrice) }, m)));
     const total = pos.reduce((a, p) => a + (p.mv || 0), 0) + (t212 && !t212.error && t212.cash && t212.cash.free > 0 ? t212.cash.free : 0); // same total as Portfolio
     homeToday(pos, pf.ccy, my);
     // monthly plan + theme warning
