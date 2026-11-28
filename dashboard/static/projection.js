@@ -7,8 +7,10 @@
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   let chart = null;
 
-  // long-run assumptions (yearly, before inflation): editable in the card
-  const DEF = { etfRet: 7.5, etfVol: 15, stkRet: 11, stkVol: 42, corr: 0.75, infl: 2.5 };
+  // long-run assumptions (yearly, before inflation), editable in the card. The returns are TYPICAL growth: the middle outcome,
+  // the same meaning as in the per-stock forecast (big swings don't raise it)
+  const DEF = { etfRet: 6.5, etfVol: 15, stkRet: 8, stkVol: 42, corr: 0.75, infl: 2.5 };
+  const DEF_VERSION = 2; // older saved settings meant "average return": they are reset once
 
   function rng(seed) { // mulberry32: same inputs give the same picture
     return function () {
@@ -19,18 +21,20 @@
     };
   }
 
-  // monthly-rebalanced mix of a world ETF and the stock part
+  // monthly-rebalanced mix of a world ETF and the stock part; in and out: typical (middle) yearly growth and yearly swings
   function mixParams(etfShare, a) {
     const w = etfShare / 100, s = 1 - w;
-    const mu = w * a.etfRet + s * a.stkRet;
-    const v = Math.sqrt(w * w * a.etfVol ** 2 + s * s * a.stkVol ** 2 + 2 * w * s * a.corr * a.etfVol * a.stkVol);
-    return { mu: mu / 100, vol: v / 100 };
+    const vE = a.etfVol / 100, vS = a.stkVol / 100;
+    const avg = (g, v) => Math.exp(Math.log(1 + g / 100) + v * v / 2) - 1; // typical -> average year
+    const A = w * avg(a.etfRet, vE) + s * avg(a.stkRet, vS);
+    const v = Math.sqrt(w * w * vE ** 2 + s * s * vS ** 2 + 2 * w * s * a.corr * vE * vS);
+    return { mu: Math.exp(Math.log(1 + A) - v * v / 2) - 1, vol: v }; // back to typical: mixing lowers swings, which helps growth
   }
 
   function simulate(o, paths) {
     const { mu, vol } = mixParams(o.etf, o.a);
     const rand = rng(12345), months = o.years * 12;
-    const mm = mu / 12, ms = vol / Math.sqrt(12);
+    const mm = Math.log(1 + mu) / 12, ms = vol / Math.sqrt(12); // log-normal: the middle case grows at mu
     const byYear = Array.from({ length: o.years + 1 }, () => new Float64Array(paths));
     let below = 0;
     const deposits = [o.start];
@@ -40,7 +44,7 @@
       byYear[0][p] = v;
       for (let i = 1; i <= months; i++) {
         const z = Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand());
-        v = Math.max(0, v * (1 + mm + ms * z)) + m;
+        v = v * Math.exp(mm + ms * z) + m;
         if (i % 12 === 0) { byYear[i / 12][p] = v; m *= 1 + o.raise / 100; }
       }
       if (v < deposits[o.years]) below++;
@@ -59,7 +63,7 @@
       years: saved.years || 10,
       etf: saved.etf != null ? saved.etf : Math.round(info.etfPct || 0),
       raise: saved.raise || 0,
-      a: Object.assign({}, DEF, saved.a || {}),
+      a: Object.assign({}, DEF, saved.v === DEF_VERSION ? saved.a || {} : {}),
     };
     const m0 = (x) => td.money(x, ccy).replace(/[.,]\d\d(?=\D*$)/, "");
     el.innerHTML = `
@@ -78,18 +82,18 @@
       <div id="pjNote" class="muted" style="font-size:12.5px;margin-top:8px"></div>
       <details class="proj-adv"><summary>Assumptions (yearly, before inflation)</summary>
         <div class="proj-ctl">
-          <label class="field">World ETF return %<input data-a="etfRet" type="number" step="0.5" value="${o.a.etfRet}"></label>
+          <label class="field">World ETF typical growth %<input data-a="etfRet" type="number" step="0.5" value="${o.a.etfRet}"></label>
           <label class="field">World ETF swings %<input data-a="etfVol" type="number" step="1" min="1" value="${o.a.etfVol}"></label>
-          <label class="field">Your stocks return %<input data-a="stkRet" type="number" step="0.5" value="${o.a.stkRet}"></label>
+          <label class="field">Your stocks typical growth %<input data-a="stkRet" type="number" step="0.5" value="${o.a.stkRet}"></label>
           <label class="field">Your stocks swings %<input data-a="stkVol" type="number" step="1" min="1" value="${o.a.stkVol}"></label>
           <label class="field">Inflation %<input data-a="infl" type="number" step="0.5" min="0" value="${o.a.infl}"></label>
           <button class="btn" type="button" id="pjReset">Reset</button>
         </div>
-        <p class="muted" style="font-size:12.5px">World ETF (VWRL/VWCE): about 7–8% a year over the long run, swings about 15%. A concentrated chip and AI basket: higher hoped-for return, but swings of 40% or more, like most of the stocks you hold. Swings eat into growth: a big crash needs an even bigger rally to recover.</p>
+        <p class="muted" style="font-size:12.5px">"Typical growth" is the middle outcome per year, the same meaning as in each stock's forecast. World ETF (VWRL/VWCE): about 6–7% typical over the long run, swings about 15%. A concentrated chip and AI basket: perhaps a little more, but swings of 40% or more, like most of the stocks you hold, so the bad cases are much worse.</p>
       </details>`;
     if (info.etfPct != null) $("#pjEnow", el).textContent = `(today ${Math.round(info.etfPct)}%)`;
 
-    const save = () => td.store.set("proj", { years: o.years, etf: o.etf, raise: o.raise, a: o.a });
+    const save = () => td.store.set("proj", { years: o.years, etf: o.etf, raise: o.raise, a: o.a, v: DEF_VERSION });
     let raf = 0;
     const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => draw(el, o, ccy, m0)); };
     const num = (id, key, after) => $(id, el).addEventListener("input", (e) => { o[key] = Math.max(0, +e.target.value || 0); if (after) after(); redraw(); });
@@ -123,7 +127,7 @@
       ${rows.map(({ e, r }) => { const p = r.pct[N]; return `<tr${e === o.etf ? ' class="proj-on"' : ""}><td>${e}%${e === o.etf ? " <b>· you</b>" : ""}</td>
         <td class="r num">${mk(p.p10)}</td><td class="r num">${mk(p.p50)}</td><td class="r num">${mk(p.p90)}</td><td class="r num">${Math.round(100 * r.below)}%</td></tr>`; }).join("")}</tbody>`;
     const stockShare = 100 - o.etf;
-    $("#pjNote", el).innerHTML = `Mix used: about ${(100 * S.mu).toFixed(1)}% a year hoped-for return with ${(100 * S.vol).toFixed(0)}% swings. ` +
+    $("#pjNote", el).innerHTML = `Mix used: about ${(100 * S.mu).toFixed(1)}% a year typical growth with ${(100 * S.vol).toFixed(0)}% swings. ` +
       (stockShare >= 70 ? "Mostly single stocks: the widest range of outcomes. A world ETF core keeps the middle about the same and lifts the bad case. " : "") +
       `After ${N} years about ${Math.round(100 * (put - o.start) / Math.max(put, 1))}% of the money is your monthly deposits, so sticking to them matters most. ` +
       `Scenarios from 4,000 simulated markets, not a forecast and not advice. Taxes and fees not included.`;
@@ -169,7 +173,7 @@
       vol = 100 * Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / (r.length - 1)) * Math.sqrt(252);
     }
     vol = Math.max(10, Math.min(60, vol)); // above ~60% a year the past swings were extreme spikes, not a steady pattern
-    const own = histCagr == null ? 7 : Math.max(-10, Math.min(25, histCagr));
+    const own = histCagr == null ? 7 : Math.max(-10, Math.min(13, histCagr)); // so the typical growth is at most 10% a year
     const growth = Math.round(10 * (0.5 * 7 + 0.5 * own)) / 10; // typical (middle) yearly growth
     return { growth, vol: Math.round(vol), own: histCagr };
   }
@@ -225,7 +229,7 @@
         <div class="perf-tile"><div class="k">Middle</div><div class="v num">${m0(last.p50)}</div><div class="b">world fund: ${m0(wm)}</div></div>
         <div class="perf-tile"><div class="k">Great case (1 in 10)</div><div class="v num up">${m0(last.p90)}</div></div>
         <div class="perf-tile"><div class="k">Chance to end below what you put in</div><div class="v num ${S.below > 0.2 ? "down" : ""}">${Math.round(100 * S.below)}%</div></div>`;
-      $("#sfNote", el).innerHTML = `Based on ${td.esc(info.symbol)}'s own record${A.own != null ? ` (${td.pct(A.own, 1)} a year in the past)` : ""}, pulled halfway toward the market's usual ~7%, so a hot past run isn't assumed to repeat: typical growth <b>${o.growth}%</b> a year, with swings of about <b>${o.vol}%</b> a year (the world fund: about 6.5% typical growth, 15% swings). Change the growth to test your own view. ` +
+      $("#sfNote", el).innerHTML = `Based on ${td.esc(info.symbol)}'s own record${A.own != null ? ` (${td.pct(A.own, 1)} a year in the past)` : ""}, pulled halfway toward the market's usual ~7% and capped at 10%, so a hot past run isn't assumed to repeat: typical growth <b>${o.growth}%</b> a year, with swings of about <b>${o.vol}%</b> a year (the world fund: about 6.5% typical growth, 15% swings). Change the growth to test your own view. ` +
         (o.vol >= 35 ? `<b>Big swings:</b> the middle case can look better than a world fund, but the bad case is far worse and the chance of ending below what you put in is ${Math.round(100 * S.below)}%. ` : "") +
         `Scenarios from 3,000 simulated markets, in ${td.esc(ccy)}, ignoring currency moves, fees and taxes. Not a forecast or advice.`;
       const EC = window.echarts, box = $("#sfChart", el);

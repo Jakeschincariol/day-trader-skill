@@ -41,7 +41,7 @@ is the default.
 | When to buy | **Buy zone**: Accumulate+ (good business on sale: below the 200-day, P/E low in its range, or down 15%+ without a recent run-up), Accumulate, Stretched, Speculative | Breakout / pullback / extended / avoid |
 | Stock page | Long-term card, 1/3/5/10-year buy-and-hold results and a 5-year monthly investing test vs the index (dividends reinvested), "Buy an amount" ticket | Entry, stop, targets, order ticket, 40-day signal backtest |
 | Strong Buys tab | **Quality**: on sale now, core quality, best ETFs | Strong Buys and setups |
-| Portfolio | Action per holding (Accumulate+, Accumulate, Hold, Trim, Review thesis), **Monthly plan** (splits your monthly amount towards targets, ready for a Trading 212 Pie), **Diversification** with ETF look-through and overlap (e.g. VUSA + CSPX, world fund + S&P 500), dividends received, yearly growth, worst fall and your portfolio vs the same money in a world index fund. **10-year plan**: simulates 4,000 possible markets for your current value plus a monthly deposit, with sliders for years and world-ETF share, bad/middle/great cases, odds of ending below what you put in, and a comparison of mixes (scenarios, not a forecast) | Stops, risk check, trade journal |
+| Portfolio | Action per holding (the same words as everywhere: see *One piece of advice per stock* below), **Stress test** (what a bad year would do to your money), **Monthly plan** (splits your monthly amount towards targets, ready for a Trading 212 Pie), **Diversification** with ETF look-through and overlap (e.g. VUSA + CSPX, world fund + S&P 500), dividends received, yearly growth, worst fall and your portfolio vs the same money in a world index fund. **10-year plan**: simulates 4,000 possible markets for your current value plus a monthly deposit, with sliders for years and world-ETF share, bad/middle/great cases, odds of ending below what you put in, and a comparison of mixes (scenarios, not a forecast) | Stops, risk check, trade journal |
 
 ETF look-through weights live in `dashboard/etf_lookthrough.json` (approximate;
 refresh them now and then). The first long-term scan of all stocks takes a few
@@ -49,7 +49,42 @@ minutes; results are cached for hours.
 
 ## Forecast for each stock (stock page)
 
-Every stock page has **"If you invest every month in …"**: set the monthly amount, what you already hold in it, the number of years and, if you like, your own growth estimate. It simulates 3,000 possible futures and shows what you put in, the bad / middle / great case, the chance of ending below what you put in, and the same money in a world fund. The default growth is the stock's own past yearly return pulled halfway toward the market's ~7% (capped between -10% and 25% first), so a hot run isn't assumed to repeat; swings come from its last two years of prices (between 10% and 60% a year). In euros, ignoring currency moves, fees and taxes. Not a forecast or advice.
+Every stock page has **"If you invest every month in …"**: set the monthly amount, what you already hold in it, the number of years and, if you like, your own growth estimate. It simulates 3,000 possible futures and shows what you put in, the bad / middle / great case, the chance of ending below what you put in, and the same money in a world fund. The default growth is the stock's own past yearly return pulled halfway toward the market's ~7% (the own return is capped between -10% and 13% first, so the default is at most 10% a year), so a hot run isn't assumed to repeat; swings come from its last two years of prices (between 10% and 60% a year). In euros, ignoring currency moves, fees and taxes. Not a forecast or advice.
+
+**What "growth" means in every forecast (stock pages and the 10-year plan):** the *typical* yearly growth, the middle case. Half of the
+simulated futures end above it, half below. Years are simulated with log-normal returns, so a stock that swings a lot does not get a
+bonus from its swings: a one-off amount grows at exactly the typical growth in the middle case. The plan's default mix (world fund 6.5%,
+single stocks 8% typical growth) uses the same meaning, so the plan and the stock pages agree.
+
+## One piece of advice per stock (Home, stock page, Portfolio, Momentum)
+
+Every page uses the same words and checks them in the same order. The first rule that fits wins:
+
+1. **Review it first**: weak long-term score or growth has stalled. Check the story before adding; if you buy, keep it small.
+2. **Trim: too big**: one company is more than 20% of your money (funds don't count), or 1.5× your own target for it.
+3. **Theme full**: its theme (for example the AI build-out: chips, chip equipment, memory, optics, power) is already more than 40%
+   of your money, free cash included. Holding is fine; new money goes elsewhere first.
+4. **Don't buy it all at once**: the price is still falling or in a downtrend. Split any buy, most of it for lower prices.
+5. **Pricey: buy small**: priced above its usual range.
+6. **Good time to add**: on sale *and* no longer falling hard (a pullback or steadying after a drop).
+7. **Keep buying as planned**: nothing special; your regular monthly amount is fine. (**Hold** on the Portfolio page when you set a target and are at it.)
+
+Momentum only adds a short note ("momentum has just turned up", "momentum is high"); it never changes the advice, because on its
+own it is a timing hint, not a reason to buy. When the stock is still falling the note says it is an early sign only.
+
+## Where your monthly amount goes (Home)
+
+The Home page splits your monthly amount (Settings, default €1,200) over the four parts of the rebalancing tracker and names a
+fund or stock for each part, for example "€700 → a world fund, e.g. EUNL or VWCE; €500 → a health care fund, e.g. XDWH". Parts above their
+target get nothing. Set the targets on the Portfolio page. It is a suggestion to copy into your Trading 212 Pie by hand; the site
+never places orders.
+
+## Stress test (Portfolio page, long-term mode)
+
+What three bad markets would do to your money today, part by part (AI build-out / world funds / health care / everything else):
+**a normal correction** (-25% / -10% / -5% / -12%), **a 2022-type year** (-45% / -25% / -10% / -25%) and **a 2000-type crash**
+(-80% / -45% / -25% / -45%). It shows the loss in euros, how many months of your monthly savings that is, the loss per part, and what the same
+fall would cost with your target mix. These are rough falls taken from past crashes, not a forecast; use it to check you could hold on through one.
 
 ## Export to a spreadsheet
 
@@ -88,6 +123,8 @@ sector, world/broad funds by fund name (world, ACWI, Europe, emerging markets, S
 ETF count as "everything else"). For each part: where you are now, the target, and how much of your monthly amount to put in.
 It shows how many months of buying get you to the target without selling (prices assumed flat, parts above target get nothing).
 Includes a list of UCITS ETF ideas per part, alternatives to VWCE included (Xetra tickers; FWRA in London).
+The 40% theme limit used for the AI build-out everywhere else is the same here (Diversification: *Biggest other theme* shows the
+biggest theme outside the AI build-out, which has its own row).
 
 ## Growth & Cash (menu: Find stocks → Growth & Cash)
 
@@ -115,10 +152,12 @@ type the percentages in the app yourself and avoid its Rebalance button, which s
 Momentum waves (WaveTrend 10/21) and MACD (12/26/9) for your holdings and watchlist (or both), plus any ticker you add, on hourly,
 daily or weekly candles. Each stock gets a status (Green dot, Turning up, Rising, Oversold, Neutral, Cooling, Overbought, Red dot),
 when the last dot happened, the weekly picture as a confirmation, the MACD, a plain tip for a long-term buyer, and how past green dots
-worked out on that stock (how often it was higher 20 days, 13 weeks or 35 hours later, and the typical move; fewer than 5 past dots
-is flagged as too few to judge). Filters: buy moments, oversold (wait), overbought. Clicking a stock opens its page with **Dig deeper**
-already open. **Hourly check** (optional): every hour, while the dashboard is open in a browser tab, it looks for new daily or hourly
-green dots on your stocks and watchlist and shows a message (and a browser notification if you allow it). A guide explains how to use
+worked out on that stock (how often it was higher 20 days, 13 weeks or 35 hours later, and the typical move), next to the same
+numbers for **any day** on that stock. When green dots did no better than an ordinary day, the tip says so. Fewer than 8 past dots
+are flagged as too few to judge. A dot on a candle that hasn't closed yet (today, this week or this hour) is marked **forming**: it can
+still disappear before the close. Buy moments count only fresh green dots and turning-up waves. Filters: buy moments, oversold (wait), overbought. Clicking a stock opens its page with **Dig deeper**
+already open. **Hourly check** (optional): every hour, while the dashboard is open in a browser tab, it looks for new green dots on closed
+candles on your stocks and watchlist (in Long-term mode daily dots only; in Swing mode daily and hourly) and shows a message (and a browser notification if you allow it). A guide explains how to use
 it for entries. Standard public indicators; not advice.
 
 ## Dig deeper (stock page)
@@ -146,9 +185,10 @@ It is shown as information only and never changes the buy advice. It also appear
 
 On every stock page in Long-term mode, above the Long-term view. It answers "should I buy it all now, in parts, or wait?":
 
-- **Trend state today**: *Still falling* (below a falling 50-day average and making new 1-month lows), *Steadying after a drop*, *Pullback in an uptrend*, *Rising trend* or *No clear trend*, combined with the long-term buy zone, upcoming results and the market mood into one verdict.
+- **Trend state today**: *Still falling* (below a falling 50-day average and making new 1-month lows), *In a downtrend* (below the 50-day and 200-day averages and the 50-day is falling or the price is down more than 15% in 3 months, or down more than 15% and below the 50-day), *Steadying after a drop*, *Pullback in an uptrend*, *Rising trend* or *No clear trend*, combined with the long-term buy zone, upcoming results and the market mood into one verdict.
 - **Buy in parts**: a third now and the rest at two lower prices when it is still falling; half and half when steadying; most now in a pullback; all now in a rising trend. The lower prices are how far the stock typically fell further within 3 months after past days in the same state (10 years of daily prices). Set them as limit orders or price alerts. The **Buy an amount** dialog splits the amount you type the same way.
 - **What usually happens after buying**: the typical (and 1-in-5) further dip within 3 months after days like today and after any day, and how often it was higher 12 months later. A dip right after buying is normal.
+- **Honest 12-month numbers**: one stock rarely has many past days in the same state, so its own "higher 12 months later" rate and typical move are blended with a typical stock (higher 60% of the time, +6% typical) as if the typical stock were 8 more past episodes. The tile shows the blended number, the stock's own number and the S&P 500 in the same state, so a lucky run on a few episodes doesn't look like a sure thing.
 - **If you already own it at a loss**: whether adding at the lower prices makes sense (good long-term score) or not (weak score: don't average down just to get even).
 
 ## Use Revolut
@@ -213,7 +253,11 @@ fetches the newest data.
 
 The key goes only to the server on your computer, which calls Trading 212
 directly. Tick "Remember" and it is saved to `dashboard/.t212.json` (only your
-user can read it, and git ignores it). Or set it in the environment instead:
+user can read it, and git ignores it). On Windows, file permissions don't protect
+it the same way, so keep the dashboard folder **inside your own user folder**, for
+example `C:\Users\<you>\TraderDash` (`%USERPROFILE%\TraderDash`): not straight on
+`C:\` (other accounts on the PC can read it there) and not in OneDrive (it would be
+copied to the cloud). Or set it in the environment instead:
 
 ```bash
 T212_API_KEY=... T212_API_SECRET=... T212_ENV=live python3 dashboard/server.py

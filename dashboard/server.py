@@ -36,6 +36,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import tempfile
 import socket
 import calendar
 import datetime
@@ -73,6 +74,9 @@ _cache = {}
 _cache_lock = threading.Lock()
 
 
+_cache_writes = [0]
+
+
 def cached(key, ttl, fn):
     now = time.time()
     with _cache_lock:
@@ -81,7 +85,12 @@ def cached(key, ttl, fn):
             return hit[1]
     val = fn()
     with _cache_lock:
-        _cache[key] = (time.time(), val)
+        _cache[key] = (time.time(), val, ttl)
+        _cache_writes[0] += 1
+        if _cache_writes[0] % 500 == 0:  # drop entries well past their lifetime so memory doesn't grow for ever
+            t = time.time()
+            for k in [k for k, v in _cache.items() if len(v) > 2 and t - v[0] > max(2 * v[2], 3600)]:
+                del _cache[k]
     return val
 
 
@@ -765,7 +774,8 @@ def intraday(symbol):
     """Today in 5-minute bars, the last 7 days in hourly bars, and hourly levels for the last session."""
     now = int(time.time())
     d1 = _chart(symbol, "range=1d&interval=5m&includePrePost=false", 60)
-    d7 = _chart(symbol, "period1=%d&period2=%d&interval=1h&includePrePost=false" % (now - 8 * 86400, now), 120)
+    end = (now // 300 + 1) * 300  # rounded, so the cache key repeats for 5 minutes
+    d7 = _chart(symbol, "period1=%d&period2=%d&interval=1h&includePrePost=false" % (end - 8 * 86400, end), 120)
     meta = d1.get("meta", {})
     gmt = meta.get("gmtoffset") or 0
     pack = lambda rows: {"t": [x[0] for x in rows], "o": [r(x[1], 4) for x in rows], "h": [r(x[2], 4) for x in rows],
@@ -1334,12 +1344,20 @@ KNOWN_RENAMES = {"IIVI": "COHR", "CHAC": "XNDU"}
 _RES_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6)
 
 
+class _Unknown(Exception):
+    pass
+
+
 def _trades_now(sym):
-    """Yahoo has recent daily prices for this symbol."""
+    """True/False: Yahoo has recent daily prices for this symbol. None: couldn't tell (network error, rate limit)."""
     try:
         res = _chart(sym, "range=1mo&interval=1d", 3600)
-    except Exception:
+    except urllib.error.HTTPError as e:
+        return False if e.code == 404 else None
+    except ValueError:  # Yahoo answered, with no data
         return False
+    except Exception:
+        return None
     last = (res.get("meta") or {}).get("regularMarketTime") or 0
     return len(res.get("timestamp") or []) >= 3 and time.time() - last < 12 * 86400
 
@@ -1347,7 +1365,10 @@ def _trades_now(sym):
 def live_symbol(sym, isin=None, name=None):
     """The ticker Yahoo uses today for this holding: itself if it trades, else found by ISIN, old ticker or company name."""
     def load():
-        if _trades_now(sym):
+        now_ok = _trades_now(sym)
+        if now_ok is None:
+            raise _Unknown()  # don't decide (or cache) anything on a network error
+        if now_ok:
             return sym
         word = next((w for w in re.findall(r"[A-Za-z]{3,}", name or "") if w.lower() not in ("the", "inc", "corp", "plc", "ltd", "class")), None)
         us = "." not in sym
@@ -1357,27 +1378,29 @@ def live_symbol(sym, isin=None, name=None):
                 d = yahoo("/v1/finance/search?q=%s&quotesCount=5&newsCount=0" % urllib.parse.quote(q))
             except Exception:
                 return None
-            for qt in d.get("quotes") or []:
+            suffix = sym.split(".")[1] if "." in sym else ""
+            quotes = sorted(d.get("quotes") or [], key=lambda qt: (qt.get("symbol") or "").split(".")[1:] != ([suffix] if suffix else []))
+            for qt in quotes:  # same exchange first, so a London fund doesn't become its Amsterdam twin in another currency
                 cand = qt.get("symbol")
                 if not cand or cand == sym or qt.get("quoteType") not in ("EQUITY", "ETF") or (us and "." in cand):
                     continue
                 label = "%s %s %s" % (qt.get("longname") or "", qt.get("shortname") or "", qt.get("prevName") or "")
                 if need_word and not (word and re.search(r"\b%s\b" % re.escape(word), label, re.I)) and (qt.get("prevName") or "").upper() != sym:
                     continue
-                if _trades_now(cand):
+                if _trades_now(cand) is True:
                     return cand
             return None
         found = pick(isin, False) if isin and re.match(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$", isin) else None
         if not found:
             alt = KNOWN_RENAMES.get(sym)
-            found = alt if alt and _trades_now(alt) else None
+            found = alt if alt and _trades_now(alt) is True else None
         found = found or pick(sym, True) or (pick(name, True) if name else None)
         if found:
             return found
         return sym
     try:
         out = cached(("livesym", sym, isin or ""), 86400, load)
-    except Exception:
+    except Exception:  # includes _Unknown: keep the ticker as it is and ask again next time
         return sym
     if out != sym:
         RENAMED[sym] = out
@@ -1519,7 +1542,7 @@ def _norm_order(it):
 
 
 def _daily_closes(symbol, start_ts):
-    now = int(time.time())
+    now = (int(time.time()) // 3600 + 1) * 3600  # rounded to the hour, so the cache key repeats
     start = (start_ts - 10 * 86400) // 86400 * 86400
     res = _chart(symbol, "period1=%d&period2=%d&interval=1d" % (start, now), 1800)
     rows = _rows(res)
@@ -2005,7 +2028,7 @@ def lt_profile(symbol):
                 band = (band or "") + " · price only"  # no company figures for this listing
 
         # buy zone for accumulating
-        pe_pct = None
+        pe_pct, pe_n = None, 0
         if has_fa and len(fa.get("earnings") or []) >= 7:
             q = fa["earnings"]
             pts = []
@@ -2016,11 +2039,13 @@ def lt_profile(symbol):
                 if ttm > 0 and prior:
                     pts.append(raw[min(prior[-1], len(raw) - 1)] / ttm if len(raw) == n else c[prior[-1]] / ttm)
             pe_now = fa["valuation"].get("peTTM")
+            pe_n = len(pts)
             if len(pts) >= 4 and pe_now:
                 pe_pct = round(100.0 * sum(1 for x in pts if x <= pe_now) / len(pts))
         reasons = []
         # on sale = the price itself has come down, not just "below an old peak" after a big run
-        cheap = ((z200 is not None and z200 <= -0.05) or (pe_pct is not None and pe_pct <= 33)
+        # a low P/E alone is not "on sale": at peak profits (memory, energy) it looks cheap while the price is high
+        cheap = ((z200 is not None and z200 <= -0.05) or (pe_pct is not None and pe_pct <= 33 and pe_n >= 5 and (z200 is None or z200 <= 0.05))
                  or (dd_now <= -0.15 and (z200 is None or z200 <= 0.05)))
         dear = (z200 is not None and z200 >= 0.25) or (pe_pct is not None and pe_pct >= 90 and ((fa or {}).get("analyst") or {}).get("upside", 0) < 0)
         if z200 is not None:
@@ -3337,6 +3362,7 @@ ENTRY_STATES = {
     "steadying": ("Steadying after a drop", "flat", "It fell, but it hasn't made a new 1-month low for two weeks and it's back above its 20-day average."),
     "pullback": ("Pullback in an uptrend", "up", "A dip below the 50-day average while the long-term (200-day) trend is still rising."),
     "uptrend": ("Rising trend", "up", "Above its 50-day and 200-day averages: no discount, but no sign of trouble."),
+    "downtrend": ("In a downtrend", "down", "Below its 50-day and 200-day averages and well off its recent high. No new low this week, but the fall may not be over."),
     "sideways": ("No clear trend", "flat", "Moving sideways around its averages."),
 }
 
@@ -3355,11 +3381,53 @@ def _entry_state(c, s20, s50, s200, i):
         return "falling"
     if (px < s200[i] or drop3m < -0.10) and not new_low_10 and s20[i] and px > s20[i]:
         return "steadying"
+    if px < s50[i] and px < s200[i] and (slope50 < 0 or drop3m < -0.15):
+        return "downtrend"
+    if drop3m < -0.15 and px < s50[i]:
+        return "downtrend"
     if px < s50[i] and px > s200[i] and slope200 > 0:
         return "pullback"
     if px > s50[i] > s200[i]:
         return "uptrend"
     return "sideways"
+
+
+ENTRY_SHRINK = 8  # weight of the base rate, counted in "episodes"
+# a typical single large company a year later (more uncertain than the index, which never goes bust): an assumption, shown as such
+STOCK_BASE = {"up12m": 60, "median12m": 6.0}
+
+
+def _entry_base():
+    """S&P 500 (SPY) over 10 years: after days in each trend state, how often it was higher a year later and the typical result."""
+    def load():
+        pts = _adj(_chart("SPY", "range=10y&interval=1d", 3600))
+        c = [p_ for _, p_ in pts]
+        s20, s50, s200 = sma(c, 20), sma(c, 50), sma(c, 200)
+        n = len(c)
+        by = {}
+        for j in range(220, n - 252):
+            st = _entry_state(c, s20, s50, s200, j)
+            by.setdefault(st, []).append(c[j + 252] / c[j] - 1)
+            by.setdefault("any", []).append(c[j + 252] / c[j] - 1)
+        return {k: {"up12m": round(100.0 * sum(1 for x in v if x > 0) / len(v)), "median12m": round(100 * _q(v, 0.5), 1), "days": len(v)}
+                for k, v in by.items() if len(v) >= 40}
+    try:
+        return cached(("entrybase",), 86400, load)
+    except Exception:
+        return {}
+
+
+def _shrink(st, index, weight):
+    """Blend a stock's own 12-month figures with a typical large company's; keep the raw ones and the S&P 500's for display."""
+    base = STOCK_BASE
+    if not st or st.get("up12m") is None:
+        return st
+    k, own = ENTRY_SHRINK, max(1, weight or 1)
+    st["up12mOwn"], st["median12mOwn"] = st["up12m"], st["median12m"]
+    st["up12m"] = round((own * st["up12m"] + k * base["up12m"]) / (own + k))
+    st["median12m"] = round((own * st["median12m"] + k * base["median12m"]) / (own + k), 1)
+    st["index"] = index
+    return st
 
 
 def _q(xs, f):
@@ -3409,6 +3477,10 @@ def lt_entry(symbol):
                     "median12m": round(100 * _q(r, 0.5), 1) if enough else None}
         anyday = stats(dips, rets, max(1, (n - 283) // 252))
         same = stats(same_dips, same_rets, episodes(same_idx))
+        if sym != "SPY":
+            base = _entry_base()
+            same = _shrink(same, base.get(state), same["episodes"] if same else None)
+            anyday = _shrink(anyday, base.get("any"), max(1, (n - 283) // 252))
         if anyday:
             anyday["episodes"] = None
         ref = same or anyday
@@ -3426,6 +3498,7 @@ def lt_entry(symbol):
             supports.append({"name": "52-week low", "price": r(low52)})
         title, tone, why = ENTRY_STATES.get(state, ENTRY_STATES["sideways"])
         plan = {"falling": [("Now", 1 / 3), ("If it drops to", 1 / 3, lv2), ("If it drops to", 1 / 3, lv3)],
+                "downtrend": [("Now", 1 / 3), ("If it drops to", 1 / 3, lv2), ("If it drops to", 1 / 3, lv3)],
                 "steadying": [("Now", 1 / 2), ("If it drops to", 1 / 2, lv2)],
                 "pullback": [("Now", 2 / 3), ("If it drops to", 1 / 3, lv2)],
                 "uptrend": [("Now", 1.0)], "sideways": [("Now", 1 / 2), ("If it drops to", 1 / 2, lv2)]}[state or "sideways"]
@@ -3460,12 +3533,12 @@ def _entry_verdict(e):
     st, zone = e.get("state"), e.get("zone")
     if zone == "Speculative":
         v = ("Careful", "down", "Weak long-term score: if you buy, keep it small, whatever the timing.")
-    elif st in ("falling", "steadying", "sideways") and (e.get("same") or {}).get("median12m") is not None and \
+    elif st in ("falling", "downtrend", "steadying", "sideways") and (e.get("same") or {}).get("median12m") is not None and \
             (e["same"]["median12m"] < 0 or (e["same"]["up12m"] or 0) < 50):
         v = ("Wait, or buy only a small part", "down", "After past days like today this stock was more often lower than higher a year later. "
              "Keep it small until the trend turns up.")
-    elif st == "falling":
-        v = ("Don't buy it all at once", "down", "It's still falling. Split your amount: a third now, the rest only if it drops to the levels below.")
+    elif st in ("falling", "downtrend"):
+        v = ("Don't buy it all at once", "down", "It's still in a fall. Split your amount: a third now, the rest only if it drops to the levels below.")
     elif st == "steadying":
         v = ("A reasonable moment to start, in parts", "flat", "The drop seems to be slowing. Buy half now and keep half for a lower price.")
     elif st == "pullback":
@@ -3482,7 +3555,7 @@ def _entry_verdict(e):
                      (e["earnings"]["date"], e["earnings"]["days"]))
     if e.get("marketWeak"):
         notes.append("The whole market is weak right now: dips can go further than usual.")
-    if zone == "Accumulate+" and st in ("falling", "steadying", "pullback"):
+    if zone == "Accumulate+" and st in ("steadying", "pullback"):
         notes.append("The business also scores well and trades below its usual price: a good candidate for adding over the next weeks.")
     return {"title": v[0], "tone": v[1], "text": v[2], "notes": notes}
 
@@ -3633,13 +3706,23 @@ def fmp_save_key(key):
 
 
 def _fmp_persist():
+    tmp = None
     try:
-        tmp = FMP_CACHE_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(_fmp_cache, f)
+        with _fmp_lock:
+            snap = dict(_fmp_cache)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(FMP_CACHE_FILE) or ".", prefix=".fmp-cache.", suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            json.dump(snap, f)
         os.replace(tmp, FMP_CACHE_FILE)
-    except OSError:
+        tmp = None
+    except Exception:
         pass
+    finally:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 class FmpRefused(Exception):
@@ -3679,12 +3762,14 @@ def fmp_get(endpoint, symbol=None, ttl=7 * 86400, **params):
                429: "FMP daily limit reached"}.get(e.code, "FMP error %s" % e.code)
         FMP["lastError"] = (why + (": " + msg[:120] if msg else "")).strip()
         if e.code in (402, 403):  # remember plan refusals for a day, so we don't spend calls on them
-            _fmp_cache[ck] = (time.time() - ttl + 86400, {"__refused": why})
+            with _fmp_lock:
+                _fmp_cache[ck] = (time.time() - ttl + 86400, {"__refused": why})
         raise FmpRefused(why)
     if isinstance(data, dict) and data.get("Error Message"):
         FMP["lastError"] = data["Error Message"][:160]
         raise FmpRefused(data["Error Message"][:160])
-    _fmp_cache[ck] = (time.time(), data)
+    with _fmp_lock:
+        _fmp_cache[ck] = (time.time(), data)
     _fmp_persist()
     return data
 
@@ -3983,6 +4068,8 @@ def pie_weights(items, cap=14.0):
     else:
         core, spec = items, []
     left = 100.0 - sum(w.values())
+    if core:
+        cap = max(cap, left / len(core) + 0.01)  # a cap the core stocks can't meet is raised for them, not for the small slices
     raw = {x["symbol"]: ((x.get("score") if x.get("score") is not None else 50) / 100.0) ** 2 / max(10.0, x.get("vol") or 60.0) for x in core}
     free, fixed = dict(raw), {}
     for _ in range(len(core) + 1):  # cap the biggest, share the rest again
@@ -3999,16 +4086,18 @@ def pie_weights(items, cap=14.0):
     for k, v in free.items():
         w[k] = room * v / tot
     w.update(fixed)
-    # whole numbers, at least 1% each, summing to exactly 100 (largest remainders first)
+    # whole numbers, at least 1% each, summing to exactly 100 (largest remainders first, only to core stocks under the cap)
     base = {k: max(1, int(v)) for k, v in w.items()}
     diff = 100 - sum(base.values())
-    order = sorted(w, key=lambda k: -(w[k] - int(w[k])))
+    coreset = {x["symbol"] for x in core}
+    order = sorted(coreset, key=lambda k: -(w[k] - int(w[k]))) or sorted(w, key=lambda k: -(w[k] - int(w[k])))
+    room_ok = [k for k in order if base[k] + 1 <= cap] or order
     i = 0
     while diff > 0:
-        base[order[i % len(order)]] += 1
+        base[room_ok[i % len(room_ok)]] += 1
         diff -= 1
         i += 1
-    order = sorted(base, key=lambda k: -base[k])
+    order = sorted(coreset or base, key=lambda k: -base[k])
     i = 0
     while diff < 0 and i < 10 * len(order):
         k = order[i % len(order)]
@@ -4118,6 +4207,26 @@ MOM_TF = {  # Yahoo query, bars ahead used to judge past signals, unit name
 }
 
 
+def _fold_live_week(rows):
+    """Yahoo adds a live row inside the current week: fold it into that week's candle."""
+    if len(rows) >= 2 and rows[-1][0] - rows[-2][0] < 6 * 86400:
+        a, b = rows[-2], rows[-1]
+        rows = rows[:-2] + [(a[0], a[1], max(a[2], b[2]), min(a[3], b[3]), b[4], max(a[5], b[5]))]
+    return rows
+
+
+def _bar_open(meta, last_ts, tf):
+    """Is the last bar still forming (its signal can still change before it closes)?"""
+    now = time.time()
+    reg = ((meta or {}).get("currentTradingPeriod") or {}).get("regular") or {}
+    start, end = reg.get("start") or 0, reg.get("end") or 0
+    if tf == "w":
+        return now - last_ts < 7 * 86400 and not (time.gmtime(now).tm_wday >= 5 and now > end)
+    if tf == "h":
+        return start <= now < end and now - last_ts < 3600
+    return start <= now < end and last_ts >= start - 6 * 3600
+
+
 def _ema_n(xs, n):
     """EMA that skips missing values and seeds with the first n values' average (same as the browser chart)."""
     out, k, prev, acc = [None] * len(xs), 2.0 / (n + 1), None, []
@@ -4217,7 +4326,11 @@ def _wave_state(c, h, l, ahead):
             return None
         res.sort()
         good = [x for x in res if (x > 0 if kind == "buy" else x < 0)]
-        return {"count": len(res), "worked": round(100 * len(good) / len(res)), "median": round(res[len(res) // 2], 1)}
+        # the same check on every bar, so a "worked 60%" can be compared with an ordinary day
+        anyr = sorted(100 * (c[j + ahead] / c[j] - 1) for j in range(60, n - ahead))
+        anyg = [x for x in anyr if (x > 0 if kind == "buy" else x < 0)]
+        return {"count": len(res), "worked": round(100 * len(good) / len(res)), "median": round(res[len(res) // 2], 1),
+                "anyWorked": round(100 * len(anyg) / len(anyr)) if anyr else None, "anyMedian": round(anyr[len(anyr) // 2], 1) if anyr else None}
     return {
         "wt1": round(w1, 1), "wt2": round(w2, 1), "up": up, "rising": rising, "setup": setup, "trend": trend,
         "lastSignal": {"kind": last[1], "ago": ago, "level": round(wt1[last[0]], 1)} if last else None,
@@ -4234,6 +4347,8 @@ def momentum_one(sym, tf="d"):
     def load():
         res = _chart(sym, q, 300 if tf == "h" else 3600)
         rows = _rows(res)
+        if tf == "w":
+            rows = _fold_live_week(rows)
         if len(rows) < 80:
             return {"symbol": sym, "error": "not enough history"}
         c, h, l = [r_[4] for r_ in rows], [r_[2] for r_ in rows], [r_[3] for r_ in rows]
@@ -4242,7 +4357,7 @@ def momentum_one(sym, tf="d"):
             return {"symbol": sym, "error": "not enough history"}
         meta = res.get("meta") or {}
         prev = meta.get("chartPreviousClose") if tf == "d" else None
-        st.update(symbol=sym, unit=unit, ahead=ahead, price=round(c[-1], 4), currency=meta.get("currency"),
+        st.update(symbol=sym, unit=unit, ahead=ahead, price=round(c[-1], 4), currency=meta.get("currency"), barOpen=_bar_open(meta, rows[-1][0], tf),
                   name=meta.get("longName") or meta.get("shortName"), at=rows[-1][0],
                   changePct=round(100 * (c[-1] / c[-2] - 1), 2) if len(c) > 1 and c[-2] else None)
         return st
@@ -4255,7 +4370,7 @@ def momentum_one(sym, tf="d"):
 def momentum_scan(symbols, tf="d"):
     """One timeframe for every symbol, plus the weekly picture as a confirmation when scanning daily or hourly bars."""
     syms = [x for x in dict.fromkeys(symbols) if x][:60]
-    main = list(POOL.map(lambda x: momentum_one(x, tf), syms))
+    main = [dict(r_) for r_ in POOL.map(lambda x: momentum_one(x, tf), syms)]  # copies: the cached rows are shared between requests
     if tf in ("d", "h"):
         wk = dict(zip(syms, POOL.map(lambda x: momentum_one(x, "w"), syms)))
         for r_ in main:
@@ -4275,10 +4390,8 @@ def deep_chart(symbol, tf="w"):
     q = {"w": "range=10y&interval=1wk", "d": "range=2y&interval=1d", "h": "range=6mo&interval=1h"}[tf]
     res = _chart(sym, q, 300 if tf == "h" else 3600)
     rows = _rows(res)
-    if tf == "w" and len(rows) >= 2 and rows[-1][0] - rows[-2][0] < 6 * 86400:
-        # Yahoo adds a live row inside the current week: fold it into that week's candle
-        a, b = rows[-2], rows[-1]
-        rows = rows[:-2] + [(a[0], a[1], max(a[2], b[2]), min(a[3], b[3]), b[4], max(a[5], b[5]))]
+    if tf == "w":
+        rows = _fold_live_week(rows)
     meta = res.get("meta") or {}
     earn = []
     try:
@@ -4383,8 +4496,11 @@ def yahoo_summary(sym, modules):
 
 CEO_RE = re.compile(r"\bC\.?E\.?O\b|chief executive", re.I)
 NUMBER_TWO_RE = re.compile(r"(?<!vice )(?<!vice-)\bpresident\b|\bC\.?O\.?O\b|chief operating", re.I)
-CEO_NEWS_RE = re.compile(r"resign|step(s|ping)? down|stepped down|replace|successor|succession|ouster|ousted|oust|fired|health|illness|"
-                         r"investigation|probe|lawsuit|sued|leave|leaving|depart|retire|scandal|arrest", re.I)
+CEO_NEWS_RE = re.compile(r"\b(?:resign(?:s|ed|ation)?|steps? down|stepping down|stepped down|replaced as ceo|replac(?:e|es|ing) (?:him|her|the ceo|ceo)|successor|succession|"
+                         r"ousted?|ouster|fired|health (?:issue|issues|reasons|scare|problems?)|illness|medical leave|"
+                         r"investigat(?:ion|ed|es|ing)|probe|lawsuit|sued|"
+                         r"(?:leaves|leaving) (?:the company|as ceo|his post|her post|the post|the role)|departs?|departure|"
+                         r"retir(?:e|es|ed|ing|ement)|scandal|arrest(?:ed)?)\b", re.I)
 
 
 def key_person_score(ceo, others, insiders_pct, mcap, tenure_years=None, year=None):
@@ -4467,6 +4583,10 @@ def _kp_from_fmp(sym):
             "type": "ETF" if prof.get("isEtf") else "FUND" if prof.get("isFund") else "EQUITY", "source": "Financial Modeling Prep"}
 
 
+class _KpMiss(Exception):
+    pass
+
+
 def key_person(symbol):
     sym = symbol.upper()
 
@@ -4482,7 +4602,7 @@ def key_person(symbol):
             if data.get("officers") or (data.get("type") or "EQUITY") != "EQUITY":
                 break
         if data is None:
-            return {"symbol": sym, "available": False, "why": "No company profile could be loaded (Yahoo, or a Financial Modeling Prep key on the Portfolio page)."}
+            raise _KpMiss()
         if (data.get("type") or "EQUITY") not in ("EQUITY",):
             return {"symbol": sym, "available": False, "applies": False, "why": "Funds and ETFs don't depend on one CEO."}
         year = time.gmtime().tm_year
@@ -4518,7 +4638,11 @@ def key_person(symbol):
                    ceo={"name": ceo.get("name"), "title": ceo.get("title"), "age": ceo.get("age"), "years": tenure} if ceo else None,
                    insiders=data.get("insiders"), marketCap=mcap)
         return out
-    return cached(("keyperson", sym), 7 * 86400, load)
+    try:
+        return cached(("keyperson", sym), 7 * 86400, load)
+    except _KpMiss:
+        return cached(("keyperson-miss", sym), 1800, lambda: {"symbol": sym, "available": False,
+                                                               "why": "No company profile could be loaded (Yahoo, or a Financial Modeling Prep key on the Portfolio page)."})
 
 
 def _surname(name):
@@ -4860,7 +4984,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(e)[:300]}, 500)
 
     def api(self, path, q):
-        syms = lambda s: [x.strip().upper() for x in (s or "").split(",") if x.strip()][:150]
+        syms = lambda s: [x for x in (y.strip().upper() for y in (s or "").split(",")) if re.match(r"^[A-Z0-9.\-^=]{1,15}$", x)][:150]
         if q.get("fresh"):  # the refresh buttons: skip the short-term cache for this request
             one = [q.get("symbol", "").upper()] if q.get("symbol") else []
             if path in ("/api/quotes", "/api/analysis", "/api/intraday", "/api/performance", "/api/fundamentals"):
@@ -5190,7 +5314,7 @@ class Handler(BaseHTTPRequestHandler):
                    "<body style='font:16px sans-serif;background:#0d0d0d;color:#f0efec;padding:24px;max-width:720px'>"
                    "<h1>The dashboard's page files are missing</h1><p>This copy has no <code>%s</code>. The download or unzip was incomplete, "
                    "or OneDrive has not finished syncing the folder.</p><p>Fix: unzip the download again into a short folder outside OneDrive, "
-                   "for example <code>C:\\TraderDash</code>, then start <code>dashboard\\server.py</code> from there. "
+                   "for example <code>%USERPROFILE%\\TraderDash</code> (C:\\Users\\<i>you</i>\\TraderDash, not straight on C:, so other accounts on the PC can't read your keys), then start <code>dashboard\\server.py</code> from there. "
                    "Your Trading 212 key file (<code>.t212.json</code>) can be copied from the old <code>dashboard</code> folder.</p></body>") % html_escape(full)
             body = msg.encode("utf-8")
             self.send_response(500)
@@ -5248,7 +5372,7 @@ def main(argv=None):
     if missing:
         print("WARNING: the dashboard's page files are missing from %s: %s\n"
               "The download or unzip was incomplete, or OneDrive has not finished syncing. Unzip again into a short folder\n"
-              "outside OneDrive (for example C:\\TraderDash) and start dashboard\\server.py from there." % (STATIC, ", ".join(missing)), file=sys.stderr)
+              "outside OneDrive, inside your own user folder (for example %%USERPROFILE%%\\TraderDash) and start dashboard\\server.py from there." % (STATIC, ", ".join(missing)), file=sys.stderr)
     load_creds()
     fmp_load()
     threading.Thread(target=fdb_refresh, daemon=True).start()

@@ -12,3 +12,4 @@ dashboard/.fdb-equities.bz2
 dashboard/.fdb-equities.bz2.tmp
 dashboard/.fund-cache.json
 dashboard/.fund-cache.json.tmp
+dashboard/.fmp-cache.*.tmp

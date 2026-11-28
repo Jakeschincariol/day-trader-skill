@@ -11,7 +11,7 @@
   const mode = () => (T().settings().mode || "lt");
   const zoneCls = (z) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Stretched: "e-wait", Speculative: "e-avoid" }[z] || "e-none");
   // plain words for the labels (the rules keep their internal names)
-  const LABELS = { "Accumulate+": "Good time to add", Accumulate: "Keep buying as planned", Stretched: "Pricey: buy small", Speculative: "Speculative",
+  const LABELS = { "Accumulate+": "On sale", Accumulate: "Keep buying as planned", Stretched: "Pricey: buy small", Speculative: "Speculative",
     Hold: "Hold", Trim: "Trim", "Review thesis": "Review it", "Theme full": "Theme full" };
   const zoneLabel = (z) => LABELS[z] || z;
   const zoneBadge = (z) => (z ? `<span class="badge ${zoneCls(z)}" title="${T().esc(z)}">${T().esc(zoneLabel(z))}</span>` : "");
@@ -54,7 +54,10 @@
     const v = e.verdict, s = e.same, any = e.any;
     const mine = held && held.avgPrice && held.qty ? held : null;
     const down = mine && e.price ? 100 * (e.price / mine.avgPrice - 1) : null;
-    el.innerHTML = `<div class="entry-head ${v.tone}"><b>${td.esc(v.title)}</b><span>${td.esc(v.text)}</span></div>
+    const theme = themeFor(await themeContext([a.symbol]).catch(() => null), a.symbol);
+    if (!el.isConnected) return;
+    el.innerHTML = `${theme && theme.over ? `<p class="entry-note entry-theme"><b>Theme full:</b> ${td.esc(theme.name)} is already ${theme.pct.toFixed(0)}% of your money (limit ${THEME_CAP}%). The timing below is for later, or for money you have already set aside for this stock.</p>` : ""}
+      <div class="entry-head ${v.tone}"><b>${td.esc(v.title)}</b><span>${td.esc(v.text)}</span></div>
       <p class="entry-state"><span class="badge ${e.tone === "down" ? "e-avoid" : e.tone === "up" ? "e-now" : "e-wait"}">${td.esc(e.title)}</span> ${td.esc(e.why)}
         ${e.fromHigh3m < -3 ? ` It is <b class="down">${td.pct(e.fromHigh3m)}</b> from its 3-month high.` : ""}</p>
       ${v.notes.map((n) => `<p class="entry-note">${td.esc(n)}</p>`).join("")}
@@ -64,7 +67,7 @@
         ${e.stopAdding ? ` <b>Stop adding</b> if it closes below ${td.priceStr(e.stopAdding, e.currency)} or its long-term score falls under 45: then something bigger is wrong.` : ""}</p>
       ${s || any ? `<h3 class="h3">What usually happens after buying</h3><div class="ret-grid entry-stats">
         ${s ? `<div class="perf-tile"><div class="k">After days like today</div><div class="v num down">${td.pct(s.typicalDip, 1)}</div><div class="b">typical further dip within 3 months · 1 in 5 times ${td.pct(s.deepDip, 1)} or more</div></div>` : ""}
-        ${s && s.up12m != null ? `<div class="perf-tile"><div class="k">A year later</div><div class="v num ${td.cls(s.median12m)}">higher ${s.up12m}% of the time</div><div class="b">typical result ${td.pct(s.median12m, 0)} · from ${s.episodes} separate past drops</div></div>`
+        ${s && s.up12m != null ? `<div class="perf-tile"><div class="k">A year later (realistic)</div><div class="v num ${td.cls(s.median12m)}">higher about ${s.up12m}% of the time</div><div class="b">typical result ${td.pct(s.median12m, 0)}. Mix of ${td.esc(e.symbol)}'s own past (${s.up12mOwn ?? s.up12m}%, ${s.episodes} separate drops) and a typical large company (about 60%)${s.index ? `; the S&P 500 after days like this: ${s.index.up12m}%` : ""}.</div></div>`
           : s ? `<div class="perf-tile"><div class="k">A year later</div><div class="v num muted">too few cases</div><div class="b">only ${s.episodes} separate past episodes like today</div></div>` : ""}
         ${any ? `<div class="perf-tile"><div class="k">After any day</div><div class="v num down">${td.pct(any.typicalDip)}</div><div class="b">typical dip within 3 months, higher a year later ${any.up12m ?? "–"}% of the time</div></div>` : ""}</div>
         <p class="muted" style="font-size:12px;margin:6px 0 0">This is only ${td.esc(e.symbol)}'s own past, which includes its best years. It does not repeat by itself.</p>
@@ -219,19 +222,27 @@
   }
 
   // ------------------------------------------------------------ portfolio: verdicts, plan, diversification, dividends
-  function verdict(pos, weight, target, p, isFund, theme) {
-    if (p && p.fundamentals && p.score != null && p.score < 45) return { v: "Review thesis", why: "Long-term score " + p.score + " (speculative): check the story still holds" };
+  // one vocabulary for advice on every page (home, stock page, portfolio, momentum)
+  const VERDICT_LABELS = { "Theme full": "Theme full", "Review thesis": "Review it first", Trim: "Trim: too big", Wait: "Don't buy it all at once",
+    Pricey: "Pricey: buy small", "Accumulate+": "Good time to add", Accumulate: "Keep buying as planned", Hold: "Hold" };
+  const verdictLabel = (v) => VERDICT_LABELS[v] || v;
+  /** Portfolio action, in the same order as combined(): story, size, theme, trend, price. */
+  function verdict(pos, weight, target, p, isFund, theme, entry) {
+    const st = entry && entry.state;
+    if (p && p.fundamentals && p.score != null && p.score < 45) return { v: "Review thesis", why: "Weak long-term score (" + p.score + "): check the story still holds; if you buy, keep it small" };
     if (p && p.groups && p.groups.Growth != null && p.fundamentals && p.groups.Growth < 20) return { v: "Review thesis", why: "Growth has stalled" };
     if (!isFund && weight > 20) return { v: "Trim", why: `${weight.toFixed(0)}% of the portfolio in one company` };
     if (target && weight > target * 1.5) return { v: "Trim", why: `${weight.toFixed(0)}% vs your ${target}% target` };
-    if (theme && theme.pct > THEME_CAP) return { v: "Theme full", why: `${theme.name} is ${theme.pct.toFixed(0)}% of your portfolio: send new money elsewhere` };
-    if (p && p.zone === "Accumulate+") return { v: "Accumulate+", why: "On sale: a good month to add" };
-    if (target && weight < target) return { v: "Accumulate", why: `Below your ${target}% target` };
-    if (p && p.zone === "Stretched") return { v: "Hold", why: "Price stretched: no rush to add" };
+    if (theme && theme.pct > THEME_CAP) return { v: "Theme full", why: `${theme.name} is ${theme.pct.toFixed(0)}% of your money (limit ${THEME_CAP}%): new money elsewhere first` };
+    if (st === "falling" || st === "downtrend") return { v: "Wait", why: "Still in a fall: split any buy, most of it for lower prices" };
+    if (p && p.zone === "Stretched") return { v: "Pricey", why: "Priced above its usual range: small amounts only" };
     if (p && p.groups && p.groups.Quality === 0 && p.fundamentals) return { v: "Hold", why: "Quality score 0: don't add until profits improve" };
+    if (p && p.zone === "Accumulate+" && (st === "pullback" || st === "steadying")) return { v: "Accumulate+", why: "On sale and no longer falling hard: a good month to add" };
+    if (target && weight < target) return { v: "Accumulate", why: `Below your ${target}% target` };
+    if (p && p.zone === "Accumulate+") return { v: "Accumulate", why: "On sale: keep your regular buys" };
     return { v: target ? "Hold" : "Accumulate", why: target ? "At target" : "Keep the regular buy" };
   }
-  const verdictCls = (v) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Hold: "e-none", Trim: "e-wait", "Theme full": "e-wait", "Review thesis": "e-avoid" }[v] || "e-none");
+  const verdictCls = (v) => ({ "Accumulate+": "e-now", Accumulate: "e-watch", Hold: "e-none", Trim: "e-wait", "Theme full": "e-wait", Pricey: "e-wait", Wait: "e-wait", "Review thesis": "e-avoid" }[v] || "e-none");
 
   async function lookthrough() { return cache.__lt || (cache.__lt = await T().api("/api/lookthrough")); }
   async function themes(symbols) {
@@ -252,7 +263,80 @@
       if (g) byGroup[g] = (byGroup[g] || 0) + val(p);
     });
     const pctOf = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, total ? 100 * v / total : 0]));
-    return { byTheme: pctOf(byTheme), byGroup: pctOf(byGroup), themeOf: (s) => th.themes[s], groupOf: (s) => th.groups[th.themes[s]] };
+    return { byTheme: pctOf(byTheme), byGroup: pctOf(byGroup), themeOf: (s) => th.themes[s], groupOf: (s) => th.groups[th.themes[s]], groupOfTheme: (t) => th.groups[t] };
+  }
+
+
+  // ------------------------------------------------------------ one verdict per stock, the same on every page
+  // order: 1 long-term story, 2 one company too big, 3 theme limit (your money), 4 the price trend, 5 price, 6 momentum (timing only)
+  let themeCtx = null;
+  /** Your theme shares (from holdings) plus the theme of any extra symbols, refreshed at most once a minute. */
+  async function themeContext(extra) {
+    const td = T();
+    if (!themeCtx || Date.now() - themeCtx.at > 60000) {
+      await td.getT212().catch(() => null);
+      const man = td.store.get("manual", []);
+      const px = {};
+      if (man.length) (await td.api("/api/spark?symbols=" + encodeURIComponent([...new Set(man.map((m) => m.symbol))].join(","))).catch(() => [])).forEach((r) => { if (r && r.price) px[r.symbol] = r.price; });
+      const pos = td.brokerPositions().map((p) => ({ symbol: p.symbol, valueAcct: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
+        .concat(man.map((m) => ({ symbol: m.symbol, valueAcct: (m.qty || 0) * (px[m.symbol] || m.avgPrice || 0) })));
+      const t = td.state.t212 && !td.state.t212.error ? td.state.t212 : null;
+      const total = pos.reduce((a, p) => a + (p.valueAcct || 0), 0) + (t && t.cash && t.cash.free > 0 ? t.cash.free : 0); // same total as the Portfolio page
+      const ts = pos.length && total > 0 ? await themeShares(pos, total).catch(() => null) : null;
+      const L = await lookthrough().catch(() => null);
+      const weights = {};
+      pos.forEach((p) => { weights[p.symbol] = (weights[p.symbol] || 0) + (total ? 100 * (p.valueAcct || 0) / total : 0); });
+      const funds = new Set(L ? Object.values(L.indexes).flatMap((v) => v.funds) : []);
+      themeCtx = { at: Date.now(), ts, extra: {}, weights, funds };
+    }
+    const need = (extra || []).filter((x) => !(x in themeCtx.extra));
+    if (need.length) {
+      const th = await themes(need).catch(() => ({ themes: {}, groups: {} }));
+      need.forEach((x) => { const t = th.themes[x]; themeCtx.extra[x] = t ? { theme: t, group: th.groups[t] || null } : null; });
+    }
+    return themeCtx;
+  }
+  /** The theme a symbol belongs to and how much of your money that theme already is. */
+  function themeFor(ctx, sym) {
+    if (!ctx) return null;
+    const x = ctx.extra[sym] || (ctx.ts && ctx.ts.themeOf(sym) ? { theme: ctx.ts.themeOf(sym), group: ctx.ts.groupOf(sym) } : null);
+    if (!x) return null;
+    const name = x.group || x.theme;
+    const pct = ctx.ts ? (x.group ? ctx.ts.byGroup[x.group] : ctx.ts.byTheme[x.theme]) || 0 : 0;
+    return { name, pct, over: pct > THEME_CAP };
+  }
+  /** How much of your money is in this one company (funds don't count: they are already spread). */
+  function sizeFor(ctx, sym) {
+    if (!ctx || !ctx.weights || !ctx.weights[sym]) return null;
+    return { weight: ctx.weights[sym], fund: ctx.funds.has(sym) };
+  }
+  /**
+   * zone: long-term zone; entry: /api/ltentry result (state, verdict); mom: momentum row (setup); theme: themeFor(); size: sizeFor().
+   * Returns {label, tone, text, note}.
+   */
+  function combined({ zone, entry, mom, theme, size }) {
+    const st = entry && entry.state;
+    let v;
+    if (zone === "Speculative" || zone === "Review thesis") {
+      v = { label: verdictLabel("Review thesis"), tone: "down", text: "Weak long-term score: check the reasons before adding; if you buy, keep it small, whatever the timing." };
+    } else if (size && !size.fund && size.weight > 20) {
+      v = { label: verdictLabel("Trim"), tone: "down", text: `${size.weight.toFixed(0)}% of your money is in this one company (more than 20%). Don't add; think about moving some of it to other parts.` };
+    } else if (theme && theme.over) {
+      v = { label: verdictLabel("Theme full"), tone: "flat", text: `${theme.name} is already ${theme.pct.toFixed(0)}% of your money (your limit is ${THEME_CAP}%). Put new money into other parts first; holding what you have is fine.` };
+    } else if (st === "falling" || st === "downtrend") {
+      v = { label: verdictLabel("Wait"), tone: "down", text: (entry.verdict && entry.verdict.text) || "Still falling: split your amount and keep most of it for lower prices." };
+    } else if (zone === "Stretched") {
+      v = { label: verdictLabel("Pricey"), tone: "flat", text: "Priced above its usual range: keep to small regular amounts." };
+    } else if (zone === "Accumulate+" && (st === "pullback" || st === "steadying")) {
+      v = { label: verdictLabel("Accumulate+"), tone: "up", text: "A quality business that has come down and is no longer falling hard: a good month to add a bit more." };
+    } else {
+      v = { label: verdictLabel("Accumulate"), tone: "up", text: (entry && entry.verdict && entry.verdict.text) || "Nothing special: your regular monthly amount is fine." };
+    }
+    const m = mom && mom.setup;
+    if (m === "fresh-buy" || m === "turning-up") v.note = st === "falling" || st === "downtrend" ? "Momentum has just turned up: an early sign only, the fall may not be over." : "Momentum has just turned up.";
+    else if (m === "overbought" || m === "fresh-sell") v.note = "Momentum is high: a better price often comes later.";
+    else if (m === "oversold-wait") v.note = "Momentum is still pointing down.";
+    return v;
   }
 
   async function diversification(el, positions, acct, lt) {
@@ -289,8 +373,9 @@
     const ai = ts.byGroup["AI build-out"] || 0;
     if (ai) row("AI build-out (chips, chip equipment, memory, optics, power)", ai.toFixed(0) + "%", ai <= THEME_CAP,
       ai > THEME_CAP ? `these rise and fall together with AI spending: one bet, not ${positions.filter((p) => ts.groupOf(p.symbol)).length}. Keep it under about ${THEME_CAP}%` : "");
-    const topTheme = Object.entries(ts.byTheme).sort((a, b) => b[1] - a[1])[0];
-    if (topTheme) row("Biggest theme", `${td.esc(topTheme[0])} · ${topTheme[1].toFixed(0)}%`, topTheme[1] <= 25, topTheme[1] > 25 ? "over 25% in one theme" : "");
+    const others = Object.entries(ts.byGroup).filter(([g]) => g !== "AI build-out").concat(Object.entries(ts.byTheme).filter(([t]) => !ts.groupOfTheme(t)));
+    const topTheme = others.sort((a, b) => b[1] - a[1])[0];
+    if (topTheme) row(ai ? "Biggest other theme" : "Biggest theme", `${td.esc(topTheme[0])} · ${topTheme[1].toFixed(0)}%`, topTheme[1] <= THEME_CAP, topTheme[1] > THEME_CAP ? `over your ${THEME_CAP}% limit for one theme` : "");
     const ccys = {};
     positions.forEach((p) => { const c = (p.q && p.q.currency) || p.currency || "?"; ccys[c === "GBp" ? "GBP" : c] = (ccys[c === "GBp" ? "GBP" : c] || 0) + val(p); });
     const ctry = {};
@@ -503,14 +588,65 @@
     ] },
   ];
 
-  async function rebalance(el, positions, acct, lt) {
-    const td = T();
+
+  /** Holdings sorted into the four parts of the rebalancing tracker. */
+  async function partsOf(positions, lt) {
     const L = await lookthrough().catch(() => null);
     const val = (p) => p.valueAcct || p.mv || 0;
     const ts = await themeShares(positions, positions.reduce((s, p) => s + val(p), 0)).catch(() => ({ groupOf: () => null }));
     const isFund = (p) => !!(L && Object.values(L.indexes).some((v) => v.funds.includes(p.symbol))) || /ETF|FUND/i.test((p.q && p.q.type) || "") || /\bETF\b|UCITS/i.test(p.name || "");
     const values = { ai: 0, world: 0, health: 0, other: 0 }, members = { ai: [], world: [], health: [], other: [] };
-    positions.forEach((p) => { const b = bucketOf(p, ts.groupOf, lt[p.symbol], isFund(p)); values[b] += val(p); if (!members[b].includes(p.symbol)) members[b].push(p.symbol); });
+    positions.forEach((p) => { const b = bucketOf(p, ts.groupOf, (lt || {})[p.symbol] || cache[p.symbol], isFund(p)); values[b] += val(p); if (!members[b].includes(p.symbol)) members[b].push(p.symbol); });
+    return { values, members };
+  }
+  const targetsNow = () => Object.assign({}, DEFAULT_TARGETS, T().store.get("rebalTargets", {}));
+  const IDEA_FOR = { ai: "your AI stocks", world: "a world fund, e.g. EUNL or VWCE", health: "a health care fund, e.g. XDWH", other: "your other stocks or sector funds" };
+
+  /** Home page: where this month's money goes, from the rebalancing tracker's targets. */
+  async function monthPlan(positions, monthly) {
+    const { values } = await partsOf(positions, null);
+    const r = rebalPlan(values, targetsNow(), monthly);
+    return { parts: BUCKETS.map((b) => ({ id: b.id, name: b.name, amount: r.per[b.id] || 0, now: r.now[b.id], target: r.target[b.id], idea: IDEA_FOR[b.id] })), months: r.months };
+  }
+
+  // ------------------------------------------------------------ stress test: what a fall like past ones would cost
+  const SCENARIOS = [
+    { id: "mild", name: "Mild correction", drop: { ai: 25, world: 10, health: 5, other: 12 }, why: "a normal correction, happens most years" },
+    { id: "2022", name: "Like 2022", drop: { ai: 45, world: 25, health: 10, other: 25 }, why: "chip stocks fell about 45% peak to bottom, world shares about 25%, health care about 10%" },
+    { id: "2000", name: "Like 2000–2002", drop: { ai: 80, world: 45, health: 25, other: 45 }, why: "the dot-com crash: chip stocks fell more than 80% and took 15 years to recover" },
+  ];
+  async function stressTest(el, positions, acct, lt) {
+    const td = T();
+    const { values } = await partsOf(positions, lt);
+    const total = Object.values(values).reduce((a, b) => a + b, 0);
+    if (!total) { el.innerHTML = `<p class="muted">No holdings to test.</p>`; return; }
+    const ccy = (acct && acct.ccy) || td.settings().ccy || "EUR";
+    const m0 = (x) => td.money(x, ccy).replace(/[.,]\d\d(?=\D*$)/, "");
+    let pick = td.store.get("stressPick", "2022");
+    const draw = () => {
+      const sc = SCENARIOS.find((x) => x.id === pick) || SCENARIOS[1];
+      const monthly = +td.settings().monthly || 0;
+      const t = targetsNow(), tsum = Object.values(t).reduce((a, b) => a + (+b || 0), 0) || 100;
+      const loss = BUCKETS.reduce((a, b) => a + values[b.id] * sc.drop[b.id] / 100, 0);
+      const lossT = BUCKETS.reduce((a, b) => a + total * ((+t[b.id] || 0) / tsum) * sc.drop[b.id] / 100, 0);
+      el.innerHTML = `<div class="seg" id="stPick" role="group" aria-label="Scenario">${SCENARIOS.map((x) => `<button type="button" data-s="${x.id}" class="${x.id === sc.id ? "on" : ""}">${td.esc(x.name)}</button>`).join("")}</div>
+        <p class="muted" style="font-size:13px;margin:8px 0 12px">${td.esc(sc.why)}. Rough sizes from past falls, applied to each part of your money.</p>
+        <div class="ret-grid st-tiles">
+          <div class="perf-tile"><div class="k">You would lose</div><div class="v num down">−${m0(loss)}</div><div class="b">${(100 * loss / total).toFixed(0)}% of ${m0(total)}</div></div>
+          <div class="perf-tile"><div class="k">That is</div><div class="v num">${monthly ? (loss / monthly).toFixed(0) : "–"} months</div><div class="b">of your ${monthly ? m0(monthly) : "monthly"} savings</div></div>
+          <div class="perf-tile"><div class="k">With your target mix</div><div class="v num ${lossT < loss ? "up" : ""}">−${m0(lossT)}</div><div class="b">${(100 * lossT / total).toFixed(0)}%: ${lossT < loss ? m0(loss - lossT) + " less" : "about the same"}</div></div>
+        </div>
+        <table class="st-tbl"><thead><tr><th>Part</th><th class="r">Now</th><th class="r">Fall</th><th class="r">Loss</th></tr></thead><tbody>
+          ${BUCKETS.filter((b) => values[b.id]).map((b) => `<tr><td>${td.esc(b.name)}</td><td class="r num">${m0(values[b.id])}</td><td class="r num">−${sc.drop[b.id]}%</td><td class="r num down">−${m0(values[b.id] * sc.drop[b.id] / 100)}</td></tr>`).join("")}</tbody></table>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Big falls are part of investing and the market has always recovered in the end, but a single theme can take many years (chip stocks after 2000 took about 15). The question is whether you could keep your monthly plan going through a fall this size. Not a forecast.</p>`;
+      $$("#stPick button", el).forEach((b) => b.addEventListener("click", () => { pick = b.dataset.s; td.store.set("stressPick", pick); draw(); }));
+    };
+    draw();
+  }
+
+  async function rebalance(el, positions, acct, lt) {
+    const td = T();
+    const { values, members } = await partsOf(positions, lt);
     const ccy = (acct && acct.ccy) || td.settings().ccy || "EUR";
     const draw = () => {
       const targets = Object.assign({}, DEFAULT_TARGETS, td.store.get("rebalTargets", {}));
@@ -591,5 +727,5 @@
     $("#pieMine", el).addEventListener("click", () => { $("#pieSyms", el).value = mine.join(", "); });
   }
 
-  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, rebalance, rebalPlan, bucketOf, pie, zoneBadge, bandBadge, cache };
+  window.LT = { connectionsCard, zoneLabel, themeShares, THEME_CAP, mode, profiles, profile, entry, entryCard, stockCard, backtestCard, openBuy, qualityPage, verdict, verdictCls, diversification, plan, dividends, rebalance, rebalPlan, bucketOf, pie, themeContext, themeFor, sizeFor, combined, verdictLabel, monthPlan, stressTest, zoneBadge, bandBadge, cache };
 })();

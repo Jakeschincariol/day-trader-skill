@@ -20,9 +20,11 @@
   const TF = { h: "Hourly", d: "Daily", w: "Weekly" };
   const FILTERS = { all: "All", buy: "Buy moments", wait: "Oversold, wait", hot: "Overbought" };
 
-  function tipFor(r) {
+  const MIN_DOTS = 8; // fewer past dots than this is too few to say anything
+  function tipFor(r, theme) {
     const s = SETUPS[r.setup] || SETUPS.neutral;
     let t = s.tip;
+    if (r.setup === "fresh-buy" && r.barOpen && r.lastSignal && r.lastSignal.ago === 0) t = "A green dot is forming on a bar that hasn't closed yet: it can still disappear. Check again after the close.";
     const w = r.weekly;
     if (["fresh-buy", "turning-up", "rising-low"].includes(r.setup)) {
       if (w && w.up && w.wt1 < 40) t += " The weekly waves agree: the strongest kind of setup.";
@@ -31,14 +33,19 @@
     }
     if (r.setup === "oversold-wait" && w && w.up) t += " The weekly picture is still rising, so this dip is likely a pause.";
     const b = r.buyHistory;
-    if (["fresh-buy", "turning-up"].includes(r.setup) && b && b.count >= 5 && b.worked < 50) t += ` Careful: on this stock green dots worked only ${b.worked}% of the time.`;
+    if (["fresh-buy", "turning-up"].includes(r.setup) && b && b.count >= MIN_DOTS && b.anyWorked != null && b.worked <= b.anyWorked)
+      t += ` Careful: on this stock green dots did no better than an ordinary day (${b.worked}% against ${b.anyWorked}%).`;
+    // your money comes first: a full theme overrides any timing signal
+    if (theme && theme.over && ["fresh-buy", "turning-up", "rising-low", "oversold-wait"].includes(r.setup))
+      t = `Theme full: ${theme.name} is already ${theme.pct.toFixed(0)}% of your money, so new money goes elsewhere first. Timing only: ` + t.charAt(0).toLowerCase() + t.slice(1);
     return t;
   }
   const histText = (b, r, kind) => {
     if (!b) return `no past ${kind} dots`;
     const per = `${r.ahead} ${r.unit}${r.ahead === 1 ? "" : "s"}`;
-    return b.count < 5 ? `only ${b.count} past ${kind} dot${b.count === 1 ? "" : "s"}: too few to judge`
-      : `${b.count} past ${kind} dots: ${kind === "green" ? "higher" : "lower"} ${per} later in ${b.worked}% (typical ${b.median > 0 ? "+" : ""}${b.median}%)`;
+    const sign = (x) => (x > 0 ? "+" : "") + x;
+    return b.count < MIN_DOTS ? `only ${b.count} past ${kind} dot${b.count === 1 ? "" : "s"}: too few to judge`
+      : `${b.count} past ${kind} dots: ${kind === "green" ? "higher" : "lower"} ${per} later in ${b.worked}% (typical ${sign(b.median)}%). Any day: ${b.anyWorked}% (typical ${sign(b.anyMedian)}%)`;
   };
   function waveBar(v) {
     const x = Math.max(-100, Math.min(100, v)), left = 50 + x / 2;
@@ -54,6 +61,7 @@
   function dotText(r) {
     const l = r.lastSignal;
     if (!l) return "no dot yet";
+    if (l.ago === 0 && r.barOpen) return `${l.kind === "buy" ? "Green" : "Red"} dot forming (bar not closed)`;
     const when = l.ago === 0 ? `on the last ${r.unit}` : `${l.ago} ${r.unit}${l.ago === 1 ? "" : "s"} ago`;
     return `${l.kind === "buy" ? "Green" : "Red"} dot ${when}`;
   }
@@ -72,7 +80,7 @@
       </div>
       <div class="seg mo-filter" id="moFilter" role="group" aria-label="Show">${Object.entries(FILTERS).map(([k, v]) => `<button type="button" data-f="${k}">${v}</button>`).join("")}</div>
       <div class="card mo-hourly"><label class="check"><input type="checkbox" id="moHourly" ${td.store.get("momHourly", false) ? "checked" : ""}> <b>Hourly check</b></label>
-        <span class="muted">Every hour, check your stocks and watchlist and tell me when a new green dot appears (daily or hourly). Works while the dashboard is open in a browser tab.</span></div>
+        <span class="muted">Every hour, check your stocks and watchlist and tell me when a new green dot appears on a closed daily bar (in Swing mode also hourly dots). Works while the dashboard is open in a browser tab.</span></div>
       <div id="moSum" class="mo-sum"></div>
       <div class="card" style="margin-top:12px"><div id="moRows">${td.skeleton(10)}</div></div>
       <details class="card fold" style="margin-top:16px"><summary class="card-head"><h2><i data-lucide="lightbulb"></i>How to use momentum for your entry</h2></summary>
@@ -105,8 +113,8 @@
       if (!data || !$("#moRows")) return;
       const ok = data.rows.filter((r) => !r.error);
       const n = (k) => ok.filter((r) => k.includes(r.setup)).length;
-      $("#moSum").innerHTML = `<span class="pill up">${n(["fresh-buy", "turning-up", "rising-low"])} buy moment${n(["fresh-buy", "turning-up", "rising-low"]) === 1 ? "" : "s"}</span><span class="pill flat">${n(["oversold-wait"])} oversold, wait</span><span class="pill down">${n(["overbought", "fresh-sell"])} overbought or red dot</span><span class="muted">${TF[data.tf]} candles · ${ok.length} stocks</span>`;
-      const keep = { all: () => true, buy: (r) => ["fresh-buy", "turning-up", "rising-low"].includes(r.setup), wait: (r) => r.setup === "oversold-wait", hot: (r) => ["overbought", "fresh-sell", "cooling"].includes(r.setup) }[filter];
+      $("#moSum").innerHTML = `<span class="pill up">${n(["fresh-buy", "turning-up"])} buy moment${n(["fresh-buy", "turning-up"]) === 1 ? "" : "s"}</span><span class="pill flat">${n(["oversold-wait"])} oversold, wait</span><span class="pill down">${n(["overbought", "fresh-sell"])} overbought or red dot</span><span class="muted">${TF[data.tf]} candles · ${ok.length} stocks</span>`;
+      const keep = { all: () => true, buy: (r) => ["fresh-buy", "turning-up"].includes(r.setup), wait: (r) => r.setup === "oversold-wait", hot: (r) => ["overbought", "fresh-sell", "cooling"].includes(r.setup) }[filter];
       const rows = ok.filter(keep).sort((a, b) => (SETUPS[a.setup] || SETUPS.neutral).rank - (SETUPS[b.setup] || SETUPS.neutral).rank || a.wt1 - b.wt1);
       const bad = data.rows.filter((r) => r.error);
       $("#moRows").innerHTML = (rows.length ? rows.map((r) => {
@@ -120,7 +128,7 @@
           <span class="mo-state"><span class="mo-pill ${s.tone}">${s.label}</span><small>${dotText(r)}</small>
             ${w ? `<small>Weekly: <b class="${w.tone}">${w.label.toLowerCase()}</b></small>` : ""}
             ${m ? `<small>MACD: ${m.above ? "buyers" : "sellers"} ${m.stronger ? "stronger" : "fading"}</small>` : ""}</span>
-          <span class="mo-tip">${td.esc(tipFor(r))}<small>${td.esc(histText(r.buyHistory, r, "green"))}</small></span>
+          <span class="mo-tip">${td.esc(tipFor(r, window.LT ? window.LT.themeFor(data.ctx, r.symbol) : null))}<small>${td.esc(histText(r.buyHistory, r, "green"))}</small></span>
         </div>`;
       }).join("") : `<p class="empty">Nothing in this group right now.</p>`) +
         (bad.length ? `<p class="muted" style="font-size:12.5px;margin:10px 0 0">No data for ${bad.map((r) => td.esc(r.symbol)).join(", ")} (too little history or an unknown ticker).</p>` : "");
@@ -132,7 +140,8 @@
       if (!syms.length) { $("#moRows").innerHTML = `<p class="empty">Link your broker or add stocks to your watchlist (★ on any stock page), or add a ticker above.</p>`; return; }
       try {
         const d = await td.api(`/api/momentum?symbols=${encodeURIComponent(syms.join(","))}&tf=${tf}${fresh ? "&fresh=1" : ""}`);
-        data = Object.assign(d, { mine });
+        const ctx = window.LT ? await window.LT.themeContext(syms).catch(() => null) : null;
+        data = Object.assign(d, { mine, ctx });
       } catch (e) { if ($("#moRows")) $("#moRows").innerHTML = `<p class="error">${td.esc(e.message)}</p>`; return; }
       render();
     };
@@ -169,11 +178,12 @@
     if (!syms.length) return;
     const seen = new Set(td.store.get("momSeen", []));
     const fresh = [];
-    for (const tf of ["d", "h"]) {
+    const lt = !window.LT || window.LT.mode() !== "swing";
+    for (const tf of lt ? ["d"] : ["d", "h"]) {
       const d = await td.api(`/api/momentum?symbols=${encodeURIComponent(syms.join(","))}&tf=${tf}`).catch(() => null);
       (d ? d.rows : []).forEach((r) => {
         const l = r.lastSignal;
-        if (r.error || !l || l.kind !== "buy" || l.ago > (tf === "h" ? 1 : 0)) return;
+        if (r.error || !l || l.kind !== "buy" || l.ago > 1 || (l.ago === 0 && r.barOpen)) return; // only dots on closed bars
         const key = `${r.symbol}|${tf}|${r.at - (tf === "h" ? 3600 : 86400) * l.ago}`;
         if (seen.has(key)) return;
         seen.add(key);

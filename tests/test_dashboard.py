@@ -497,7 +497,26 @@ class EntryCheck(unittest.TestCase):
         self.assertEqual(v(state="uptrend", zone="Speculative")["title"], "Careful")
         self.assertEqual(v(state="uptrend", zone="Stretched")["title"], "Fine, but no discount")
         notes = v(state="falling", zone="Accumulate+", earnings={"date": "2026-11-20", "days": 5}, marketWeak="red")["notes"]
+        self.assertEqual(len(notes), 2)  # no "good candidate for adding" while it is still falling
+        notes = v(state="steadying", zone="Accumulate+", earnings={"date": "2026-11-20", "days": 5}, marketWeak="red")["notes"]
         self.assertEqual(len(notes), 3)
+        self.assertEqual(v(state="downtrend", zone="Accumulate+")["title"], "Don't buy it all at once")
+
+    def test_deep_fall_without_a_new_low_is_a_downtrend_not_sideways(self):
+        up = [100 * 1.001 ** i for i in range(400)]
+        # falls about 40% in 10 weeks, then bounces a little for 8 days (no new 1-month low in the last 5 days, still under the 20-day average)
+        path = up[:340] + [up[339] * 0.99 ** k for k in range(1, 53)]
+        path += [path[-1] * 1.003 ** k for k in range(1, 400 - len(path) + 1)]
+        st = srv._entry_state(*self.series(path), len(path) - 1)
+        self.assertEqual(st, "downtrend")
+
+    def test_single_stock_history_is_blended_with_a_typical_company(self):
+        st = {"up12m": 92.0, "median12m": 80.0, "episodes": 12}
+        out = srv._shrink(dict(st), {"up12m": 83, "median12m": 18.0}, 12)
+        self.assertEqual(out["up12mOwn"], 92.0)
+        self.assertLess(out["up12m"], 92.0)
+        self.assertEqual(out["up12m"], round((12 * 92 + 8 * 60) / 20))
+        self.assertEqual(out["index"]["up12m"], 83)
 
     def test_ladder_from_past_dips(self):
         import random
@@ -789,7 +808,7 @@ class Projection(unittest.TestCase):
 
     def test_stock_assumptions_pull_toward_the_market(self):
         hot = self.run_js("P.stockAssumptions(Array.from({length: 300}, (_, i) => 100 * Math.pow(1.002, i) * (1 + 0.02 * Math.sin(i))), 60)")
-        self.assertEqual(hot["growth"], 16.0)  # 60% capped at 25, then halfway to 7
+        self.assertEqual(hot["growth"], 10.0)  # 60% capped at 13, then halfway to 7: at most 10% a year
         self.assertTrue(10 <= hot["vol"] <= 60)
         cold = self.run_js("P.stockAssumptions([], null)")
         self.assertEqual(cold, {"growth": 7, "vol": 30, "own": None})
@@ -805,8 +824,8 @@ class Projection(unittest.TestCase):
         self.assertEqual(r["deposits"][5], 6000)
 
     def test_middle_outcome_follows_typical_growth(self):
-        # arithmetic return = growth + vol^2/2, so the middle path compounds at about the typical growth
-        a = '{etfRet:7.5,etfVol:15,corr:0.75,infl:0,stkRet:10+40*40/200,stkVol:40}'
+        # the inputs are typical (middle) growth, the same meaning as the per-stock forecast: big swings don't change the middle
+        a = '{etfRet:7.5,etfVol:15,corr:0.75,infl:0,stkRet:10,stkVol:40}'
         r = self.run_js("P.simulate({start:10000,monthly:0,years:10,etf:0,raise:0,a:%s},3000)" % a)
         self.assertAlmostEqual(r["pct"][10]["p50"] / 10000, 1.10 ** 10, delta=0.35)
 
@@ -819,8 +838,14 @@ class Projection(unittest.TestCase):
     def test_steady_return_matches_the_formula(self):
         a = '{etfRet:6,etfVol:0,stkRet:6,stkVol:0,corr:0.75,infl:0}'
         r = self.run_js("P.simulate({start:0,monthly:100,years:10,etf:100,raise:0,a:%s},50)" % a)
-        m = 0.06 / 12
-        self.assertAlmostEqual(r["pct"][10]["p50"], 100 * ((1 + m) ** 120 - 1) / m, delta=1)
+        g = 1.06 ** (1 / 12)  # 6% a year, compounded monthly
+        self.assertAlmostEqual(r["pct"][10]["p50"], 100 * (g ** 120 - 1) / (g - 1), delta=1)
+
+    def test_plan_and_stock_forecast_agree(self):
+        a = '{etfRet:6.5,etfVol:15,stkRet:8,stkVol:42,corr:0.75,infl:0}'
+        plan = self.run_js("P.simulate({start:10000,monthly:0,years:10,etf:0,raise:0,a:%s},3000)" % a)["pct"][10]["p50"]
+        one = self.run_js("P.simulateStock({start:10000,monthly:0,years:10,growth:8,vol:42},3000)")["pct"][10]["p50"]
+        self.assertAlmostEqual(plan / one, 1, delta=0.08)
 
     def test_an_etf_core_narrows_the_range(self):
         a = '{etfRet:7.5,etfVol:15,stkRet:11,stkVol:42,corr:0.75,infl:2.5}'
@@ -1458,3 +1483,59 @@ class GrowthCash(unittest.TestCase):
             self.assertEqual(box, {"A": "king", "B": "cash", "C": "growth", "D": "weak", "E": "burn", "F": "king", "ZZ": None})
         finally:
             srv.growth_cash_one = saved
+
+
+class ReviewFixes(unittest.TestCase):
+    def test_pie_cap_that_core_stocks_cannot_meet_keeps_small_slices_small(self):
+        items = [{"symbol": c, "score": 80, "vol": 40} for c in "ABCD"] + [{"symbol": s, "score": 30, "vol": 90, "speculative": True} for s in ("X", "Y")]
+        w = srv.pie_weights(items, cap=14)
+        self.assertEqual(sum(w.values()), 100)
+        self.assertEqual((w["X"], w["Y"]), (2, 2))
+        self.assertTrue(all(w[c] == 24 for c in "ABCD"))
+
+    def test_failed_key_person_lookup_is_not_kept_for_a_week(self):
+        saved = (srv._kp_from_yahoo, srv._kp_from_fmp)
+        try:
+            with srv._cache_lock:
+                for k in [k for k in srv._cache if k[0] in ("keyperson", "keyperson-miss")]:
+                    del srv._cache[k]
+
+            def boom(sym):
+                raise RuntimeError("blocked")
+            srv._kp_from_yahoo = srv._kp_from_fmp = boom
+            self.assertFalse(srv.key_person("QQQZ")["available"])
+            with srv._cache_lock:
+                self.assertNotIn(("keyperson", "QQQZ"), srv._cache)
+                self.assertEqual(srv._cache[("keyperson-miss", "QQQZ")][2], 1800)
+        finally:
+            srv._kp_from_yahoo, srv._kp_from_fmp = saved
+
+    def test_ceo_news_words_must_be_whole_words(self):
+        no = ["Cook issued a statement on iPhone demand", "Demand remains healthy, says Huang", "UnitedHealth shares rise",
+              "Justice Department reviews deal", "Su leaves guidance unchanged", "Jassy says AWS will replace old servers"]
+        yes = ["CEO Huang to step down", "Musk sued by investors", "Board names successor to Cook", "Nadella retires", "Probe into CEO Su"]
+        self.assertEqual([t for t in no if srv.CEO_NEWS_RE.search(t)], [])
+        self.assertTrue(all(srv.CEO_NEWS_RE.search(t) for t in yes + ["Board moves to replace the CEO", "Gelsinger replaced as CEO"]))
+
+    def test_network_error_never_swaps_a_ticker(self):
+        saved = (srv._chart, srv.yahoo)
+        try:
+            with srv._cache_lock:
+                for k in [k for k in srv._cache if k[0] == "livesym"]:
+                    del srv._cache[k]
+            srv.RENAMED.clear()
+
+            def down(*a, **k):
+                raise urllib.error.URLError("timeout")
+            srv._chart = down
+            srv.yahoo = lambda path: {"quotes": [{"symbol": "VUSA.AS", "quoteType": "ETF", "shortname": "Vanguard S&P 500"}]}
+            self.assertEqual(srv.live_symbol("VUSA.L", "IE00B3XXRP09", "Vanguard S&P 500"), "VUSA.L")
+            with srv._cache_lock:
+                self.assertFalse(any(k[0] == "livesym" for k in srv._cache))
+        finally:
+            srv._chart, srv.yahoo = saved
+            srv.RENAMED.clear()
+
+    def test_symbols_are_checked_at_the_api(self):
+        self.assertTrue(srv.re.match(r"^[A-Z0-9.\-^=]{1,15}$", "BRK-B"))
+        self.assertFalse(srv.re.match(r"^[A-Z0-9.\-^=]{1,15}$", "../../ETC"))

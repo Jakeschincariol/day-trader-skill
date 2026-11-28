@@ -296,7 +296,11 @@
     if (window.Trade) window.Trade.regime($("#moodBanner"));
     RF.market = async () => { await Promise.all([homeMarket(), loadStrip(), window.Trade ? window.Trade.regime($("#moodBanner")) : null]); };
     RF.wl = homeWatch;
-    RF.trend = async () => { const t = await api("/api/trending").catch(() => []); const el = $("#trend"); if (el) { el.innerHTML = liveRowsHtml(t); flash(el, t); } };
+    RF.trend = async () => {
+      let t = await api("/api/trending").catch(() => []);
+      if (isLT()) t = t.filter((r) => !/-USD$|=X$|=F$/.test(r.symbol || "")); // long-term mode: no crypto, currencies or futures
+      const el = $("#trend"); if (el) { el.innerHTML = liveRowsHtml(t); flash(el, t); }
+    };
     RF.trend().then(() => stamp("trend"));
     homeWatch().then(() => stamp("wl"));
     await homeMarket(); stamp("market");
@@ -348,7 +352,7 @@
     // positions with a value in the account currency, for themes and the entry list
     const pos = brokerPositions().map((p) => Object.assign({}, p, { acct: !!(p.valueAcct || p.value), mv: p.valueAcct || p.value || (p.qty || 0) * (p.price || p.avgPrice || 0) }))
       .concat(manual().map((m) => Object.assign({ mv: m.qty * m.avgPrice }, m)));
-    const total = pos.reduce((a, p) => a + (p.mv || 0), 0);
+    const total = pos.reduce((a, p) => a + (p.mv || 0), 0) + (t212 && !t212.error && t212.cash && t212.cash.free > 0 ? t212.cash.free : 0); // same total as Portfolio
     homeToday(pos, pf.ccy, my);
     // monthly plan + theme warning
     const monthly = +settings().monthly || 0;
@@ -380,8 +384,18 @@
         <div class="plan-bar" role="progressbar" aria-label="Share of this month's plan invested" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(share)}"><span class="${share >= 100 ? "done" : ""}" style="width:${share.toFixed(0)}%"></span></div>
         <p class="plan-hint">${thisMonth == null ? "Buys this month could not be read." : left > 0 ? `${noCents(money(left, pc))} left to invest this month.` : "Done for this month. Nothing else to do."}</p>`
         : `<p class="plan-hint">Set your monthly amount in the <a href="#/portfolio">10-year plan</a> to track it here.</p>`}
+      <div id="planWhere" class="plan-where"></div>
       ${theme && theme.pct > cap ? `<div class="plan-warn"><b>${esc(theme.name)}: ${theme.pct.toFixed(0)}% of your money</b>Above your ${cap}% limit for one theme. Put new money into something else first, for example a world fund.</div>`
         : theme ? `<div class="plan-ok">Biggest theme: ${esc(theme.name)} at ${theme.pct.toFixed(0)}%, under your ${cap}% limit.</div>` : ""}`;
+    if (monthly && window.LT && pos.length) {
+      window.LT.monthPlan(pos, monthly).then((mp) => {
+        const el = $("#planWhere");
+        if (!el) return;
+        const parts = mp.parts.filter((x) => x.amount >= 1 || x.now > x.target + 2);
+        el.innerHTML = `<div class="hero-k" style="margin-top:4px">Where your ${noCents(money(monthly, pc))} goes</div><ul>${parts.map((x) => `<li><span>${esc(x.name)}<small>${x.amount >= 1 ? esc(x.idea) : "above its target: nothing this month"}</small></span><b class="num ${x.amount >= 1 ? "" : "muted"}">${noCents(money(x.amount, pc))}</b></li>`).join("")}</ul>
+          <a href="#/portfolio" class="plan-link">Change the targets →</a>`;
+      }).catch(() => {});
+    }
     if (!h || !h.dates || !h.dates.length) { $("#heroChart").innerHTML = `<p class="muted" style="font-size:13px">No history yet.</p>`; return; }
     let range = store.get("heroRange", "1Y");
     const paint = () => { $$("#heroRange button").forEach((b) => b.classList.toggle("on", b.dataset.r === range)); heroChart($("#heroChart"), h, range); };
@@ -397,16 +411,29 @@
     if (!list.length) { el.innerHTML = `<p class="empty">No holdings yet.</p>`; return; }
     const quotes = await api("/api/spark?symbols=" + encodeURIComponent(list.map((x) => x.symbol).join(","))).catch(() => []);
     const q = Object.fromEntries(quotes.map((r) => [r.symbol, r]));
+    let ctx = null, moms = {};
     const row = (x, e) => {
-      const v = e && e.verdict, c = q[x.symbol] || {};
+      const c = q[x.symbol] || {};
+      const v = e && window.LT ? window.LT.combined({ zone: e.zone, entry: e, mom: moms[x.symbol], theme: window.LT.themeFor(ctx, x.symbol), size: window.LT.sizeFor(ctx, x.symbol) }) : null;
       return `<a class="today-row" href="#/stock/${encodeURIComponent(x.symbol)}">
         <span class="nm"><b>${esc(x.symbol)}</b><span>${esc(x.name || c.name || "")}</span></span>
         <span class="val">${noCents(x.acct ? money(x.mv, ccy) : (/^GB[pX]$/.test(c.currency || "") ? money(x.mv / 100, "GBP") : money(x.mv, c.currency || ccy)))}<span class="${cls(c.changePct)}">${c.changePct == null ? "" : pct(c.changePct) + " today"}</span></span>
-        <span class="vd">${v ? `<b class="${esc(v.tone)}">${esc(v.title)}</b><span class="why">${esc(v.text)}</span>` : e === null ? `<span class="why">Entry check unavailable</span>` : `<span class="why">Checking…</span>`}</span></a>`;
+        <span class="vd">${v ? `<b class="${esc(v.tone)}">${esc(v.label)}</b><span class="why">${esc(v.text)}${v.note ? " " + esc(v.note) : ""}</span>` : e === null ? `<span class="why">Entry check unavailable</span>` : `<span class="why">Checking…</span>`}</span></a>`;
     };
     el.innerHTML = list.map((x) => row(x)).join("");
-    const res = await Promise.all(list.map((x) => (window.LT ? window.LT.entry(x.symbol).catch(() => null) : null)));
+    const syms = list.map((x) => x.symbol);
+    // momentum only adds a note: show the verdicts first, add the note when it arrives (slow the first time)
+    const momP = api(`/api/momentum?symbols=${encodeURIComponent(syms.join(","))}&tf=d`).catch(() => null);
+    const [res, c2] = await Promise.all([
+      Promise.all(list.map((x) => (window.LT ? window.LT.entry(x.symbol).catch(() => null) : null))),
+      window.LT ? window.LT.themeContext(syms).catch(() => null) : null,
+    ]);
+    ctx = c2;
     if (my !== routeId || !$("#today")) return;
+    el.innerHTML = list.map((x, i) => row(x, res[i])).join("");
+    const m2 = await momP;
+    (m2 ? m2.rows : []).forEach((r) => { if (!r.error) moms[r.symbol] = r; });
+    if (my !== routeId || !$("#today") || !Object.keys(moms).length) return;
     el.innerHTML = list.map((x, i) => row(x, res[i])).join("");
   }
 
@@ -752,7 +779,7 @@
       RF.ltv = async () => { delete window.LT.cache[a.symbol]; await window.LT.stockCard(a, $("#ltCard")); };
       window.LT.stockCard(a, $("#ltCard")).then((lp) => {
         stamp("ltv");
-        if (lp && $("#hdrBadges")) $("#hdrBadges").insertAdjacentHTML("afterbegin", window.LT.bandBadge(lp.band) + " " + window.LT.zoneBadge(lp.zone) + " ");
+        if (lp && $("#hdrBadges")) $("#hdrBadges").insertAdjacentHTML("afterbegin", window.LT.bandBadge(lp.band) + " "); // the buy verdict is in the strip below
       });
       window.LT.backtestCard(a.symbol, $("#ltBt"));
       const owned = brokerPositions().concat(manual()).find((p) => p.symbol === a.symbol);
@@ -762,9 +789,13 @@
         const e = await window.LT.entry(a.symbol).catch(() => null), s = $("#entryStrip");
         if (!e || !s) return;
         const lp = window.LT.cache[a.symbol];
-        s.className = "entry-strip " + e.verdict.tone; s.hidden = false;
-        s.innerHTML = `<i data-lucide="crosshair"></i><span>Right moment to buy? <b>${esc(e.verdict.title)}</b></span>` +
-          (lp && lp.score != null ? `<span class="muted">Long-term score <b>${lp.score}</b>${lp.zone ? " · " + esc(window.LT.zoneLabel(lp.zone)) : ""}</span>` : "") + `<span class="go">Details ↓</span>`;
+        const ctx = await window.LT.themeContext([a.symbol]).catch(() => null);
+        const mom = await api(`/api/momentum?symbols=${encodeURIComponent(a.symbol)}&tf=d`).then((d) => d.rows[0]).catch(() => null);
+        const v = window.LT.combined({ zone: (lp && lp.zone) || e.zone, entry: e, mom: mom && !mom.error ? mom : null, theme: window.LT.themeFor(ctx, a.symbol), size: window.LT.sizeFor(ctx, a.symbol) });
+        if (!$("#entryStrip")) return;
+        s.className = "entry-strip " + v.tone; s.hidden = false;
+        s.innerHTML = `<i data-lucide="crosshair"></i><span>Right moment to buy? <b>${esc(v.label)}</b></span><span class="muted">${esc(v.text)}${v.note ? " " + esc(v.note) : ""}</span>` +
+          (lp && lp.score != null ? `<span class="muted">Long-term score <b>${lp.score}</b></span>` : "") + `<span class="go">Details ↓</span>`;
         if (window.lucide) window.lucide.createIcons();
       });
     }
@@ -773,18 +804,21 @@
     {
       let deep = null, tf = store.get("deepTf", "w");
       const card = $("#deepCard"), btn = $("#deepBtn");
+      let deepSeq = 0;
+      const box = $("#deepBox", card), read = $("#deepRead", card); // this page's elements, not whatever page is showing later
       const drawDeep = async () => {
+        const my = ++deepSeq; // a newer request (other candle size, other page) wins
         $$("#deepTf button").forEach((b) => b.classList.toggle("on", b.dataset.tf === tf));
         if (deep) { deep.destroy(); deep = null; }
-        $("#deepBox").innerHTML = skeleton(10); $("#deepRead").innerHTML = "";
+        box.innerHTML = skeleton(10); read.innerHTML = "";
         let d;
         try { d = await api(`/api/deep?symbol=${encodeURIComponent(a.symbol)}&tf=${tf}`); }
-        catch (e) { if ($("#deepBox")) $("#deepBox").innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
-        if (!$("#deepBox") || card.hidden) return;
-        if (!d.c || d.c.length < 60) { $("#deepBox").innerHTML = `<p class="muted">Not enough history for these indicators.</p>`; return; }
-        $("#deepBox").innerHTML = "";
-        deep = window.DeepChart.DeepChart($("#deepBox"), d);
-        $("#deepRead").innerHTML = `<ul class="dc-list">${deep.reading.map((r) => `<li><b><span class="dot ${r.tone}"></span>${esc(r.k)}</b><span>${esc(r.text)}</span></li>`).join("")}</ul>`;
+        catch (e) { if (my === deepSeq && card.isConnected) box.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+        if (my !== deepSeq || rid !== routeId || !card.isConnected || card.hidden) return;
+        if (!d.c || d.c.length < 60) { box.innerHTML = `<p class="muted">Not enough history for these indicators.</p>`; return; }
+        box.innerHTML = "";
+        deep = window.DeepChart.DeepChart(box, d);
+        read.innerHTML = `<ul class="dc-list">${deep.reading.map((r) => `<li><b><span class="dot ${r.tone}"></span>${esc(r.k)}</b><span>${esc(r.text)}</span></li>`).join("")}</ul>`;
       };
       const open = (on, scroll) => {
         card.hidden = !on; btn.setAttribute("aria-expanded", String(on)); btn.classList.toggle("on", on); store.set("deepOpen", on);
@@ -801,8 +835,9 @@
 
     // ---- key person risk (information only: it does not change the buy advice)
     if ($("#kpBox")) {
-      api("/api/keyperson?symbol=" + encodeURIComponent(a.symbol)).then((k) => { if ($("#kpBox")) keyPersonCard($("#kpBox"), k); })
-        .catch((e) => { if ($("#kpBox")) $("#kpBox").innerHTML = `<p class="muted">Key person data unavailable: ${esc(e.message)}</p>`; });
+      const kpBox = $("#kpBox"); // this page's box: a late answer must not draw on the next stock's page
+      api("/api/keyperson?symbol=" + encodeURIComponent(a.symbol)).then((k) => { if (rid === routeId && kpBox.isConnected) keyPersonCard(kpBox, k); })
+        .catch((e) => { if (rid === routeId && kpBox.isConnected) kpBox.innerHTML = `<p class="muted">Key person data unavailable: ${esc(e.message)}</p>`; });
     }
 
     // ---- monthly-investing forecast for this stock
@@ -963,6 +998,7 @@
         <div class="card"><div class="card-head"><h2><i data-lucide="pie-chart"></i>Allocation</h2>${rf("pos")}</div><div id="alloc">${skeleton(4)}</div></div>
       </div>
       ${lt ? `<div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="scale"></i>Rebalancing tracker</h2><span class="muted" style="font-size:12.5px">your target mix and how to get there with new money</span></div><div id="rebalBox">${skeleton(5)}</div></div>` : ""}
+      ${lt ? `<div class="card" style="margin-top:16px"><div class="card-head" style="flex-wrap:wrap"><h2><i data-lucide="activity"></i>Stress test</h2><span class="muted" style="font-size:12.5px">what a fall like past ones would cost you</span></div><div id="stressBox">${skeleton(4)}</div></div>` : ""}
       ${lt ? `<details class="card fold" style="margin-top:16px" id="pieCard" ${store.get("pieOpen", false) ? "open" : ""}><summary class="card-head"><h2><i data-lucide="pie-chart"></i>Pie optimizer</h2><span class="muted" style="font-size:12.5px">a percentage for each stock of a pie</span></summary><div id="pieBox"></div></details>` : ""}
       ${lt ? `<div class="grid g2" style="margin-top:16px">
         <div class="card"><div class="card-head"><h2><i data-lucide="calendar-check"></i>Monthly plan</h2></div><div id="planBox">${skeleton(5)}</div></div>
@@ -1065,12 +1101,14 @@
       const tsum = Object.values(targets).reduce((a, b) => a + (+b || 0), 0) || 100;
       const totAcct = positions.reduce((a, p) => a + (p.valueAcct || p.mv || 0), 0) + (t && t.cash.free > 0 ? t.cash.free : 0);
       const ts = await window.LT.themeShares(positions, totAcct);
+      const timeout = new Promise((ok) => setTimeout(() => ok(null), 8000));
+      const ents = Object.fromEntries(await Promise.all(syms.map(async (s) => [s, await Promise.race([window.LT.entry(s).catch(() => null), timeout])])));
       for (const p of positions) {
         p.weight = totAcct ? 100 * (p.valueAcct || p.mv || 0) / totAcct : 0;
         const tg = targets[p.symbol] != null ? 100 * targets[p.symbol] / tsum : null;
         const grp = ts.groupOf(p.symbol);
         p.theme = ts.themeOf(p.symbol) || "";
-        const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol), grp ? { name: grp, pct: ts.byGroup[grp] } : null);
+        const vd = window.LT.verdict(p, p.weight, tg, ltMap[p.symbol], isFund(p.symbol), grp ? { name: grp, pct: ts.byGroup[grp] } : null, ents[p.symbol]);
         p.verdict = vd.v; p.verdictWhy = vd.why;
         p.alert = vd.v === "Trim" || vd.v === "Review thesis" ? vd.v : "OK";
       }
@@ -1086,6 +1124,7 @@
       (rv ? rv.ppl || 0 : 0) + positions.filter((p) => p.source === "Manual").reduce((a, p) => a + (p.ppl || 0), 0);
     const alerts = positions.filter((p) => p.alert && p.alert !== "OK").length;
     if (lt && window.LT && positions.length) window.LT.diversification($("#riskBox"), positions, acctR, ltMap);
+    if (lt && window.LT && positions.length && $("#stressBox")) window.LT.stressTest($("#stressBox"), positions, acctR, ltMap).catch((e) => { $("#stressBox").innerHTML = `<p class="error">${esc(e.message)}</p>`; });
     if (lt && window.LT && $("#pieBox")) { window.LT.pie($("#pieBox"), positions); $("#pieCard").addEventListener("toggle", (e) => store.set("pieOpen", e.target.open)); }
     if (lt && window.LT && positions.length && $("#rebalBox")) window.LT.rebalance($("#rebalBox"), positions, acctR, ltMap).catch((e) => { $("#rebalBox").innerHTML = `<p class="error">${esc(e.message)}</p>`; });
     else if (R) window.Trade.riskPanel($("#riskBox"), R, acctR); else $("#riskBox").innerHTML = `<p class="muted">Add positions to see your risk.</p>`;
@@ -1128,7 +1167,7 @@
       ...(lt ? [
         { key: "weight", label: "Weight", r: true, val: (p) => p.weight, html: (p) => p.weight != null ? p.weight.toFixed(1) + "%" : "–" },
         { key: "lts", label: "Long-term score", val: (p) => (ltMap[p.symbol] || {}).score, html: (p) => { const x = ltMap[p.symbol]; return x && x.score != null ? `${meter(x.score)}<span class="nm">${esc(x.band || "")}</span>` : "–"; } },
-        { key: "verdict", label: "Action", val: (p) => ["Review thesis", "Trim", "Accumulate+", "Accumulate", "Hold"].indexOf(p.verdict), html: (p) => p.verdict ? `<span class="badge ${window.LT.verdictCls(p.verdict)}">${esc(window.LT.zoneLabel(p.verdict))}</span><span class="nm">${esc(p.verdictWhy || "")}</span>` : "" },
+        { key: "verdict", label: "Action", val: (p) => ["Review thesis", "Trim", "Theme full", "Wait", "Pricey", "Accumulate+", "Accumulate", "Hold"].indexOf(p.verdict), html: (p) => p.verdict ? `<span class="badge ${window.LT.verdictCls(p.verdict)}">${esc(window.LT.verdictLabel(p.verdict))}</span><span class="nm">${esc(p.verdictWhy || "")}</span>` : "" },
       ] : [
       { key: "stop", label: "Stop", r: true, sm: true, val: (p) => p.stopOrder || p.suggestedStop, html: (p) => p.stopOrder ? `<span class="num">${fmt(p.stopOrder, dp(p.stopOrder))}</span><span class="nm">T212 stop order</span>`
         : p.suggestedStop ? `<span class="num ${p.unprotected ? "down" : "muted"}">${fmt(p.suggestedStop, dp(p.suggestedStop))}</span><span class="nm">${p.unprotected ? "⚠ none set · suggested" : "suggested"}</span>` : "–" },
@@ -1254,7 +1293,7 @@
         const L = lt(p.symbol);
         return [p.symbol, p.name || L.name || "", p.source || "", round(p.qty, 6), round(p.avgPrice, 4), round(p.price, 4), p.currency || (p.q && p.q.currency) || "",
           round(v, 2), gain != null ? round(v - gain, 2) : null, round(gain, 2), round(p.plPct, 2), round(total ? 100 * v / total : null, 2),
-          L.sector || "", L.industry || "", L.country || "", p.theme || "", L.score ?? null, L.zone ? (window.LT.zoneLabel(L.zone)) : "", p.verdict ? window.LT.zoneLabel(p.verdict) : ""];
+          L.sector || "", L.industry || "", L.country || "", p.theme || "", L.score ?? null, L.zone ? (window.LT.zoneLabel(L.zone)) : "", p.verdict ? window.LT.verdictLabel(p.verdict) : ""];
       });
       const sheets = [{ name: "Holdings", columns: ["Symbol", "Name", "Account", "Shares", "Avg price", "Price", "Price currency", `Value (${ccy})`, `Invested (${ccy})`,
         `Gain (${ccy})`, "Gain %", "Weight %", "Sector", "Industry", "Country", "Theme", "Long-term score", "Buy zone", "Action"], rows: holdings }];
@@ -1515,13 +1554,18 @@
   };
 
   // ------------------------------------------------------------ router
-  // phone: "More" in the bottom bar opens Compare, News and Market Map
+  // phone: "More" in the bottom bar opens Compare, News, Market Map, Momentum, Growth & Cash
+  const shade = document.createElement("div"); // dims the page; lives outside the bar so the bar's blur can't trap it
+  shade.className = "more-shade"; shade.hidden = true; document.body.appendChild(shade);
+  const closeMore = () => { const nav = $("#tabs"), btn = $("#tabMore"); if (nav) nav.classList.remove("more-open"); if (btn) btn.setAttribute("aria-expanded", "false"); shade.hidden = true; };
   document.addEventListener("click", (e) => {
     const nav = $("#tabs"), btn = $("#tabMore");
     if (!nav || !btn) return;
-    if (e.target.closest("#tabMore")) { const open = nav.classList.toggle("more-open"); btn.setAttribute("aria-expanded", String(open)); return; }
-    if (nav.classList.contains("more-open") && !e.target.closest("#tabs a")) { nav.classList.remove("more-open"); btn.setAttribute("aria-expanded", "false"); }
-  });
+    if (e.target.closest("#tabMore")) { const open = nav.classList.toggle("more-open"); btn.setAttribute("aria-expanded", String(open)); shade.hidden = !open; return; }
+    // a tap outside the open menu only closes it: it must not also open whatever is underneath
+    if (nav.classList.contains("more-open") && !e.target.closest("#tabs a")) { e.preventDefault(); e.stopPropagation(); closeMore(); }
+  }, true);
+  document.addEventListener("keydown", (e) => { const nav = $("#tabs"); if (e.key === "Escape" && nav && nav.classList.contains("more-open")) { closeMore(); const b = $("#tabMore"); if (b) b.focus(); } });
   async function route() {
     if (current) { try { current(); } catch (e) { /* ignore */ } current = null; }
     RF = {};
@@ -1531,7 +1575,7 @@
     const page = pages[name || "home"] ? name || "home" : "home";
     const tab = { stock: "markets" }[page] || page;
     const nav = $("#tabs");
-    nav.classList.remove("more-open"); $("#tabMore") && $("#tabMore").setAttribute("aria-expanded", "false");
+    closeMore();
     nav.classList.toggle("more-active", ["compare", "news", "map", "momentum", "growthcash"].includes(tab));
     $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
