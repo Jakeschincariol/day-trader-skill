@@ -1292,6 +1292,11 @@
     current = cleanup;
   };
 
+  pages.growthcash = async function (arg, params) {
+    if (!window.GrowthCash) { view.innerHTML = `<p class="error">Growth & Cash module missing.</p>`; return; }
+    current = await window.GrowthCash.page(view, params);
+  };
+
   pages.momentum = async function (arg, params) {
     if (!window.Momentum) { view.innerHTML = `<p class="error">Momentum module missing.</p>`; return; }
     current = await window.Momentum.page(view, params);
@@ -1527,7 +1532,7 @@
     const tab = { stock: "markets" }[page] || page;
     const nav = $("#tabs");
     nav.classList.remove("more-open"); $("#tabMore") && $("#tabMore").setAttribute("aria-expanded", "false");
-    nav.classList.toggle("more-active", ["compare", "news", "map", "momentum"].includes(tab));
+    nav.classList.toggle("more-active", ["compare", "news", "map", "momentum", "growthcash"].includes(tab));
     $$("#tabs a").forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle("active", on); on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"); });
     window.scrollTo(0, 0);
     const first = routeId === 1;

@@ -965,3 +965,27 @@ details.fold-inline > summary { cursor: pointer; font-size: 14px; padding: 2px 0
 .pie-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
 .pie-bar i.spec { background: var(--warning); }
 @media (max-width: 760px) { .pie-barc, .pie-tbl td.why, .pie-tbl th:last-child { display: none; } .pie-form input { width: 90px; } }
+
+/* ---------- growth & cash page */
+.gc-groups { display: flex; flex-wrap: wrap; gap: 2px; }
+.gc-chart { height: 520px; }
+.gc-legend { margin-top: 8px; }
+.gc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; line-height: 1.5; color: var(--text-secondary); }
+.gc-list li { display: grid; grid-template-columns: 12px 1fr; gap: 8px; align-items: baseline; }
+.gc-list b { color: var(--text-primary); }
+.gc-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.gc-best, .gc-mine { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; color: var(--text-secondary); }
+.gc-best b, .gc-mine b { color: var(--text-primary); }
+.gc-tbl td, .gc-tbl th { padding: 7px 8px; }
+.gc-tbl .r { text-align: right; }
+.gc-tbl td small { display: block; font-size: 12px; color: var(--text-muted); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc-pill { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 760px) {
+  .gc-chart { height: 380px; }
+  .gc-groups { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .gc-groups::-webkit-scrollbar { display: none; }
+  .gc-groups button { white-space: nowrap; flex: 0 0 auto; }
+  .tabs.more-open a.hide-m[data-tab="growthcash"] { bottom: calc(288px + env(safe-area-inset-bottom)); }
+}
+.gc-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .gc-two { grid-template-columns: 1fr; } }

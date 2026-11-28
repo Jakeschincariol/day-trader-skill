@@ -89,6 +89,18 @@ ETF count as "everything else"). For each part: where you are now, the target, a
 It shows how many months of buying get you to the target without selling (prices assumed flat, parts above target get nothing).
 Includes a list of UCITS ETF ideas per part, alternatives to VWCE included (Xetra tickers; FWRA in London).
 
+## Growth & Cash (menu: Find stocks → Growth & Cash)
+
+A scatter chart per group: sales growth across (latest quarters against the same quarters a year earlier, or the last fiscal year
+when quarters are missing) and free cash flow margin up (free cash flow ÷ sales over the last 12 months). The chart is split at the
+group's middle values into four boxes: **Growth + cash** (top right), **Cash machine**, **Growing, thin cash**, **Slow, thin cash**,
+plus **Burning cash** for negative free cash flow. Groups: My stocks (holdings and watchlist), AI chips, chip equipment, memory and
+storage, AI networking and optics, AI power and data centres, cloud and AI software, pharma and health care, biotech, energy,
+food/drinks/household, industry and defence, consumer and internet (`GC_GROUPS` in `server.py`). Stocks you own get a white ring;
+far-off points are drawn at the edge with ›. "What it suggests" names the best balance of growth and cash and explains each box;
+a table lists the numbers. Figures come from Yahoo's company reports (`/ws/fundamentals-timeseries`, no key needed), cached for a day
+in `dashboard/.fund-cache.json`. Banks and insurers are left out. Not advice.
+
 ## Pie optimizer (Portfolio page, long-term mode)
 
 Type the tickers of a pie (or press **Use my stocks**) and get a whole-number percentage for each, summing to 100%: weight follows

@@ -3803,6 +3803,159 @@ def company_figures(sym):
     return fa
 
 
+# ---------------------------------------------------------------- growth + cash: revenue growth vs free cash flow margin, per sector
+
+GC_GROUPS = [
+    ("ai-chips", "AI chips and processors", ["NVDA", "AMD", "AVGO", "MRVL", "QCOM", "INTC", "ARM", "TSM", "ALAB", "CRDO", "TXN", "ADI", "NXPI", "ON", "MCHP", "SMTC"]),
+    ("chip-equipment", "Chip equipment", ["ASML", "AMAT", "LRCX", "KLAC", "TER", "ONTO", "ASM.AS", "6857.T", "8035.T", "ENTG", "NVMI", "CAMT"]),
+    ("memory", "Memory and storage", ["MU", "SNDK", "WDC", "STX", "000660.KS", "005930.KS", "NTAP"]),
+    ("networking", "AI networking and optics", ["ANET", "CSCO", "CIEN", "COHR", "LITE", "AAOI", "FN", "CRDO", "ALAB", "MRVL", "NOK"]),
+    ("power", "AI power, cooling and data centres", ["VRT", "ETN", "GEV", "VST", "CEG", "NRG", "PWR", "BE", "APLD", "SMCI", "DELL", "HPE", "EQIX", "DLR"]),
+    ("software", "Cloud and AI software", ["MSFT", "GOOGL", "AMZN", "META", "ORCL", "NOW", "CRM", "PLTR", "SNOW", "DDOG", "CRWD", "PANW", "NET", "ZS", "FTNT", "ADBE", "SHOP", "INTU"]),
+    ("health", "Pharma and health care", ["LLY", "NVO", "JNJ", "ABBV", "MRK", "PFE", "AZN", "NVS", "SNY", "BMY", "UNH", "TMO", "DHR", "ABT", "ISRG", "SYK", "BSX", "MDT"]),
+    ("biotech", "Biotech", ["VRTX", "REGN", "AMGN", "GILD", "BIIB", "MRNA", "ALNY", "ARGX", "BMRN", "INCY", "EXEL", "NBIX", "UTHR", "INSM"]),
+    ("energy", "Energy (oil and gas)", ["XOM", "CVX", "COP", "SHEL", "TTE", "BP", "EOG", "SLB", "OXY", "ENB", "EQNR", "PSX"]),
+    ("staples", "Food, drinks and household", ["KO", "PEP", "PG", "COST", "WMT", "MDLZ", "CL", "PM", "MO", "KMB", "GIS", "UL"]),
+    ("industrials", "Industry and defence", ["GE", "CAT", "DE", "HON", "LMT", "RTX", "NOC", "GD", "UNP", "URI", "PH", "ITW"]),
+    ("consumer", "Consumer and internet", ["AAPL", "TSLA", "NFLX", "HD", "NKE", "MCD", "SBUX", "BKNG", "UBER", "ABNB", "SPOT", "MELI"]),
+]
+GC_TYPES = "trailingTotalRevenue,trailingFreeCashFlow,quarterlyTotalRevenue,annualTotalRevenue,annualFreeCashFlow"
+GC_FILE = os.path.join(HERE, ".fund-cache.json")  # git-ignored: Yahoo figures change once a quarter
+_gc_lock = threading.Lock()
+_gc_disk = {"loaded": False, "data": {}}
+
+
+def _gc_series(sym, p1, p2, types):
+    d = yahoo("/ws/fundamentals-timeseries/v1/finance/timeseries/%s?type=%s&period1=%d&period2=%d" % (urllib.parse.quote(sym), types, p1, p2))
+    out = {}
+    for r_ in ((d.get("timeseries") or {}).get("result") or []):
+        t = ((r_.get("meta") or {}).get("type") or [None])[0]
+        if not t:
+            continue
+        vals = []
+        for x in r_.get(t) or []:
+            if x and x.get("asOfDate") and (x.get("reportedValue") or {}).get("raw") is not None:
+                vals.append((x["asOfDate"], float(x["reportedValue"]["raw"])))
+        out[t] = sorted(vals)
+    return out
+
+
+def _gc_day(dstr):
+    return calendar.timegm(time.strptime(dstr, "%Y-%m-%d"))
+
+
+def growth_cash_calc(series):
+    """Revenue growth (latest quarters vs the same quarters a year earlier, else last fiscal year) and
+    free cash flow margin (last 12 months), from Yahoo's fundamentals timeseries."""
+    tr = series.get("trailingTotalRevenue") or []
+    tf = series.get("trailingFreeCashFlow") or []
+    q = dict(series.get("quarterlyTotalRevenue") or [])
+    ar = series.get("annualTotalRevenue") or []
+    af = series.get("annualFreeCashFlow") or []
+    near = lambda a, b, tol=25: abs(_gc_day(a) - _gc_day(b)) <= tol * 86400
+    if tr:
+        d_, t_ = tr[-1]
+        prev3 = []
+        for k in (1, 2, 3):
+            want = time.strftime("%Y-%m-%d", time.gmtime(_gc_day(d_) - k * 91.3 * 86400))
+            m = next((x for x in q if near(x, want)), None)
+            if m:
+                prev3.append(m)
+        if d_ not in q and not any(near(x, d_, 10) for x in q) and len(prev3) == 3:
+            q[d_] = t_ - sum(q[x] for x in prev3)  # the newest quarter, only known inside the 12-month total
+    growth, basis = None, None
+    pairs = []
+    for dq in sorted(q, reverse=True):
+        want = time.strftime("%Y-%m-%d", time.gmtime(_gc_day(dq) - 365 * 86400))
+        e = next((x for x in q if near(x, want)), None)
+        if e:
+            pairs.append((dq, e))
+        if len(pairs) == 4:
+            break
+    if pairs:
+        now_, before = sum(q[a] for a, _ in pairs), sum(q[b] for _, b in pairs)
+        if before > 0:
+            growth = 100 * (now_ / before - 1)
+            basis = "last %d quarter%s vs a year earlier" % (len(pairs), "" if len(pairs) == 1 else "s")
+    if growth is None and len(ar) >= 2 and ar[-2][1] > 0:
+        growth = 100 * (ar[-1][1] / ar[-2][1] - 1)
+        basis = "last fiscal year"
+    margin, mbasis = None, None
+    if tr and tf and tr[-1][1] > 0:
+        margin, mbasis = 100 * tf[-1][1] / tr[-1][1], "last 12 months"
+    elif ar and af and ar[-1][1] > 0:
+        margin, mbasis = 100 * af[-1][1] / ar[-1][1], "last fiscal year"
+    return {"growth": None if growth is None else round(growth, 1), "margin": None if margin is None else round(margin, 1),
+            "basis": basis, "marginBasis": mbasis, "asOf": tr[-1][0] if tr else (ar[-1][0] if ar else None),
+            "revenue": tr[-1][1] if tr else (ar[-1][1] if ar else None)}
+
+
+def growth_cash_one(sym):
+    sym = sym.upper()
+    with _gc_lock:
+        if not _gc_disk["loaded"]:
+            try:
+                with open(GC_FILE) as f:
+                    _gc_disk["data"] = json.load(f)
+            except Exception:
+                _gc_disk["data"] = {}
+            _gc_disk["loaded"] = True
+        hit = _gc_disk["data"].get(sym)
+    if hit and time.time() - hit.get("at", 0) < 24 * 3600:
+        return dict(hit["v"], symbol=sym)
+
+    def load():
+        now = int(time.time())
+        recent = _gc_series(sym, now - 3 * 365 * 86400, now, GC_TYPES)
+        older = {}
+        try:
+            older = _gc_series(sym, now - 6 * 365 * 86400, now - 365 * 86400, "quarterlyTotalRevenue")
+        except Exception:
+            pass
+        merged = dict(recent)
+        merged["quarterlyTotalRevenue"] = sorted(dict((older.get("quarterlyTotalRevenue") or []) + (recent.get("quarterlyTotalRevenue") or [])).items())
+        v = growth_cash_calc(merged)
+        if v["growth"] is None and v["margin"] is None:
+            raise ValueError("no revenue or cash flow figures")
+        inf = fdb_info(sym) or {}
+        v.update(name=inf.get("name"), sector=inf.get("sector"), industry=inf.get("industry"))
+        if (inf.get("sector") or "") == "Financials":
+            v["note"] = "bank or insurer: free cash flow is not meaningful"
+        with _gc_lock:
+            _gc_disk["data"][sym] = {"at": time.time(), "v": v}
+            try:
+                tmp = GC_FILE + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(_gc_disk["data"], f)
+                os.replace(tmp, GC_FILE)
+            except Exception:
+                pass
+        return v
+    try:
+        return dict(cached(("growthcash", sym), 6 * 3600, load), symbol=sym)
+    except Exception as e:
+        return {"symbol": sym, "error": str(e)[:80]}
+
+
+def growth_cash(group=None, symbols=None):
+    groups = [{"id": g, "name": n, "count": len(lst)} for g, n, lst in GC_GROUPS]
+    if symbols:
+        gid, gname, syms = "mine", "My stocks and watchlist", [x for x in dict.fromkeys(symbols) if x][:60]
+    else:
+        g = next((x for x in GC_GROUPS if x[0] == group), GC_GROUPS[0])
+        gid, gname, syms = g
+    rows = list(KP_POOL.map(growth_cash_one, syms))
+    ok = [r_ for r_ in rows if not r_.get("error") and r_.get("growth") is not None and r_.get("margin") is not None and not r_.get("note")]
+    med = lambda xs: sorted(xs)[len(xs) // 2] if xs else None
+    gx, gy = med([r_["growth"] for r_ in ok]), med([r_["margin"] for r_ in ok])
+    for r_ in ok:
+        hi_g, hi_m = r_["growth"] >= gx, r_["margin"] >= gy
+        r_["quadrant"] = "king" if hi_g and hi_m else "cash" if hi_m else "growth" if hi_g else "weak"
+        if r_["margin"] < 0:
+            r_["quadrant"] = "burn"
+    return {"group": gid, "name": gname, "groups": groups, "rows": rows, "medianGrowth": gx, "medianMargin": gy, "at": int(time.time())}
+
+
 # ---------------------------------------------------------------- pie optimizer: weights for a group of stocks
 
 PIE_SPEC_SLICE = 2.0   # % for each speculative stock (long-term score under 45 or "Speculative" zone)
@@ -4726,6 +4879,12 @@ class Handler(BaseHTTPRequestHandler):
                 purge(lambda k: k[0] == "lt" and k[1] in ss)
             elif path == "/api/ltentry":
                 purge(lambda k: k[0] in ("entry", "lt") and k[1] in one)
+            elif path == "/api/growthcash":
+                ss = syms(q.get("symbols")) or next((lst for g, n, lst in GC_GROUPS if g == q.get("group")), [])
+                purge(lambda k: k[0] == "growthcash" and k[1] in ss)
+                with _gc_lock:
+                    for x in ss:
+                        _gc_disk["data"].pop(x, None)
             elif path == "/api/momentum":
                 ss = syms(q.get("symbols"))
                 purge(lambda k: (k[0] == "momentum" and k[1] in ss) or (k[0] == "chart" and k[1] in ss and "interval=1h" in str(k[2])))
@@ -4851,6 +5010,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(lt_profile(q.get("symbol", "SPY").upper()))
         if path == "/api/ltentry":
             return self.send_json(lt_entry(q.get("symbol", "SPY")))
+        if path == "/api/growthcash":
+            ss = syms(q.get("symbols"))
+            return self.send_json(growth_cash(q.get("group"), ss or None))
         if path == "/api/pie":
             try:
                 cap = min(50.0, max(5.0, float(q.get("cap", 14))))

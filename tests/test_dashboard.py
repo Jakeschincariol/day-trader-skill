@@ -1424,3 +1424,37 @@ class PieOptimizer(unittest.TestCase):
         w = srv.pie_weights(many, cap=50)
         self.assertEqual(sum(w.values()), 100)
         self.assertLessEqual(sum(v for k, v in w.items() if k.startswith("S")), 14)
+
+
+class GrowthCash(unittest.TestCase):
+    def test_quarters_vs_a_year_earlier_and_derived_latest_quarter(self):
+        s = {
+            "quarterlyTotalRevenue": [("2025-04-30", 44.0), ("2025-07-31", 46.0), ("2025-10-31", 57.0), ("2026-01-31", 68.0), ("2026-04-30", 82.0), ("2026-07-31", 96.0)],
+            "trailingTotalRevenue": [("2026-10-31", 362.0)],  # includes a newest quarter not in the list: 362 - 68 - 82 - 96 = 116
+            "trailingFreeCashFlow": [("2026-10-31", 145.0)],
+        }
+        r = srv.growth_cash_calc(s)
+        # pairs: Oct26/Oct25, Jul26/Jul25, Apr26/Apr25 -> (116+96+82)/(57+46+44)
+        self.assertAlmostEqual(r["growth"], round(100 * ((116 + 96 + 82) / (57 + 46 + 44) - 1), 1))
+        self.assertEqual(r["basis"], "last 3 quarters vs a year earlier")
+        self.assertAlmostEqual(r["margin"], round(100 * 145 / 362, 1))
+
+    def test_falls_back_to_the_fiscal_year(self):
+        s = {"quarterlyTotalRevenue": [("2026-06-30", 10.0)], "annualTotalRevenue": [("2024-12-31", 80.0), ("2025-12-31", 100.0)],
+             "annualFreeCashFlow": [("2025-12-31", -5.0)]}
+        r = srv.growth_cash_calc(s)
+        self.assertEqual(r["growth"], 25.0)
+        self.assertEqual(r["basis"], "last fiscal year")
+        self.assertEqual(r["margin"], -5.0)
+
+    def test_boxes_split_at_the_group_middle(self):
+        saved = srv.growth_cash_one
+        try:
+            vals = {"A": (50, 40), "B": (10, 40), "C": (50, 5), "D": (10, 5), "E": (30, -10), "F": (30, 20)}
+            srv.growth_cash_one = lambda s: {"symbol": s, "growth": vals[s][0], "margin": vals[s][1]} if s in vals else {"symbol": s, "error": "x"}
+            d = srv.growth_cash(symbols=list(vals) + ["ZZ"])
+            box = {r["symbol"]: r.get("quadrant") for r in d["rows"]}
+            self.assertEqual((d["medianGrowth"], d["medianMargin"]), (30, 20))
+            self.assertEqual(box, {"A": "king", "B": "cash", "C": "growth", "D": "weak", "E": "burn", "F": "king", "ZZ": None})
+        finally:
+            srv.growth_cash_one = saved
